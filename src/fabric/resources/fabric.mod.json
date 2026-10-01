@@ -1,0 +1,25 @@
+{
+	"schemaVersion": 1,
+	"id": "${id}",
+	"version": "${version}",
+	"name": "${name}",
+	"description": "${description}",
+	"authors": ["crazylimits"],
+	"license": "${license}",
+	"environment": "*",
+	"mixins": [
+		"dragonfall.mixins.json",
+		"dragonfall.breath.mixins.json"
+	],
+	"entrypoints": {
+		"main": ["crazylimits.dragonfall.fabric.DragonfallFabric"],
+		"client": ["crazylimits.dragonfall.fabric.DragonfallFabricClient"]
+	},
+	"depends": {
+		"fabricloader": ">=${loaderVersion}",
+		"minecraft": "~${mcVersion}",
+		"java": ">=${java}",
+		"fabric-api": "*",
+		"geckolib": "*"
+	}
+}

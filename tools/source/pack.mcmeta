@@ -1,0 +1,15 @@
+{
+    "pack": {
+        "description": "Reimagined Ender Dragon, by Parrie43",
+        "pack_format": 15,
+        "_comment": "Pack made by Parrie43, inspired by Ice and Fire II",
+        "supported_formats": {"min_inclusive": 15, "max_inclusive": 100},
+		"min_format": 15,
+		"max_format": 100
+    },
+	"overlays": {
+		"entries": [
+			{ "directory": "21", "formats": {"min_inclusive": 42, "max_inclusive": 100}, "min_format": 42, "max_format": 100 }
+		]
+	}
+}

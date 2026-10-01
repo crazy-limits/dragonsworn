@@ -1,0 +1,34 @@
+.gradle/
+build/
+*/build/
+run/
+.idea/
+*.iml
+out/
+.DS_Store
+# Stonecutter rewrites sources in place; its scratch state is not source of truth
+.stonecutter/
+
+# Eclipse/Gradle build output inside Stonecutter version dirs
+bin/
+.eclipse/
+versions/*/build/
+versions/*/.gradle/
+
+# Client run logs per Stonecutter version target, and scratch compiler arg files
+versions/*/logs/
+javac.*.args
+
+# Editor-local config, same treatment as .idea/
+.zed/
+
+# Python bytecode from the asset generators in tools/
+tools/__pycache__/
+
+# Scratch tooling from the Blockbench sessions (MCP plugin copy, bridge, preview scripts)
+edr/
+mcp.js
+bridge.js
+build_bootstrap.log
+tools/out/
+tools/__pycache__/

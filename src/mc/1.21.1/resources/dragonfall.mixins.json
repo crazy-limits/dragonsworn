@@ -1,0 +1,14 @@
+{
+	"required": true,
+	"minVersion": "0.8",
+	"package": "crazylimits.dragonfall.mc.mixin",
+	"compatibilityLevel": "JAVA_${java}",
+	"injectors": { "defaultRequire": 1 },
+	"mixins": [
+		"EnderDragonMixin",
+		"EnderDragonPartAccessor",
+		"EnderDragonPhaseInvoker",
+		"EnderDragonPhaseManagerMixin",
+		"EntityAccessor"
+	]
+}

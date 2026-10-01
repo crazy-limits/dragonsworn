@@ -1,0 +1,52 @@
+# Central, per-version dependency + identity registry.
+# Read from buildscripts via stonecutter.properties.get<T>("key").
+# Adding a Minecraft version means: a `match(...)` line in settings.gradle.kts, a
+# `[fabric."x"]` + `[neoforge."x"]` block here, and a src/mc/x/ bridge tree. Nothing else.
+
+loomx.loom_version = "1.17-SNAPSHOT"
+
+mod.id = "dragonfall"
+mod.name = "Dragonfall"
+mod.group = "crazylimits"
+mod.version = "0.1.0"
+mod.description = "An overhauled Ender Dragon: a new animated boss model whose wings fold like a fan and carry it on the ground."
+mod.authors = "crazylimits"
+mod.license = "All-Rights-Reserved"
+
+# GeckoLib: 4.x on the 1.21.1 line (entity-based renderers), 5.x from 1.21.2 on (render states).
+# A `maven.modrinth:` coordinate is used where GeckoLib's own maven has no artifact for that target.
+
+[fabric]
+deps.fabric-loader = "0.19.5"
+
+[fabric."26.2"]
+deps.minecraft = "26.2"
+deps.fabric-api = "0.158.0+26.2"
+deps.geckolib = "maven.modrinth:geckolib:7gaQHok7"
+
+[fabric."1.21.11"]
+deps.minecraft = "1.21.11"
+deps.fabric-api = "0.141.6+1.21.11"
+deps.geckolib = "software.bernie.geckolib:geckolib-fabric-1.21.11:5.4.5"
+
+[fabric."1.21.1"]
+deps.minecraft = "1.21.1"
+deps.fabric-api = "0.116.15+1.21.1"
+deps.geckolib = "software.bernie.geckolib:geckolib-fabric-1.21.1:4.9.3"
+
+[neoforge]
+
+[neoforge."26.2"]
+deps.minecraft = "26.2"
+deps.neoforge = "26.2.0.75"
+deps.geckolib = "maven.modrinth:geckolib:IEGPh4CJ"
+
+[neoforge."1.21.11"]
+deps.minecraft = "1.21.11"
+deps.neoforge = "21.11.45"
+deps.geckolib = "software.bernie.geckolib:geckolib-neoforge-1.21.11:5.4.5"
+
+[neoforge."1.21.1"]
+deps.minecraft = "1.21.1"
+deps.neoforge = "21.1.249"
+deps.geckolib = "software.bernie.geckolib:geckolib-neoforge-1.21.1:4.9.3"

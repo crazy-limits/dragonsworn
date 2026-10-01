@@ -1,0 +1,16 @@
+{
+	"required": true,
+	"minVersion": "0.8",
+	"package": "crazylimits.dragonfall.mc.breath.mixin",
+	"compatibilityLevel": "JAVA_21",
+	"mixins": [
+		"DragonFireballMixin",
+		"DragonSittingAttackingPhaseMixin",
+		"DragonSittingFlamingPhaseMixin",
+		"DragonVoiceMixin",
+		"EnderDragonPhaseInvoker"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
+}

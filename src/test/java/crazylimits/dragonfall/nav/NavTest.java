@@ -1,0 +1,110 @@
+package crazylimits.dragonfall.nav;
+
+import org.junit.jupiter.api.Test;
+
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class NavTest {
+	/** Flat ground at y = 64 (feet at 64), plus solid boxes. */
+	static final class World implements BlockGrid {
+		final Set<Long> solid = new HashSet<>();
+		final Set<Long> water = new HashSet<>();
+
+		void box(int x0, int y0, int z0, int x1, int y1, int z1) {
+			for (int x = x0; x <= x1; x++) for (int y = y0; y <= y1; y++) for (int z = z0; z <= z1; z++) solid.add(AirPlanner.key(x, y, z));
+		}
+
+		@Override
+		public boolean blocked(int x, int y, int z) {
+			return y < 64 || solid.contains(AirPlanner.key(x, y, z));
+		}
+
+		@Override
+		public int ground(int x, int z) {
+			if (water.contains(AirPlanner.key(x, 0, z))) return NO_GROUND;
+			int y = 64;
+			while (blocked(x, y, z) && y < 200) y++;
+			return y;
+		}
+	}
+
+	@Test
+	void openSkyIsAStraightLine() {
+		AirPlanner air = new AirPlanner(new World());
+		List<double[]> path = air.plan(new double[]{0, 100, 0}, new double[]{60, 100, 0}, 500);
+		assertEquals(1, path.size());
+	}
+
+	@Test
+	void flightGoesAroundAPillarInsteadOfThroughIt() {
+		World w = new World();
+		w.box(25, 64, -6, 35, 140, 6);                       // a tall pillar in the way
+		AirPlanner air = new AirPlanner(w);
+		double[] from = {0, 100, 0}, to = {60, 100, 0};
+		assertFalse(air.lineClear(from, to));
+		List<double[]> path = air.plan(from, to, 3000);
+		assertFalse(path.isEmpty());
+		double[] at = from;
+		for (double[] p : path) {
+			assertTrue(air.lineClear(at, p), "every leg is clear");
+			at = p;
+		}
+		assertTrue(Math.hypot(at[0] - 60, at[2]) < 6, "it gets there");
+	}
+
+	@Test
+	void groundPathWalksAroundAWall() {
+		World w = new World();
+		w.box(10, 64, -8, 11, 70, 8);                        // a wall across the way
+		GroundPlanner ground = new GroundPlanner(w);
+		List<int[]> path = ground.plan(0, 0, 20, 0, 1.5, 4000);
+		assertFalse(path.isEmpty());
+		int[] end = path.get(path.size() - 1);
+		assertTrue(Math.hypot(end[0] - 20, end[2]) <= 1.5);
+		int[] at = {0, 64, 0};
+		for (int[] p : path) {
+			assertTrue(ground.lineWalkable(at, p));
+			at = p;
+		}
+	}
+
+	@Test
+	void groundPathClimbsGentleStepsButNotCliffs() {
+		World w = new World();
+		w.box(5, 64, -20, 40, 64, 20);                       // one step up: fine
+		GroundPlanner ground = new GroundPlanner(w);
+		assertTrue(ground.lineWalkable(new int[]{0, 64, 0}, new int[]{10, 65, 0}));
+		World cliff = new World();
+		cliff.box(5, 64, -40, 40, 68, 40);                   // five blocks straight up
+		assertFalse(new GroundPlanner(cliff).lineWalkable(new int[]{0, 64, 0}, new int[]{10, 69, 0}));
+	}
+
+	@Test
+	void landingNeedsRoomAndGround() {
+		World w = new World();
+		LandingSite site = new LandingSite(w);
+		assertEquals(64, site.fits(0, 0));
+		w.box(2, 64, 2, 2, 66, 2);                           // a post under the body
+		assertEquals(BlockGrid.NO_GROUND, site.fits(0, 0));
+		World lake = new World();
+		lake.water.add(AirPlanner.key(3, 0, 0));
+		assertEquals(BlockGrid.NO_GROUND, new LandingSite(lake).fits(0, 0), "a foot in the water");
+		World overhang = new World();
+		overhang.box(-3, 78, -3, 3, 78, 3);                  // a roof above the descent
+		assertEquals(BlockGrid.NO_GROUND, new LandingSite(overhang).fits(0, 0));
+	}
+
+	@Test
+	void landingSiteSearchSkipsWhatDoesNotFit() {
+		World w = new World();
+		w.box(-30, 64, -30, 30, 90, -1);                     // the whole north half is a mountain
+		int[] spot = new LandingSite(w).find(0, 0, 6, 15, 10, 0, 20);
+		assertNotNull(spot);
+		assertTrue(spot[2] >= 5, "lands south of the mountain: " + spot[2]);
+		assertEquals(64, spot[1]);
+	}
+}

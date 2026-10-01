@@ -1,0 +1,77 @@
+{
+	"entity.ender_dragon.roar": {
+		"subtitle": "subtitles.dragonfall.entity.ender_dragon.roar",
+		"sounds": [
+			{
+				"name": "dragonfall:entity/ender_dragon/roar1",
+				"attenuation_distance": 96
+			},
+			{
+				"name": "dragonfall:entity/ender_dragon/roar2",
+				"attenuation_distance": 96
+			},
+			{
+				"name": "dragonfall:entity/ender_dragon/roar3",
+				"attenuation_distance": 96
+			},
+			{
+				"name": "dragonfall:entity/ender_dragon/roar4",
+				"attenuation_distance": 96
+			}
+		]
+	},
+	"entity.ender_dragon.wing": {
+		"subtitle": "subtitles.dragonfall.entity.ender_dragon.wing",
+		"sounds": [
+			{
+				"name": "dragonfall:entity/ender_dragon/wing1",
+				"attenuation_distance": 64
+			},
+			{
+				"name": "dragonfall:entity/ender_dragon/wing2",
+				"attenuation_distance": 64
+			},
+			{
+				"name": "dragonfall:entity/ender_dragon/wing3",
+				"attenuation_distance": 64
+			},
+			{
+				"name": "dragonfall:entity/ender_dragon/wing4",
+				"attenuation_distance": 64
+			},
+			{
+				"name": "dragonfall:entity/ender_dragon/wing5",
+				"attenuation_distance": 64
+			},
+			{
+				"name": "dragonfall:entity/ender_dragon/wing6",
+				"attenuation_distance": 64
+			}
+		]
+	},
+	"entity.ender_dragon.step": {
+		"subtitle": "subtitles.dragonfall.entity.ender_dragon.step",
+		"sounds": [
+			{
+				"name": "dragonfall:entity/ender_dragon/step1",
+				"attenuation_distance": 40
+			},
+			{
+				"name": "dragonfall:entity/ender_dragon/step2",
+				"attenuation_distance": 40
+			},
+			{
+				"name": "dragonfall:entity/ender_dragon/step3",
+				"attenuation_distance": 40
+			},
+			{
+				"name": "dragonfall:entity/ender_dragon/step4",
+				"attenuation_distance": 40
+			},
+			{
+				"name": "dragonfall:entity/ender_dragon/step5",
+				"attenuation_distance": 40
+			}
+		]
+	}
+}
