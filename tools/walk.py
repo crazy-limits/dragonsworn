@@ -92,12 +92,13 @@ APEX = {s: rig.bones[f'{s}_wing_tip3']['pivot'] for s in ('left', 'right')}
 ANKLE = {s: rig.bones[f'foot_{s}']['pivot'] for s in ('left', 'right')}
 
 
-def solve_limbs(pose, targets, sol, arm_ref=None, shoulder_pitch=None):
+def solve_limbs(pose, targets, sol, arm_ref=None, shoulder_pitch=None, elbow=None):
 	"""Solves every limb named in `targets` (lh, rh, lf, rf -> root-frame target) into `pose`.
 
 	Hind limbs: the ankle reaches its target and the foot counter-rotates so the sole stays level.
 	Front limbs (the wings): the fan apex reaches the target's x/z and the lowest point of the folded
-	hand touches its y. `sol` carries each limb's last solution to seed the next frame."""
+	hand touches its y. `elbow` (degrees) pins the elbow instead of solving it. `sol` carries each limb's
+	last solution to seed the next frame."""
 	arm_ref = arm_ref or ARM_REF
 	shoulder_pitch = SHOULDER_PITCH if shoulder_pitch is None else shoulder_pitch
 	for limb in ('lh', 'rh'):
@@ -139,10 +140,15 @@ def solve_limbs(pose, targets, sol, arm_ref=None, shoulder_pitch=None):
 			low = softmin([q[1] for b in HAND[side] for q in rig.corners(m, b)])
 			# The arm has one more degree of freedom than the wrist needs. Soft pulls toward a reference
 			# stance make the solution unique, so it moves smoothly from frame to frame.
-			return [c[0] - target[0], low - target[1], c[2] - target[2],
-					0.05 * (x[0] - shoulder_pitch), 0.01 * (x[1] - arm_ref[1]), 0.01 * (x[2] - arm_ref[2])]
+			# With the elbow pinned the wrist fixes all three shoulder angles: the pulls only pick the branch.
+			k = 1.0 if elbow is None else 0.01
+			r = [c[0] - target[0], low - target[1], c[2] - target[2],
+				 0.05 * k * (x[0] - shoulder_pitch), 0.01 * k * (x[1] - arm_ref[1]), 0.01 * k * (x[2] - arm_ref[2])]
+			return r if elbow is None else r + [10 * (x[3] - elbow)]
 
 		x, _ = solve(res, sol.get(limb, arm_ref), iterations=200)
+		if elbow is not None:
+			x[3] = elbow
 		sol[limb] = x
 		pose[f'{side}_wing'] = {'r': [x[0], sgn * x[1], sgn * x[2]]}
 		pose[f'{side}_wing_tip'] = {'r': [0, 0, sgn * x[3]]}

@@ -30,6 +30,7 @@ def copy(src, *dst):
 subprocess.run([sys.executable, os.path.join(HERE, 'build_wings.py')], check=True, cwd=HERE)
 subprocess.run([sys.executable, os.path.join(HERE, 'anims.py')], check=True, cwd=HERE)
 subprocess.run([sys.executable, os.path.join(HERE, 'particles.py')], check=True, cwd=HERE)
+subprocess.run([sys.executable, os.path.join(HERE, 'egg.py')], check=True, cwd=HERE)
 shutil.copyfile(os.path.join(HERE, 'source', 'dragon_eyes.png'), os.path.join(OUT, 'ender_dragon_glowmask.png'))
 
 copy('ender_dragon.geo.json', 'src', 'gecko4', 'resources', 'assets', NS, 'geo', 'entity', 'ender_dragon.geo.json')

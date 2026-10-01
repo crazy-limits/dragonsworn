@@ -40,6 +40,8 @@ Targets 1.21.11 and 26.2 are declared (GeckoLib 5) but their `src/mc/<version>` 
 - Editor convention: +X pitches a bone's front up; files store X and Y negated.
 - `particles.py` -- void flame sprites: Ice and Fire's fire-breath particle recolored to Dragon's Breath, 4 frames
   cooling white -> violet with age.
+- `egg.py` -- the dragon egg's block texture (overrides `minecraft:block/dragon_egg`): overlapping scales in the
+  dragon texture's palette, cracked by a glowing rune-magenta vein. 16x16; vanilla's egg model maps it upside down.
 
 ## Tail
 Fully procedural. `body/TailMotion` (core, tested) is what the keyframes used to do per animation (ported from

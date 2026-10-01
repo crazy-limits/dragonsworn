@@ -53,7 +53,7 @@ def idle(t, L):
 	w = PI2 * t / L
 	sw = stand.SWAN
 	return standing('idle').pose(
-		body_pitch=1.5 * S(w), body_lift=0.8 * S(w), fan=walk.FAN - 1 + S(w),
+		body_pitch=1.5 * S(w), body_lift=0.8 * S(w), fan=stand.FAN - 1 + S(w),
 		swan=[sw[0] + 2 * S(w + 0.3), sw[1] + 1.5 * S(w + 0.6), sw[2] - 2 * S(w + 0.9), sw[3] - 2 * S(w + 1.2)],
 		neck_yaw=(3 * S(w / 2 * 2), 4 * S(w + 0.4), 5 * S(w + 0.8), 6 * S(w + 1.2)), head_yaw=8 * S(w + 1.6),
 		jaw=-1.5 - 1.5 * S(2 * w))
@@ -278,7 +278,7 @@ def takeoff(t, L):
 		return standing('takeoff').pose(
 			body_pitch=-6 * crouch + 8 * push, body_lift=-9 * crouch + 9 * push,
 			swan=[sw[0] - 6 * crouch, sw[1], sw[2] + 8 * push, sw[3] + 6 * push],
-			head=stand.HEAD + 6 * push, jaw=-1.5 - 8 * push, fan=10 + (walk.FAN - 10) * (1 - push),
+			head=stand.HEAD + 6 * push, jaw=-1.5 - 8 * push, fan=10 + (stand.FAN - 10) * (1 - push),
 			wings=_wings_of(q))
 	if 'lift' not in _takeoff_air:
 		_takeoff_air['lift'] = full_pose(takeoff(ground_end, L))
@@ -307,7 +307,7 @@ def roar(t, L):
 	shake = 2 * S(t * 40) * snap * fade
 	sw = stand.SWAN
 	return standing('roar').pose(
-		body_pitch=10 * k, body_lift=4 * k, fan=walk.FAN - 12 * k,
+		body_pitch=10 * k, body_lift=4 * k, fan=stand.FAN - 12 * k,
 		swan=[sw[0] + 6 * k, sw[1] + 6 * k, sw[2] + 32 * k, sw[3] + 30 * k + shake],
 		head=stand.HEAD + 14 * k + 6 * snap * (1 - close) + shake, head_yaw=shake, jaw=-1.5 - jaw)
 
@@ -362,7 +362,7 @@ def breath(t, L):
 		swan=[sw[0] + 8 * inhale - 22 * pour, sw[1] + 10 * inhale - 6 * pour,
 			  sw[2] - 10 * inhale + 22 * pour, sw[3] - 4 * inhale + 18 * pour],
 		neck_yaw=(0, 0, sway, sway), head=stand.HEAD + 16 * inhale - 4 * pour + shake, head_yaw=shake,
-		jaw=-1.5 - jaw, fan=walk.FAN - 1 - 4 * inhale)
+		jaw=-1.5 - jaw, fan=stand.FAN - 1 - 4 * inhale)
 
 
 def death(t, L):
