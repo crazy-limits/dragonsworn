@@ -1,5 +1,6 @@
 package crazylimits.dragonsworn.ai;
 
+import crazylimits.dragonsworn.config.DragonConfig;
 import org.junit.jupiter.api.Test;
 
 import java.util.Random;
@@ -38,9 +39,9 @@ class RoamingTest {
 		Random random = new Random(3);
 		for (int i = 0; i < 1000; i++) {
 			int air = Roaming.airSpell(random), ground = Roaming.groundSpell(random), pause = Roaming.pause(random);
-			assertTrue(air >= Roaming.AIR_MIN && air <= Roaming.AIR_MAX);
-			assertTrue(ground >= Roaming.GROUND_MIN && ground <= Roaming.GROUND_MAX);
-			assertTrue(pause >= Roaming.PAUSE_MIN && pause <= Roaming.PAUSE_MAX);
+			assertTrue(air >= DragonConfig.FLIGHT_MIN.get() && air <= DragonConfig.FLIGHT_MAX.get());
+			assertTrue(ground >= DragonConfig.GROUND_MIN.get() && ground <= DragonConfig.GROUND_MAX.get());
+			assertTrue(pause >= DragonConfig.PAUSE_MIN.get() && pause <= DragonConfig.PAUSE_MAX.get());
 		}
 	}
 

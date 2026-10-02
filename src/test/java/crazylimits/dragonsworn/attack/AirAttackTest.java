@@ -1,7 +1,9 @@
-package crazylimits.dragonsworn.anim;
+package crazylimits.dragonsworn.attack;
 
+import crazylimits.dragonsworn.anim.DragonAnim;
 import crazylimits.dragonsworn.body.DragonBody;
 import crazylimits.dragonsworn.body.Strike;
+import crazylimits.dragonsworn.config.DragonConfig;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -17,7 +19,7 @@ class AirAttackTest {
 	@Test
 	void theFlybyHitsHarderAndFurtherTheFasterItFlies() {
 		assertTrue(FlybyBite.damage(1.3) > FlybyBite.damage(0.9));
-		assertTrue(FlybyBite.damage(10.0) <= FlybyBite.MAX_DAMAGE);
+		assertTrue(FlybyBite.damage(10.0) <= DragonConfig.FLYBY_MAX_DAMAGE.get());
 		double[] slow = FlybyBite.knockback(0.9, 0.0, 0.0), fast = FlybyBite.knockback(0.0, 0.0, -1.3);
 		assertTrue(slow[0] > 0.0 && Math.abs(slow[2]) < 1e-9, "pushed along the flight");
 		assertTrue(fast[2] < 0.0 && Math.abs(fast[0]) < 1e-9, "pushed along the flight");

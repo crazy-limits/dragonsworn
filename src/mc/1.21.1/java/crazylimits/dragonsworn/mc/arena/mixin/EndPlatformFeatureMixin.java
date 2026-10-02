@@ -1,8 +1,8 @@
 package crazylimits.dragonsworn.mc.arena.mixin;
 
 import crazylimits.dragonsworn.arena.EntrancePlatform;
-import crazylimits.dragonsworn.config.DragonConfig;
 import crazylimits.dragonsworn.arena.Monolith;
+import crazylimits.dragonsworn.config.DragonConfig;
 import crazylimits.dragonsworn.mc.arena.OtherMods;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.ServerLevelAccessor;

@@ -1,6 +1,7 @@
-package crazylimits.dragonsworn.anim;
+package crazylimits.dragonsworn.attack;
 
 import crazylimits.dragonsworn.config.DragonConfig;
+import crazylimits.dragonsworn.math.Angles;
 
 /**
  * The stream breath: the perched dragon inhales, opens its jaw and pours void flame along the ground in
@@ -37,13 +38,8 @@ public final class BreathAttack {
 	public static final double MOUTH_RADIUS = 0.6, SPREAD = 0.16;
 	/** Where the stream meets a block it splashes: everything this close to the impact burns too. */
 	public static final double SPLASH_RADIUS = 3.0;
-	public static final float DAMAGE = 5.0F;
 	public static final int DAMAGE_INTERVAL = 10;
 
-	/** Chance that a perched attack is the stream instead of vanilla's lingering breath cloud (defaults: the server's {@code DragonConfig} sets them). */
-	public static final double STREAM_CHANCE = 0.5;
-	/** Streams per landing; after the last one the dragon takes off. */
-	public static final int MAX_STREAMS = 2;
 	/** Degrees per tick the dragon turns after its target: brisk while it inhales, slow while it pours. */
 	public static final float WINDUP_TURN = 3.0F, STREAM_TURN = 1.2F;
 	/**
@@ -180,19 +176,12 @@ public final class BreathAttack {
 
 	/** Degrees the target at (dx, dz) is off the facing {@code yaw}, right positive. */
 	public static float offFacing(float yaw, double dx, double dz) {
-		return wrapDegrees(yawToward(dx, dz) - yaw);
+		return Angles.wrapDegrees(yawToward(dx, dz) - yaw);
 	}
 
 	/** {@code yaw} turned toward (dx, dz) by at most {@code maxStep} degrees, the short way round. */
 	public static float turnToward(float yaw, double dx, double dz, float maxStep) {
-		float delta = wrapDegrees(yawToward(dx, dz) - yaw);
+		float delta = Angles.wrapDegrees(yawToward(dx, dz) - yaw);
 		return yaw + Math.max(-maxStep, Math.min(maxStep, delta));
-	}
-
-	static float wrapDegrees(float degrees) {
-		float d = degrees % 360.0F;
-		if (d >= 180.0F) d -= 360.0F;
-		if (d < -180.0F) d += 360.0F;
-		return d;
 	}
 }

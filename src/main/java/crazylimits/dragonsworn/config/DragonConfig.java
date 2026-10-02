@@ -1,15 +1,5 @@
 package crazylimits.dragonsworn.config;
 
-import crazylimits.dragonsworn.ai.CombatStance;
-import crazylimits.dragonsworn.ai.GroundTactics;
-import crazylimits.dragonsworn.ai.HitTally;
-import crazylimits.dragonsworn.ai.Roaming;
-import crazylimits.dragonsworn.anim.BreathAttack;
-import crazylimits.dragonsworn.anim.BreathPass;
-import crazylimits.dragonsworn.anim.FlybyBite;
-import crazylimits.dragonsworn.anim.HoverAttack;
-import crazylimits.dragonsworn.body.Strike;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -28,7 +18,8 @@ import java.util.random.RandomGenerator;
  * default. Game-free: the loaders hand it the file ({@code DragonswornCommon.loadConfig}).
  *
  * <p>Each option is a constant here, read where it is used ({@code SEIZE_CHANCE.get()}): a reload takes
- * effect at once. The defaults are the AI's own constants, so tests run on the shipped behaviour.
+ * effect at once. Each default lives only here: the AI reads the option, never a constant of its own, so
+ * tests run on the shipped behaviour.
  */
 public final class DragonConfig {
 	public static final String FILE = "dragonsworn-server.toml";
@@ -72,42 +63,42 @@ public final class DragonConfig {
 
 	// ---------------------------------------------------------------- wandering
 
-	public static final Int FLIGHT_MIN = num("wandering", "flight_min", Roaming.AIR_MIN, 20, 72000,
+	public static final Int FLIGHT_MIN = num("wandering", "flight_min", 200, 20, 72000,
 			"Ticks (20 = 1 s) a roaming flight lasts before it looks for somewhere to land: at least ...");
-	public static final Int FLIGHT_MAX = num("wandering", "flight_max", Roaming.AIR_MAX, 20, 72000, "... and at most.");
-	public static final Int GROUND_MIN = num("wandering", "ground_min", Roaming.GROUND_MIN, 20, 720000,
+	public static final Int FLIGHT_MAX = num("wandering", "flight_max", 500, 20, 72000, "... and at most.");
+	public static final Int GROUND_MIN = num("wandering", "ground_min", 3000, 20, 720000,
 			"Ticks it stays on foot (walking, resting) before it flies again: at least ...");
-	public static final Int GROUND_MAX = num("wandering", "ground_max", Roaming.GROUND_MAX, 20, 720000, "... and at most.");
-	public static final Int PAUSE_MIN = num("wandering", "pause_min", Roaming.PAUSE_MIN, 0, 6000,
+	public static final Int GROUND_MAX = num("wandering", "ground_max", 7000, 20, 720000, "... and at most.");
+	public static final Int PAUSE_MIN = num("wandering", "pause_min", 40, 0, 6000,
 			"Ticks it stands and looks around between walks: at least ...");
-	public static final Int PAUSE_MAX = num("wandering", "pause_max", Roaming.PAUSE_MAX, 0, 6000, "... and at most.");
-	public static final Num WALK_MIN = num("wandering", "walk_min", Roaming.WALK_LEG_MIN, 2.0, 64.0, "Blocks per walk: at least ...");
-	public static final Num WALK_MAX = num("wandering", "walk_max", Roaming.WALK_LEG_MAX, 2.0, 64.0, "... and at most.");
-	public static final Num FLY_LEG_MIN = num("wandering", "fly_leg_min", Roaming.FLY_LEG_MIN, 8.0, 256.0,
+	public static final Int PAUSE_MAX = num("wandering", "pause_max", 200, 0, 6000, "... and at most.");
+	public static final Num WALK_MIN = num("wandering", "walk_min", 8.0, 2.0, 64.0, "Blocks per walk: at least ...");
+	public static final Num WALK_MAX = num("wandering", "walk_max", 22.0, 2.0, 64.0, "... and at most.");
+	public static final Num FLY_LEG_MIN = num("wandering", "fly_leg_min", 24.0, 8.0, 256.0,
 			"Blocks per leg of a roaming flight: at least ...");
-	public static final Num FLY_LEG_MAX = num("wandering", "fly_leg_max", Roaming.FLY_LEG_MAX, 8.0, 256.0, "... and at most.");
-	public static final Num CRUISE_MIN = num("wandering", "cruise_height_min", Roaming.CRUISE_MIN, 4.0, 128.0,
+	public static final Num FLY_LEG_MAX = num("wandering", "fly_leg_max", 45.0, 8.0, 256.0, "... and at most.");
+	public static final Num CRUISE_MIN = num("wandering", "cruise_height_min", 10.0, 4.0, 128.0,
 			"Blocks over the ground it cruises at: at least ...");
-	public static final Num CRUISE_MAX = num("wandering", "cruise_height_max", Roaming.CRUISE_MAX, 4.0, 128.0, "... and at most.");
+	public static final Num CRUISE_MAX = num("wandering", "cruise_height_max", 20.0, 4.0, 128.0, "... and at most.");
 	public static final Num DRIFT = num("wandering", "drift_degrees", 55.0, 0.0, 180.0,
 			"Degrees each new leg (walk or flight) may turn from the last. Low: it travels on; high: it stays round one spot.");
 
 	// ---------------------------------------------------------------- stance
 
-	public static final Num GROUND_HEALTH_LIMIT = num("stance", "ground_health_limit", CombatStance.GROUND_LIMIT, 0.0, 1.0,
+	public static final Num GROUND_HEALTH_LIMIT = num("stance", "ground_health_limit", 0.2, 0.0, 1.0,
 			"Fraction of its max health lost on the ground that sends it up for a break in the air (1 = never).");
-	public static final Num AIR_HEALTH_LIMIT = num("stance", "air_health_limit", CombatStance.AIR_LIMIT, 0.0, 1.0,
+	public static final Num AIR_HEALTH_LIMIT = num("stance", "air_health_limit", 0.1, 0.0, 1.0,
 			"Fraction of its max health lost during the break that brings it back down early.");
-	public static final Int BREAK_MIN = num("stance", "break_min", CombatStance.BREAK_MIN, 0, 72000,
+	public static final Int BREAK_MIN = num("stance", "break_min", 300, 0, 72000,
 			"Ticks a break in the air lasts (attacking from there): at least ...");
-	public static final Int BREAK_MAX = num("stance", "break_max", CombatStance.BREAK_MAX, 0, 72000, "... and at most.");
-	public static final Int CALM_TICKS = num("stance", "calm_ticks", CombatStance.CALM_TICKS, 1, 72000,
+	public static final Int BREAK_MAX = num("stance", "break_max", 600, 0, 72000, "... and at most.");
+	public static final Int CALM_TICKS = num("stance", "calm_ticks", 600, 1, 72000,
 			"Ticks without a target after which it calms down: the next fight starts on the ground again.");
 	public static final Flag OVERWHELM_TAKEOFF = flag("stance", "overwhelm_takeoff", true,
 			"Take off when hit too many times at once on the ground (from its blind spots). Any dragon, the End's too.");
-	public static final Int OVERWHELM_HITS = num("stance", "overwhelm_hits", HitTally.TOO_MANY, 1, HitTally.CAPACITY,
+	public static final Int OVERWHELM_HITS = num("stance", "overwhelm_hits", 4, 1, 32,
 			"That many hits ...");
-	public static final Int OVERWHELM_WINDOW = num("stance", "overwhelm_window", HitTally.WINDOW, 1, 1200, "... within this many ticks.");
+	public static final Int OVERWHELM_WINDOW = num("stance", "overwhelm_window", 50, 1, 1200, "... within this many ticks.");
 
 	// ---------------------------------------------------------------- ground combat
 
@@ -125,7 +116,7 @@ public final class DragonConfig {
 			"Ticks before a bite or tail strike lands that its aim is committed: the window to step out of the way.");
 	public static final Int ROAR_COOLDOWN_MIN = num("ground_combat", "roar_cooldown_min", 360, 20, 72000, "Ticks between roars: at least ...");
 	public static final Int ROAR_COOLDOWN_MAX = num("ground_combat", "roar_cooldown_max", 560, 20, 72000, "... and at most.");
-	public static final Num ROAR_RANGE = num("ground_combat", "roar_range", GroundTactics.ROAR_RANGE, 0.0, 64.0, "Blocks: it roars only at a target in front of it closer than this.");
+	public static final Num ROAR_RANGE = num("ground_combat", "roar_range", 18.0, 0.0, 64.0, "Blocks: it roars only at a target in front of it closer than this.");
 	public static final Int PROVOKED_TICKS = num("ground_combat", "provoked_ticks", 40, 0, 1200,
 			"Ticks a hit counts: hurt from behind this recently, it answers with its tail instead of turning round.");
 	public static final Num SEIZE_CHANCE = num("ground_combat", "seize_chance", 0.35, 0.0, 1.0, "The chance a bite is a seize.");
@@ -134,7 +125,7 @@ public final class DragonConfig {
 	public static final Int HOLD_MAX = num("ground_combat", "hold_max", 110, 1, 1200, "... and at most.");
 	public static final Int CHEW_INTERVAL = num("ground_combat", "chew_interval", 20, 1, 1200, "Ticks between chews of the prey held.");
 	public static final Num BITE_DAMAGE = num("ground_combat", "bite_damage", 12.0, 0.0, 1000.0, "Damage of a bite.");
-	public static final Num BITE_RADIUS = num("ground_combat", "bite_radius", Strike.BITE_HIT_RADIUS, 0.5, 8.0,
+	public static final Num BITE_RADIUS = num("ground_combat", "bite_radius", 2.0, 0.5, 8.0,
 			"Blocks: how close the jaws must come to a body to hit it (standing and hovering bites).");
 	public static final Num TAIL_DAMAGE = num("ground_combat", "tail_damage", 9.0, 0.0, 1000.0, "Damage of a tail strike.");
 	public static final Num SEIZE_DAMAGE = num("ground_combat", "seize_damage", 4.0, 0.0, 1000.0, "Damage of the bite that seizes.");
@@ -204,24 +195,24 @@ public final class DragonConfig {
 	public static final Int BARRAGE_SHOTS = num("fireballs", "barrage_shots", 3, 1, 32, "Fireballs in a barrage.");
 	public static final Int BARRAGE_INTERVAL = num("fireballs", "barrage_interval", 30, 5, 1200, "Ticks between a barrage's fireballs.");
 
-	public static final Num FLYBY_DAMAGE = num("flyby_bite", "base_damage", FlybyBite.BASE_DAMAGE, 0.0, 1000.0, "Damage of a fly-by bite at a standstill ...");
-	public static final Num FLYBY_SPEED_DAMAGE = num("flyby_bite", "speed_damage", FlybyBite.SPEED_DAMAGE, 0.0, 1000.0,
+	public static final Num FLYBY_DAMAGE = num("flyby_bite", "base_damage", 6.0, 0.0, 1000.0, "Damage of a fly-by bite at a standstill ...");
+	public static final Num FLYBY_SPEED_DAMAGE = num("flyby_bite", "speed_damage", 8.0, 0.0, 1000.0,
 			"... plus this per block/tick of its speed (it flies at about 0.9..1.3) ...");
-	public static final Num FLYBY_MAX_DAMAGE = num("flyby_bite", "max_damage", FlybyBite.MAX_DAMAGE, 0.0, 1000.0, "... and at most this.");
-	public static final Num FLYBY_RADIUS = num("flyby_bite", "radius", FlybyBite.RADIUS, 0.5, 8.0, "Blocks: how close the jaws must come to a body to hit it.");
+	public static final Num FLYBY_MAX_DAMAGE = num("flyby_bite", "max_damage", 20.0, 0.0, 1000.0, "... and at most this.");
+	public static final Num FLYBY_RADIUS = num("flyby_bite", "radius", 2.5, 0.5, 8.0, "Blocks: how close the jaws must come to a body to hit it.");
 
-	public static final Int HOVER_BITES = num("hover_attacks", "bites", HoverAttack.BITES, 1, 16, "Bites in one hovering attack, at most.");
-	public static final Num HOVER_BITE_DAMAGE = num("hover_attacks", "bite_damage", HoverAttack.BITE_DAMAGE, 0.0, 1000.0, "Damage of a hovering bite.");
-	public static final Num HOVER_BREATH_DAMAGE = num("hover_attacks", "breath_damage", HoverAttack.BREATH_DAMAGE, 0.0, 1000.0,
+	public static final Int HOVER_BITES = num("hover_attacks", "bites", 3, 1, 16, "Bites in one hovering attack, at most.");
+	public static final Num HOVER_BITE_DAMAGE = num("hover_attacks", "bite_damage", 10.0, 0.0, 1000.0, "Damage of a hovering bite.");
+	public static final Num HOVER_BREATH_DAMAGE = num("hover_attacks", "breath_damage", 5.0, 0.0, 1000.0,
 			"Damage of the hovering breath (every 10 ticks a target stays in it).");
 
-	public static final Num STREAM_CHANCE = num("breath", "perched_stream_chance", BreathAttack.STREAM_CHANCE, 0.0, 1.0,
+	public static final Num STREAM_CHANCE = num("breath", "perched_stream_chance", 0.5, 0.0, 1.0,
 			"Perched, after its roar: the chance it pours the void-flame stream rather than vanilla's lingering breath cloud.");
-	public static final Int MAX_STREAMS = num("breath", "streams_per_landing", BreathAttack.MAX_STREAMS, 0, 16,
+	public static final Int MAX_STREAMS = num("breath", "streams_per_landing", 2, 0, 16,
 			"Streams per perch; after the last it takes off.");
-	public static final Num STREAM_DAMAGE = num("breath", "stream_damage", BreathAttack.DAMAGE, 0.0, 1000.0,
+	public static final Num STREAM_DAMAGE = num("breath", "stream_damage", 5.0, 0.0, 1000.0,
 			"Damage of the perched stream (every 10 ticks a target stays in it).");
-	public static final Num PASS_DAMAGE = num("breath", "pass_damage", BreathPass.DAMAGE, 0.0, 1000.0,
+	public static final Num PASS_DAMAGE = num("breath", "pass_damage", 5.0, 0.0, 1000.0,
 			"Damage of the breath pass (every 4 ticks a target stays in it).");
 	public static final Flag DRAGON_FIRE = flag("breath", "dragon_fire", true,
 			"Fire attacks (breath, fireballs, the perched cloud) leave dragon fire where they land. It burns out by itself and never spreads.");

@@ -1,5 +1,8 @@
 package crazylimits.dragonsworn.nav;
 
+import crazylimits.dragonsworn.ai.Foothold;
+import crazylimits.dragonsworn.math.Angles;
+
 /**
  * Where the dragon can come down. A site fits when:
  * <ul>
@@ -119,7 +122,7 @@ public final class LandingSite {
 				int x = (int) Math.floor(cx) + dx, z = (int) Math.floor(cz) + dz;
 				double ox = x + 0.5 - cx, oz = z + 0.5 - cz, r = Math.hypot(ox, oz);
 				if (r < minRange || r > maxRange) continue;
-				double turn = Math.abs(Math.IEEEremainder(Math.atan2(oz, ox) - toward, 2 * Math.PI));
+				double turn = Math.abs(Angles.wrapRadians(Math.atan2(oz, ox) - toward));
 				double score = Math.abs(r - preferRange) + turn * 2.0;
 				if (score >= bestScore) continue;
 				int g = grid.ground(x, z);
@@ -147,7 +150,7 @@ public final class LandingSite {
 			for (int i = 0; i < count; i++) {
 				double a = toward + 2 * Math.PI * i / count;
 				int x = (int) Math.floor(cx + Math.cos(a) * r), z = (int) Math.floor(cz + Math.sin(a) * r);
-				double turn = Math.abs(Math.IEEEremainder(a - toward, 2 * Math.PI));
+				double turn = Math.abs(Angles.wrapRadians(a - toward));
 				double score = Math.abs(r - preferRange) + turn * 2.0;
 				if (score >= bestScore) continue;
 				int y = fits(x, z);

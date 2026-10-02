@@ -1,5 +1,7 @@
 package crazylimits.dragonsworn.limb;
 
+import crazylimits.dragonsworn.math.Maths;
+
 /**
  * How the body sits over uneven ground: from the ground's height under the four feet it pitches
  * (front higher: nose up), rolls (left higher: right side down) and rises or sinks, each partly and
@@ -47,8 +49,8 @@ public final class GroundFit {
 			// no ground under a foot (a ledge): take it as level with the others
 			for (int i = 0; i < 4; i++) h[i] = Double.isNaN(heights[i]) ? mean : heights[i];
 			double hind = (h[0] + h[1]) / 2.0, front = (h[2] + h[3]) / 2.0, left = (h[0] + h[2]) / 2.0, right = (h[1] + h[3]) / 2.0;
-			tp = clamp(PITCH_FOLLOW * Math.toDegrees(Math.atan2(front - hind, LENGTH)), MAX_PITCH);
-			tr = clamp(ROLL_FOLLOW * Math.toDegrees(Math.atan2(left - right, WIDTH)), MAX_ROLL);
+			tp = Maths.clampAbs(PITCH_FOLLOW * Math.toDegrees(Math.atan2(front - hind, LENGTH)), MAX_PITCH);
+			tr = Maths.clampAbs(ROLL_FOLLOW * Math.toDegrees(Math.atan2(left - right, WIDTH)), MAX_ROLL);
 			tl = Math.max(MIN_LIFT, Math.min(MAX_LIFT, mean));
 		}
 		pitch += (tp - pitch) * RATE;
@@ -75,9 +77,5 @@ public final class GroundFit {
 	/** How far the body is raised (negative: lowered) from the dragon's position, blocks. */
 	public double lift(float partialTick) {
 		return prevLift + (lift - prevLift) * partialTick;
-	}
-
-	private static double clamp(double v, double limit) {
-		return Math.max(-limit, Math.min(limit, v));
 	}
 }

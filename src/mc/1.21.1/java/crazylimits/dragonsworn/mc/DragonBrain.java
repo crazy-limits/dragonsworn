@@ -3,16 +3,16 @@ package crazylimits.dragonsworn.mc;
 import crazylimits.dragonsworn.ai.AirTactics;
 import crazylimits.dragonsworn.ai.CombatStance;
 import crazylimits.dragonsworn.ai.DeathFlight;
+import crazylimits.dragonsworn.ai.Foothold;
 import crazylimits.dragonsworn.ai.HitTally;
 import crazylimits.dragonsworn.ai.Roaming;
 import crazylimits.dragonsworn.anim.AnimClock;
-import crazylimits.dragonsworn.anim.BreathAttack;
 import crazylimits.dragonsworn.anim.DragonAnim;
-import crazylimits.dragonsworn.anim.DragonAnimSelector;
 import crazylimits.dragonsworn.anim.DragonAnimSelector.Kind;
+import crazylimits.dragonsworn.anim.DragonAnimSelector;
 import crazylimits.dragonsworn.anim.DragonVoice;
+import crazylimits.dragonsworn.attack.BreathAttack;
 import crazylimits.dragonsworn.body.DragonBody;
-import crazylimits.dragonsworn.config.DragonConfig;
 import crazylimits.dragonsworn.body.Grip;
 import crazylimits.dragonsworn.body.PartSolver;
 import crazylimits.dragonsworn.body.PoseTrack;
@@ -20,6 +20,7 @@ import crazylimits.dragonsworn.body.Strike;
 import crazylimits.dragonsworn.body.Tail;
 import crazylimits.dragonsworn.body.TailChain;
 import crazylimits.dragonsworn.body.TailMotion;
+import crazylimits.dragonsworn.config.DragonConfig;
 import crazylimits.dragonsworn.flight.FlightModel;
 import crazylimits.dragonsworn.limb.GroundFit;
 import crazylimits.dragonsworn.limb.HeadLook;
@@ -33,7 +34,6 @@ import crazylimits.dragonsworn.mc.phase.RoamPhase;
 import crazylimits.dragonsworn.mc.phase.SnatchPhase;
 import crazylimits.dragonsworn.nav.AirPlanner;
 import crazylimits.dragonsworn.nav.BlockGrid;
-import crazylimits.dragonsworn.nav.Foothold;
 import crazylimits.dragonsworn.nav.LandingSite;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
@@ -367,8 +367,8 @@ public final class DragonBrain {
 		double shown = clock.shownSeconds(1.0F);
 		TailMotion.sample(clock.anim(), shown, clock.from(), clock.fromSeconds(), clock.blend(1.0F), tailMotion);
 		tailWorld.set(grid(), body, 1.0F, dragon.getX(), dragon.getY(), dragon.getZ(), dragon.tickCount + 1.0);
-		solver.solve(clock.anim(), shown, clock.from(), clock.fromShownSeconds(), clock.blend(1.0F), clock.changes(), body, strike, 1.0F,
-				tailMotion, tailWorld, offsets);
+		solver.solve(clock.anim(), shown, new PartSolver.Blend(clock.from(), clock.fromShownSeconds(), clock.blend(1.0F), clock.changes()),
+				body, strike, 1.0F, tailMotion, tailWorld, offsets);
 		EnderDragonPart[] parts = dragon.getSubEntities();
 		for (int i = 0; i < parts.length && i < PoseTrack.PARTS; i++) {
 			parts[i].setPos(dragon.getX() + offsets[i * 3], dragon.getY() + offsets[i * 3 + 1] - parts[i].getBbHeight() / 2.0,

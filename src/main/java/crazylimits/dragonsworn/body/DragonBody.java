@@ -1,6 +1,8 @@
 package crazylimits.dragonsworn.body;
 
 import crazylimits.dragonsworn.limb.GroundFit;
+import crazylimits.dragonsworn.math.Angles;
+import crazylimits.dragonsworn.math.Maths;
 
 /**
  * The procedural layer on top of the keyframes: how the whole body sits in the air and how the neck and
@@ -81,7 +83,7 @@ public final class DragonBody {
 			reset(yawDegrees, px, py, pz);
 			return;
 		}
-		double continuous = yaw[latest] + wrap(yawDegrees - lastRawYaw);
+		double continuous = yaw[latest] + Angles.wrapDegrees(yawDegrees - lastRawYaw);
 		lastRawYaw = yawDegrees;
 		latest = (latest + 1) % SIZE;
 		yaw[latest] = continuous;
@@ -99,7 +101,7 @@ public final class DragonBody {
 		double speed = Math.hypot(at(x, BODY_LAG - 1) - at(x, BODY_LAG + 1), at(z, BODY_LAG - 1) - at(z, BODY_LAG + 1)) / 2.0;
 		double bankTarget = flight * Math.toDegrees(Math.atan(speed * Math.toRadians(bodyTurn) / G));
 		prevBank = bank;
-		bank += (clamp(bankTarget, MAX_BANK) - bank) * 0.18;
+		bank += (Maths.clampAbs(bankTarget, MAX_BANK) - bank) * 0.18;
 		rollRate += (bank - prevBank - rollRate) * 0.4;
 		// the steering (the head's), smoothed
 		turn += (yaw[latest] - at(yaw, 1) - turn) * 0.3;
@@ -108,7 +110,7 @@ public final class DragonBody {
 		// pitch: the climb or dive now (the body takes it BODY_LAG later), plus the forward lean
 		double nowSpeed = Math.hypot(x[latest] - at(x, 2), z[latest] - at(z, 2)) / 2.0;
 		double vy = (y[latest] - at(y, 2)) / 2.0;
-		double path = flight * clamp(Math.toDegrees(Math.atan2(vy * 2.0, Math.max(nowSpeed, 0.05))), MAX_PITCH);
+		double path = flight * Maths.clampAbs(Math.toDegrees(Math.atan2(vy * 2.0, Math.max(nowSpeed, 0.05))), MAX_PITCH);
 		double accel = nowSpeed - lastSpeed;
 		lastSpeed = nowSpeed;
 		double leanTarget = switch (mode) {
@@ -180,7 +182,7 @@ public final class DragonBody {
 		double back = 1.0 - partialTick;
 		int neck = neckX.length;
 		// the head looks ahead into the turn it is making
-		double lead = clamp(HEAD_LEAD * turn, MAX_HEAD_LEAD);
+		double lead = Maths.clampAbs(HEAD_LEAD * turn, MAX_HEAD_LEAD);
 		for (int i = 1; i <= neck; i++) {
 			double newer = BODY_LAG * (1.0 - (double) i / neck) + back, older = BODY_LAG * (1.0 - (double) (i - 1) / neck) + back;
 			double share = i - 1 < NECK_LEAD.length ? NECK_LEAD[i - 1] : 0.0;
@@ -210,7 +212,7 @@ public final class DragonBody {
 	 */
 	public double wingCounter(float partialTick, double keyframedPitch) {
 		double air = prevAirborne + (airborne - prevAirborne) * partialTick;
-		return -air * clamp(keyframedPitch + pitch(partialTick), WING_FLEX);
+		return -air * Maths.clampAbs(keyframedPitch + pitch(partialTick), WING_FLEX);
 	}
 
 	/**
@@ -221,9 +223,9 @@ public final class DragonBody {
 	 * up. Only in flight.
 	 */
 	public void wingTurn(float partialTick, double[] out) {
-		double k = flight * clamp(roll(partialTick) / WING_TURN_BANK, 1.0);
+		double k = flight * Maths.clampAbs(roll(partialTick) / WING_TURN_BANK, 1.0);
 		double right = Math.max(k, 0.0), left = Math.max(-k, 0.0);
-		double twist = flight * clamp(ROLL_TWIST * rollRate, MAX_ROLL_TWIST);
+		double twist = flight * Maths.clampAbs(ROLL_TWIST * rollRate, MAX_ROLL_TWIST);
 		out[0] = INSIDE_SWEEP * left - OUTSIDE_REACH * right;
 		out[1] = -INSIDE_DROOP * left + OUTSIDE_LIFT * right;
 		out[2] = twist;
@@ -244,8 +246,8 @@ public final class DragonBody {
 	 * part pitch toward the inside of the turn.
 	 */
 	private static void bend(double dPsi, double dTheta, double sin, double cos, double limit, double[] outX, double[] outY, int i) {
-		outX[i] = clamp(dPsi * sin + dTheta * cos, limit);
-		outY[i] = clamp(-dPsi * cos + dTheta * sin, limit);
+		outX[i] = Maths.clampAbs(dPsi * sin + dTheta * cos, limit);
+		outY[i] = Maths.clampAbs(-dPsi * cos + dTheta * sin, limit);
 	}
 
 	/** History value {@code lag} ticks back (fractional, linear), 0 = the latest tick. */
@@ -255,16 +257,5 @@ public final class DragonBody {
 		double k = lag - i;
 		double a = values[Math.floorMod(latest - i, SIZE)], b = values[Math.floorMod(latest - i - 1, SIZE)];
 		return a + (b - a) * k;
-	}
-
-	private static double clamp(double v, double limit) {
-		return Math.max(-limit, Math.min(limit, v));
-	}
-
-	private static double wrap(double degrees) {
-		degrees %= 360.0;
-		if (degrees >= 180.0) degrees -= 360.0;
-		if (degrees < -180.0) degrees += 360.0;
-		return degrees;
 	}
 }

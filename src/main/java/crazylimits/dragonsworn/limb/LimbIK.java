@@ -1,5 +1,7 @@
 package crazylimits.dragonsworn.limb;
 
+import crazylimits.dragonsworn.math.Angles;
+
 /**
  * Inverse kinematics for the four limbs, at run time, on top of whatever pose the animation is in. The
  * animation stays in charge of the motion (its steps are already matched to the ground speed); IK only
@@ -49,13 +51,13 @@ public final class LimbIK {
 		double phi0 = angle(u2y, u2z) - angle(u1y, u1z);
 		double cos = (reach * reach - l1 * l1 - l2 * l2) / (2 * l1 * l2);
 		double bend = Math.acos(Math.max(-1.0, Math.min(1.0, cos)));
-		double now = wrap(phi0 + b0);
+		double now = Angles.wrapRadians(phi0 + b0);
 		double b = (now >= 0 ? bend : -bend) - phi0;
 		// the thigh: turn the whole leg, as bent, onto the target's direction
 		double vy = u1y + (u2y * Math.cos(b) - u2z * Math.sin(b)), vz = u1z + (u2y * Math.sin(b) + u2z * Math.cos(b));
 		double a = angle(ty, tz) - angle(vy, vz);
-		a = a0 + wrap(a - a0);
-		b = b0 + wrap(b - b0);
+		a = a0 + Angles.wrapRadians(a - a0);
+		b = b0 + Angles.wrapRadians(b - b0);
 		double turned = Math.toDegrees((a - a0) + (b - b0));
 		thigh.rot[0] = Math.toDegrees(a);
 		shin.rot[0] = Math.toDegrees(b);
@@ -107,7 +109,7 @@ public final class LimbIK {
 		if (r > Math.abs(c) + 1e-6) {
 			// turned back by the splay the target lies in the plane: dx cos t + dy sin t = c
 			double phi = Math.atan2(dy, dx), a = Math.acos(c / r);
-			double t1 = wrap(phi - a), t2 = wrap(phi + a);
+			double t1 = Angles.wrapRadians(phi - a), t2 = Angles.wrapRadians(phi + a);
 			splay = Math.abs(t1) < Math.abs(t2) ? t1 : t2;
 			splay = Math.max(-Math.toRadians(MAX_SPLAY), Math.min(Math.toRadians(MAX_SPLAY), splay));
 		}
@@ -250,9 +252,5 @@ public final class LimbIK {
 	/** Angle of (y, z) the way a rotation about X turns it: R(t) takes angle a to a + t. */
 	private static double angle(double y, double z) {
 		return Math.atan2(z, y);
-	}
-
-	private static double wrap(double r) {
-		return Math.IEEEremainder(r, 2 * Math.PI);
 	}
 }

@@ -1,4 +1,6 @@
-package crazylimits.dragonsworn.anim;
+package crazylimits.dragonsworn.debug;
+
+import crazylimits.dragonsworn.anim.DragonAnim;
 
 import java.util.ArrayList;
 import java.util.List;

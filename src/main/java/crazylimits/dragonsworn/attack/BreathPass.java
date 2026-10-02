@@ -1,4 +1,7 @@
-package crazylimits.dragonsworn.anim;
+package crazylimits.dragonsworn.attack;
+
+import crazylimits.dragonsworn.anim.DragonAnim;
+import crazylimits.dragonsworn.math.Maths;
 
 /**
  * The breath pass: a flying dragon lines up on its prey, glides over it head down and pours void flame
@@ -41,8 +44,6 @@ public final class BreathPass {
 	public static final double WINDUP_TURN = 5.0, STREAM_TURN = 2.2;
 	/** How far the flames carry from the neck's base along the aim. */
 	public static final double RANGE = 22.0;
-	/** Damage per hit; the stream sweeps fast, so it is checked often (a victim's hurt cooldown spaces the hits). */
-	public static final float DAMAGE = 5.0F;
 	public static final int DAMAGE_INTERVAL = 4;
 
 	private BreathPass() {}
@@ -85,12 +86,12 @@ public final class BreathPass {
 		double down = Math.toDegrees(Math.atan2(-dy, Math.hypot(dx, dz)));
 		// behind the neck (under or past the body): the steepest it pours, straight on
 		if (Math.abs(off) > 90.0) return new double[] {0.0, PITCH_MAX};
-		return new double[] {clamp(off, YAW_ARC), Math.max(PITCH_MIN, Math.min(PITCH_MAX, down))};
+		return new double[] {Maths.clampAbs(off, YAW_ARC), Math.max(PITCH_MIN, Math.min(PITCH_MAX, down))};
 	}
 
 	/** {@code at} swung toward {@code want} by at most {@code step} degrees on each angle. */
 	public static double[] chase(double[] at, double[] want, double step) {
-		return new double[] {at[0] + clamp(want[0] - at[0], step), at[1] + clamp(want[1] - at[1], step)};
+		return new double[] {at[0] + Maths.clampAbs(want[0] - at[0], step), at[1] + Maths.clampAbs(want[1] - at[1], step)};
 	}
 
 	/** The unit direction of the aim's angles from the facing {@code yaw} (vanilla's: the head along (sin, 0, -cos)). */
@@ -103,9 +104,5 @@ public final class BreathPass {
 	public static double[] neckBase(float yaw) {
 		double[] f = BreathAttack.facing(yaw);
 		return new double[] {f[0] * NECK_FORWARD, NECK_UP, f[2] * NECK_FORWARD};
-	}
-
-	private static double clamp(double v, double limit) {
-		return Math.max(-limit, Math.min(limit, v));
 	}
 }

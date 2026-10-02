@@ -1,8 +1,9 @@
-package crazylimits.dragonsworn.anim;
+package crazylimits.dragonsworn.attack;
 
+import crazylimits.dragonsworn.config.DragonConfig;
 import org.junit.jupiter.api.Test;
 
-import static crazylimits.dragonsworn.anim.BreathAttack.*;
+import static crazylimits.dragonsworn.attack.BreathAttack.*;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -99,7 +100,7 @@ class BreathAttackTest {
 	void streamIsPickedByChanceAndOnlyAFewTimesPerLanding() {
 		assertTrue(chooseStream(0.0, 0));
 		assertFalse(chooseStream(0.99, 0));
-		assertFalse(chooseStream(0.0, MAX_STREAMS));
+		assertFalse(chooseStream(0.0, DragonConfig.MAX_STREAMS.get()));
 	}
 
 	@Test

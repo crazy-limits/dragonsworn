@@ -25,15 +25,9 @@ public final class AirPlanner {
 
 	private final BlockGrid grid;
 	private final Map<Long, Boolean> clearCache = new HashMap<>();
-	private int checks;
 
 	public AirPlanner(BlockGrid grid) {
 		this.grid = grid;
-	}
-
-	/** Block lookups so far (a budget for callers). */
-	public int checks() {
-		return checks;
 	}
 
 	/** Whether the hull fits centered at the block containing x, y, z. */
@@ -47,7 +41,6 @@ public final class AirPlanner {
 		for (int dy = -HALF_HEIGHT; dy <= HALF_HEIGHT; dy++) {
 			for (int dx = -HALF_WIDTH; dx <= HALF_WIDTH; dx++) {
 				for (int dz = -HALF_WIDTH; dz <= HALF_WIDTH; dz++) {
-					checks++;
 					if (grid.blocked(bx + dx, by + dy, bz + dz)) {
 						free = false;
 						break outer;

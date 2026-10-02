@@ -1,5 +1,7 @@
 package crazylimits.dragonsworn.limb;
 
+import crazylimits.dragonsworn.math.Maths;
+
 /**
  * The head turning to what the dragon pays attention to (its prey, a player close by): the turn is
  * shared down the neck, base least and head most, the way a long neck carries the head round, and the
@@ -95,20 +97,16 @@ public final class HeadLook {
 	}
 
 	public double tailYaw(int segments, double partial) {
-		return lerp(prevBalance, balance, partial) * yaw(partial) * TAIL_COUNTER / segments;
+		return Maths.lerp(prevBalance, balance, partial) * yaw(partial) * TAIL_COUNTER / segments;
 	}
 
 	/** The head's whole turn, between the last two updates. */
 	public double yaw(double partial) {
-		return lerp(prevWeight, weight, partial) * lerp(prevYaw, yaw, partial);
+		return Maths.lerp(prevWeight, weight, partial) * Maths.lerp(prevYaw, yaw, partial);
 	}
 
 	public double pitch(double partial) {
-		return lerp(prevWeight, weight, partial) * lerp(prevPitch, pitch, partial);
-	}
-
-	private static double lerp(double a, double b, double k) {
-		return a + (b - a) * k;
+		return Maths.lerp(prevWeight, weight, partial) * Maths.lerp(prevPitch, pitch, partial);
 	}
 
 	/** The head's whole turn now (all shares together). */

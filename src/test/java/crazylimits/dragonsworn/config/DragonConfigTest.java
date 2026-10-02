@@ -1,8 +1,8 @@
 package crazylimits.dragonsworn.config;
 
-import crazylimits.dragonsworn.ai.AirTactics;
 import crazylimits.dragonsworn.ai.AirTactics.Attack;
 import crazylimits.dragonsworn.ai.AirTactics.Reach;
+import crazylimits.dragonsworn.ai.AirTactics;
 import crazylimits.dragonsworn.ai.HitTally;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;

@@ -110,9 +110,9 @@ class PartSolverTest {
 		DragonBody body = facing(0);
 		double[] from = solve(DragonAnim.GLIDE, 0.5, body), to = solve(DragonAnim.IDLE, 0, body);
 		double[] half = new double[PoseTrack.PARTS * 3];
-		new PartSolver().solve(DragonAnim.IDLE, 0, DragonAnim.GLIDE, 0.5, 0.0, 1, body, null, 1, null, null, half);
+		new PartSolver().solve(DragonAnim.IDLE, 0, new PartSolver.Blend(DragonAnim.GLIDE, 0.5, 0.0, 1), body, null, 1, null, null, half);
 		assertEquals(from[1], half[1], 1e-6, "blend 0: still the glide");
-		new PartSolver().solve(DragonAnim.IDLE, 0, DragonAnim.GLIDE, 0.5, 0.5, 1, body, null, 1, null, null, half);
+		new PartSolver().solve(DragonAnim.IDLE, 0, new PartSolver.Blend(DragonAnim.GLIDE, 0.5, 0.5, 1), body, null, 1, null, null, half);
 		assertEquals((from[1] + to[1]) / 2, half[1], 1e-6, "halfway");
 	}
 
@@ -149,7 +149,7 @@ class PartSolverTest {
 			for (double ky : new double[]{-0.8, 0.0, 0.2, 0.9}) {
 				// Ry(ky) Rx(kx) (0, dy, dz)
 				double y1 = dy * Math.cos(kx) - dz * Math.sin(kx), z1 = dy * Math.sin(kx) + dz * Math.cos(kx);
-				double[] got = PartSolver.keyedAngles(dy, dz, z1 * Math.sin(ky), y1, z1 * Math.cos(ky));
+				double[] got = NeckChain.keyedAngles(dy, dz, z1 * Math.sin(ky), y1, z1 * Math.cos(ky));
 				assertEquals(kx, got[0], 1e-9);
 				assertEquals(ky, got[1], 1e-9);
 			}
@@ -162,9 +162,9 @@ class PartSolverTest {
 		PartSolver solver = new PartSolver();
 		double[] half = new double[PoseTrack.PARTS * 3], next = new double[PoseTrack.PARTS * 3];
 		solver.solve(DragonAnim.GLIDE, 0.5, body, null, 1, half);
-		solver.solve(DragonAnim.IDLE, 0, DragonAnim.GLIDE, 0.5, 0.5, 1, body, null, 1, null, null, half);
+		solver.solve(DragonAnim.IDLE, 0, new PartSolver.Blend(DragonAnim.GLIDE, 0.5, 0.5, 1), body, null, 1, null, null, half);
 		// half way into the idle the choice changes again: the walk blends in from that half-blended pose
-		solver.solve(DragonAnim.WALK, 0, DragonAnim.IDLE, 0, 0.0, 2, body, null, 1, null, null, next);
+		solver.solve(DragonAnim.WALK, 0, new PartSolver.Blend(DragonAnim.IDLE, 0, 0.0, 2), body, null, 1, null, null, next);
 		assertArrayEquals(new double[]{half[0], half[1], half[2]}, new double[]{next[0], next[1], next[2]}, 1e-6);
 	}
 }

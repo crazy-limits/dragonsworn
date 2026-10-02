@@ -1,9 +1,9 @@
 package crazylimits.dragonsworn.mc.phase;
 
-import crazylimits.dragonsworn.config.DragonConfig;
-import crazylimits.dragonsworn.anim.BreathPass;
 import crazylimits.dragonsworn.anim.DragonAnim;
+import crazylimits.dragonsworn.attack.BreathPass;
 import crazylimits.dragonsworn.body.Strike;
+import crazylimits.dragonsworn.config.DragonConfig;
 import crazylimits.dragonsworn.flight.FlightModel;
 import crazylimits.dragonsworn.mc.DragonBrain;
 import crazylimits.dragonsworn.mc.DragonData;
@@ -19,9 +19,8 @@ import net.minecraft.world.entity.boss.enderdragon.phases.AbstractDragonPhaseIns
 import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Vector3f;
-
 import org.jetbrains.annotations.Nullable;
+import org.joml.Vector3f;
 
 /**
  * The breath pass ({@link BreathPass}): the dragon swings out to get a run at its prey, comes back in

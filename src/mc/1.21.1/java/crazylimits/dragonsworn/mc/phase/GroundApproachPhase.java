@@ -1,12 +1,12 @@
 package crazylimits.dragonsworn.mc.phase;
 
+import crazylimits.dragonsworn.ai.Foothold;
 import crazylimits.dragonsworn.anim.DragonAnim;
 import crazylimits.dragonsworn.flight.FlightModel;
 import crazylimits.dragonsworn.mc.DragonBrain;
 import crazylimits.dragonsworn.mc.DragonPhases;
 import crazylimits.dragonsworn.mc.DragonswornDragon;
 import crazylimits.dragonsworn.nav.BlockGrid;
-import crazylimits.dragonsworn.nav.Foothold;
 import crazylimits.dragonsworn.nav.LandingSite;
 import crazylimits.dragonsworn.nav.Runway;
 import net.minecraft.util.Mth;
@@ -15,7 +15,6 @@ import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.boss.enderdragon.phases.AbstractDragonPhaseInstance;
 import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
 import net.minecraft.world.phys.Vec3;
-
 import org.jetbrains.annotations.Nullable;
 
 /**

@@ -1,8 +1,9 @@
 package crazylimits.dragonsworn.body;
 
-import crazylimits.dragonsworn.anim.BreathPass;
 import crazylimits.dragonsworn.anim.DragonAnim;
+import crazylimits.dragonsworn.attack.BreathPass;
 import crazylimits.dragonsworn.config.DragonConfig;
+import crazylimits.dragonsworn.math.Maths;
 
 import java.util.Arrays;
 
@@ -30,8 +31,6 @@ import java.util.Arrays;
 public final class Strike {
 	/** How close (blocks) the IK must put the jaws or the tail's tip on the aim for the blow to reach (half of it), and the tail's hit. */
 	public static final double BITE_RADIUS = 1.1, TAIL_RADIUS = 1.3;
-	/** How close (blocks) the jaws must come to a body to hit it: wide, so a bite is hard to sidestep. */
-	public static final double BITE_HIT_RADIUS = 2.0;
 	/** The parts at the end of each chain: the head (jaw_upper) and the tail's last segment. */
 	public static final int HEAD_PART = 0, TAIL_TIP_PART = 12;
 	/** How far the tail is cocked away from the prey before the whip, as a share of the strike's bends. */
@@ -146,7 +145,7 @@ public final class Strike {
 			// the tail as the strike's motion has it at the blow (TailMotion), laid on flat ground
 			chain.frame(frame);
 			TailMotion.sample(anim, hitSeconds(anim), motion);
-			Tail.lay(chain, motion, null, laidX, laidY);
+			TailLay.lay(chain, motion, null, laidX, laidY);
 			for (int i = 0; i < tailX.length; i++) {
 				tailX[i] += laidX[i];
 				tailY[i] += laidY[i];
@@ -183,8 +182,8 @@ public final class Strike {
 				double dq = jacobian[j][0] * y[0] + jacobian[j][1] * y[1] + jacobian[j][2] * y[2];
 				dq = Math.max(-MAX_STEP, Math.min(MAX_STEP, dq));
 				int k = j % joints;
-				if (j < joints) bendX[k] = clamp(bendX[k] + Math.toDegrees(dq), tail ? TAIL_LIMIT_X : NECK_LIMIT_X[k]);
-				else bendY[k] = clamp(bendY[k] + Math.toDegrees(dq), tail ? TAIL_LIMIT_Y : NECK_LIMIT_Y[k]);
+				if (j < joints) bendX[k] = Maths.clampAbs(bendX[k] + Math.toDegrees(dq), tail ? TAIL_LIMIT_X : NECK_LIMIT_X[k]);
+				else bendY[k] = Maths.clampAbs(bendY[k] + Math.toDegrees(dq), tail ? TAIL_LIMIT_Y : NECK_LIMIT_Y[k]);
 			}
 		}
 		end(tail, joints, tip);
@@ -194,7 +193,7 @@ public final class Strike {
 
 	/**
 	 * The breath: each neck segment, then the head, root first, turned so it points from its pivot along
-	 * the line from the neck's base to the aim ({@link PartSolver#neckAim}). Returns how far the mouth's
+	 * the line from the neck's base to the aim ({@link NeckChain#aim}). Returns how far the mouth's
 	 * line passes from the aim.
 	 */
 	private double straighten() {
@@ -210,9 +209,9 @@ public final class Strike {
 				totalX[j] = (j < neckX.length ? neckX[j] : 0.0) + bendX[j];
 				totalY[j] = (j < neckY.length ? neckY[j] : 0.0) + bendY[j];
 			}
-			double[] want = PartSolver.neckAim(frame, totalX, totalY, i, direction);
-			bendX[i] = clamp(want[0] - baseX, BREATH_LIMIT);
-			bendY[i] = clamp(want[1] - baseY, BREATH_LIMIT);
+			double[] want = NeckChain.aim(frame, totalX, totalY, i, direction);
+			bendX[i] = Maths.clampAbs(want[0] - baseX, BREATH_LIMIT);
+			bendY[i] = Maths.clampAbs(want[1] - baseY, BREATH_LIMIT);
 		}
 		end(false, joints, tip);
 		// distance of the aim from the line the head points along
@@ -257,22 +256,22 @@ public final class Strike {
 	public static double weight(DragonAnim anim, double seconds, int segment) {
 		double hit = hitSeconds(anim);
 		if (anim.bites()) {
-			if (seconds <= hit) return ease(seconds / hit);
-			return 1.0 - ease((seconds - hit - 0.1) / 0.5);
+			if (seconds <= hit) return Maths.smoothstep(seconds / hit);
+			return 1.0 - Maths.smoothstep((seconds - hit - 0.1) / 0.5);
 		}
 		if (anim == DragonAnim.BREATH) {
 			// the neck stretches out at the end of the inhale and holds through the stream (see BreathAttack)
-			return ease((seconds - 0.6) / 0.45) * (1.0 - ease((seconds - 4.0) / 0.6));
+			return Maths.smoothstep((seconds - 0.6) / 0.45) * (1.0 - Maths.smoothstep((seconds - 4.0) / 0.6));
 		}
 		if (anim.breathesInFlight()) {
 			// with the pose's swing down before the fire, held through the stream, gone over the recovery
 			double fire = BreathPass.WINDUP_TICKS / 20.0, end = fire + BreathPass.STREAM_TICKS / 20.0;
-			return ease((seconds - fire + BreathPass.LUNGE_SECONDS) / BreathPass.LUNGE_LENGTH) * (1.0 - ease((seconds - end) / 0.6));
+			return Maths.smoothstep((seconds - fire + BreathPass.LUNGE_SECONDS) / BreathPass.LUNGE_LENGTH) * (1.0 - Maths.smoothstep((seconds - end) / 0.6));
 		}
 		double whip = 0.15, start = hit - 0.02 - whip - 0.02 * (PoseTrack.TAIL_PIVOTS - 1 - segment);
-		double cocked = -COCK * ease(seconds / (hit - 0.35));
-		double w = cocked + (1.0 - cocked) * ease((seconds - start) / whip);
-		return w * (1.0 - ease((seconds - hit - 0.1) / 0.7));
+		double cocked = -COCK * Maths.smoothstep(seconds / (hit - 0.35));
+		double w = cocked + (1.0 - cocked) * Maths.smoothstep((seconds - start) / whip);
+		return w * (1.0 - Maths.smoothstep((seconds - hit - 0.1) / 0.7));
 	}
 
 	/** The end of the chain in model space with the body's bends (and the tail's motion) plus the strike's. */
@@ -310,14 +309,5 @@ public final class Strike {
 		double y = a * (ry * i - f * rz) - rx * (d * i - f * g) + c * (d * rz - ry * g);
 		double z = a * (e * rz - ry * h) - b * (d * rz - ry * g) + rx * (d * h - e * g);
 		return new double[]{x / det, y / det, z / det};
-	}
-
-	private static double clamp(double v, double limit) {
-		return Math.max(-limit, Math.min(limit, v));
-	}
-
-	private static double ease(double x) {
-		x = Math.max(0.0, Math.min(1.0, x));
-		return x * x * (3.0 - 2.0 * x);
 	}
 }

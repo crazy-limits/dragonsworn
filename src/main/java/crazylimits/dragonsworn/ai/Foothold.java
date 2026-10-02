@@ -1,7 +1,7 @@
-package crazylimits.dragonsworn.nav;
+package crazylimits.dragonsworn.ai;
 
 /**
- * How the dragon stands where it came down ({@link LandingSite} says which fits), from the most room to
+ * How the dragon stands where it came down ({@code nav/LandingSite} says which fits), from the most room to
  * the least:
  * <ul>
  *   <li>{@link #STAND}: on all four limbs, the hind feet and the folded wings. It walks, bites, lashes its

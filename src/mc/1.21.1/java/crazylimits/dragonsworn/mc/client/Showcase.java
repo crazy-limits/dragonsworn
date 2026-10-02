@@ -1,36 +1,35 @@
 package crazylimits.dragonsworn.mc.client;
 
-import crazylimits.dragonsworn.ai.CombatStance;
 import crazylimits.dragonsworn.ai.DeathFlight;
+import crazylimits.dragonsworn.ai.Foothold;
 import crazylimits.dragonsworn.anim.DragonAnim;
-import crazylimits.dragonsworn.anim.DragonDebug;
+import crazylimits.dragonsworn.attack.BreathAttack;
+import crazylimits.dragonsworn.attack.BreathPass;
+import crazylimits.dragonsworn.body.Grip;
 import crazylimits.dragonsworn.body.PoseTrack;
 import crazylimits.dragonsworn.body.Tail;
+import crazylimits.dragonsworn.config.DragonConfig;
+import crazylimits.dragonsworn.debug.DragonDebug;
+import crazylimits.dragonsworn.flight.FlightModel;
 import crazylimits.dragonsworn.mc.DragonBrain;
 import crazylimits.dragonsworn.mc.DragonPhases;
 import crazylimits.dragonsworn.mc.DragonswornDragon;
-import crazylimits.dragonsworn.mc.PreyHold;
 import crazylimits.dragonsworn.mc.LevelGrid;
+import crazylimits.dragonsworn.mc.PreyHold;
 import crazylimits.dragonsworn.mc.breath.BreathParticles;
-import crazylimits.dragonsworn.mc.breath.DragonFire;
 import crazylimits.dragonsworn.mc.breath.BreathStreamPhase;
+import crazylimits.dragonsworn.mc.breath.DragonFire;
+import crazylimits.dragonsworn.mc.client.config.ConfigScreens;
 import crazylimits.dragonsworn.mc.phase.BreathPassPhase;
 import crazylimits.dragonsworn.mc.phase.FlybyBitePhase;
-import crazylimits.dragonsworn.mc.phase.HoverAttackPhase;
-import crazylimits.dragonsworn.mc.phase.RoamPhase;
 import crazylimits.dragonsworn.mc.phase.GroundApproachPhase;
 import crazylimits.dragonsworn.mc.phase.GroundFightPhase;
+import crazylimits.dragonsworn.mc.phase.HoverAttackPhase;
+import crazylimits.dragonsworn.mc.phase.RoamPhase;
 import crazylimits.dragonsworn.mc.phase.SnatchPhase;
-import crazylimits.dragonsworn.body.Grip;
-import crazylimits.dragonsworn.anim.BreathAttack;
-import crazylimits.dragonsworn.anim.BreathPass;
-import crazylimits.dragonsworn.flight.FlightModel;
 import crazylimits.dragonsworn.nav.BlockGrid;
-import crazylimits.dragonsworn.nav.Foothold;
 import crazylimits.dragonsworn.nav.LandingSite;
 import net.minecraft.client.Minecraft;
-import crazylimits.dragonsworn.config.DragonConfig;
-import crazylimits.dragonsworn.mc.client.config.ConfigScreens;
 import net.minecraft.client.Screenshot;
 import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.client.gui.screens.TitleScreen;
@@ -47,9 +46,9 @@ import net.minecraft.world.entity.monster.Husk;
 import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.LevelSettings;
+import net.minecraft.world.level.WorldDataConfiguration;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.WorldDataConfiguration;
 import net.minecraft.world.level.levelgen.WorldOptions;
 import net.minecraft.world.level.levelgen.presets.WorldPresets;
 import net.minecraft.world.phys.AABB;
@@ -1473,8 +1472,8 @@ public final class Showcase {
 		}
 		// the husk hurts it, a fifth of its health and more: up for a break
 		STEPS.add(new Step(80, mc -> {}));
-		server(level -> stanceHit(level, CombatStance.GROUND_LIMIT + 0.01));
-		// watched for less than the shortest break (CombatStance.BREAK_MIN)
+		server(level -> stanceHit(level, DragonConfig.GROUND_HEALTH_LIMIT.get() + 0.01));
+		// watched for less than the shortest break (DragonConfig.BREAK_MIN.get())
 		for (int i = 0; i < 12; i++) {
 			track(String.format(Locale.ROOT, "stance-up-%02d", i), 10, 34);
 			server(level -> {
@@ -1500,7 +1499,7 @@ public final class Showcase {
 			check(!landed[1] && dragon != null && !DragonswornDragon.brain(dragon).stance.grounded(), "stance: it stayed in the air for its break");
 		});
 		// hurt in the air: back down to fight on foot
-		server(level -> stanceHit(level, CombatStance.AIR_LIMIT + 0.01));
+		server(level -> stanceHit(level, DragonConfig.AIR_HEALTH_LIMIT.get() + 0.01));
 		for (int i = 0; i < 50; i++) {
 			track(String.format(Locale.ROOT, "stance-down-%02d", i), 10, 34);
 			server(level -> {

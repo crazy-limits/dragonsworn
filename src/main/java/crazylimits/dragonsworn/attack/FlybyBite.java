@@ -1,5 +1,6 @@
-package crazylimits.dragonsworn.anim;
+package crazylimits.dragonsworn.attack;
 
+import crazylimits.dragonsworn.anim.DragonAnim;
 import crazylimits.dragonsworn.config.DragonConfig;
 
 /**
@@ -39,10 +40,6 @@ public final class FlybyBite {
 	public static final double CLEARANCE = 1.5, PULL = 1.5;
 	/** The bite starts once the line is within this many blocks of the prey across, and the facing within {@link #LINE_UP} degrees of it. */
 	public static final double OFF_LINE = 3.0, LINE_UP = 25.0;
-	/** How close (blocks) the jaws must come to a body to hit it: more than a standing bite (it sweeps past). */
-	public static final double RADIUS = 2.5;
-	/** Damage: a base, and per block/tick of speed; at most {@link #MAX_DAMAGE}. */
-	public static final float BASE_DAMAGE = 6.0F, SPEED_DAMAGE = 8.0F, MAX_DAMAGE = 20.0F;
 	/** Knockback along the flight per block/tick of speed, and the lift with it. */
 	public static final double KNOCKBACK = 1.6, LIFT = 0.3, SPEED_LIFT = 0.2;
 

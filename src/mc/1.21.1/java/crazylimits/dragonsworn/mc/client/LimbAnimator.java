@@ -2,6 +2,7 @@ package crazylimits.dragonsworn.mc.client;
 
 import crazylimits.dragonsworn.anim.DragonAnim;
 import crazylimits.dragonsworn.anim.DragonAnimSelector.Kind;
+import crazylimits.dragonsworn.anim.DragonVoice;
 import crazylimits.dragonsworn.body.DragonBody;
 import crazylimits.dragonsworn.body.Grip;
 import crazylimits.dragonsworn.body.Tail;
@@ -14,7 +15,7 @@ import crazylimits.dragonsworn.limb.Joint;
 import crazylimits.dragonsworn.limb.LimbIK;
 import crazylimits.dragonsworn.limb.Toes;
 import crazylimits.dragonsworn.limb.TurnSteps;
-import crazylimits.dragonsworn.anim.DragonVoice;
+import crazylimits.dragonsworn.math.Maths;
 import crazylimits.dragonsworn.mc.DragonBrain;
 import crazylimits.dragonsworn.mc.DragonswornDragon;
 import crazylimits.dragonsworn.mc.LevelGrid;
@@ -358,7 +359,7 @@ final class LimbAnimator {
 
 	/** How much a foot whose bottom the animation holds {@code sole} pixels up is the ground's, 0..1. */
 	private static double held(double sole) {
-		return 1.0 - smooth((sole - RELEASE_FROM) / (RELEASE_TOP - RELEASE_FROM));
+		return 1.0 - Maths.smoothstep((sole - RELEASE_FROM) / (RELEASE_TOP - RELEASE_FROM));
 	}
 
 	/** The middle of the claw cube's underside, in the bone's rest coordinates (pixels). */
@@ -435,7 +436,7 @@ final class LimbAnimator {
 					Mth.lerp(partialTick, prey.zo, prey.getZ()) - pad[2]};
 			double[] forward = frame.toWorld(state.talonAim[1], new double[3]);
 			double gap = Math.sqrt(Mth.lengthSquared(forward[0] - ankle[0], forward[1] - ankle[1], forward[2] - ankle[2]));
-			double k = smooth(Mth.clamp(1.0 - gap / Grip.REACH_NEAR, 0.0, 1.0));
+			double k = Maths.smoothstep(Mth.clamp(1.0 - gap / Grip.REACH_NEAR, 0.0, 1.0));
 			double[] out = frame.toModel(ankle, new double[3]);
 			for (int a = 0; a < 3; a++) state.talonAim[1][a] += (out[a] - state.talonAim[1][a]) * k;
 		}
@@ -459,10 +460,10 @@ final class LimbAnimator {
 			if (s == 1 && state.clutch > 0.0) {
 				// holding: the foot level in the world and turned across the prey, its toes to curl round it
 				double[] level = levelFoot(Affine.mul(Affine.mul(bodyM, leg[0].local()), leg[1].local()), brain, partialTick);
-				double c = smooth(state.clutch);
-				for (int a = 0; a < 3; a++) leg[2].rot[a] += wrapDegrees(level[a] - leg[2].rot[a]) * c;
+				double c = Maths.smoothstep(state.clutch);
+				for (int a = 0; a < 3; a++) leg[2].rot[a] += Mth.wrapDegrees(level[a] - leg[2].rot[a]) * c;
 			}
-			double w = smooth(state.talon[s]);
+			double w = Maths.smoothstep(state.talon[s]);
 			for (int k = 0; k < 3; k++) {
 				for (int a = 0; a < 3; a++) leg[k].rot[a] = animated[k].rot[a] + (leg[k].rot[a] - animated[k].rot[a]) * w;
 				setRotation(bones[k], leg[k]);
@@ -499,10 +500,6 @@ final class LimbAnimator {
 			for (int c = 0; c < 3; c++) t[r * 4 + c] = m[c * 4 + r];
 		}
 		return t;
-	}
-
-	private static double wrapDegrees(double a) {
-		return Mth.wrapDegrees(a);
 	}
 
 	// ---------------------------------------------------------------- the toes
@@ -550,9 +547,9 @@ final class LimbAnimator {
 			}
 			double[] footM = matrix(foot);
 			double over = -ground.of(foot, matrix(foot.getParent()));
-			double contact = Double.isNaN(over) ? 0.0 : (1.0 - smooth(over * 16.0 / TOE_CONTACT)) * state.footing;
-			double grip = s == 1 ? smooth(state.clutch) : 0.0;
-			double open = Math.max(state.landingOpen, reach ? smooth(state.talon[s]) : 0.0) * (1.0 - grip);
+			double contact = Double.isNaN(over) ? 0.0 : (1.0 - Maths.smoothstep(over * 16.0 / TOE_CONTACT)) * state.footing;
+			double grip = s == 1 ? Maths.smoothstep(state.clutch) : 0.0;
+			double open = Math.max(state.landingOpen, reach ? Maths.smoothstep(state.talon[s]) : 0.0) * (1.0 - grip);
 			Toes t = state.toes[s];
 			for (int i = 0; i < Toes.COUNT; i++) {
 				// outward: a toe on the foot's +x side swings its tip to +x with a negative turn about Y
@@ -768,10 +765,5 @@ final class LimbAnimator {
 		if (bone == null) return;
 		bone.setRotX(bone.getRotX() + (float) Math.toRadians(pitch));
 		bone.setRotY(bone.getRotY() + (float) Math.toRadians(yaw));
-	}
-
-	private static double smooth(double u) {
-		u = Math.max(0.0, Math.min(1.0, u));
-		return u * u * (3.0 - 2.0 * u);
 	}
 }

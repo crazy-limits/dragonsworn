@@ -2,7 +2,6 @@ package crazylimits.dragonsworn.mc.phase;
 
 import crazylimits.dragonsworn.flight.FlightModel;
 import net.minecraft.world.phys.Vec3;
-
 import org.jetbrains.annotations.Nullable;
 
 /** Extra hooks Dragonsworn's own phases give the flight code. */

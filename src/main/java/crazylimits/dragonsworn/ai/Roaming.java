@@ -11,18 +11,11 @@ import java.util.random.RandomGenerator;
  * Each leg of the wander (in the air or on foot) bends the last one by at most {@link #DRIFT}, so it
  * travels instead of circling one spot. Headings are radians, {@code atan2(dz, dx)}; spells are ticks.
  *
- * <p>The constants are the defaults; the server's {@link DragonConfig} ({@code [wandering]}) sets them.
+ * <p>Its timings and distances are the server's {@link DragonConfig} ({@code [wandering]}).
  */
 public final class Roaming {
-	/** How long it flies before looking for somewhere to land, and how long it stays down. */
-	public static final int AIR_MIN = 200, AIR_MAX = 500, GROUND_MIN = 3000, GROUND_MAX = 7000;
 	/** Each new leg turns at most this far from the last. */
 	public static final double DRIFT = Math.toRadians(55);
-	/** Flight legs (blocks), and the height above the ground it cruises at. */
-	public static final double FLY_LEG_MIN = 24, FLY_LEG_MAX = 45, CRUISE_MIN = 10, CRUISE_MAX = 20;
-	/** Walks (blocks), and the pause (ticks) between them. */
-	public static final double WALK_LEG_MIN = 8, WALK_LEG_MAX = 22;
-	public static final int PAUSE_MIN = 40, PAUSE_MAX = 200;
 
 	private Roaming() {}
 

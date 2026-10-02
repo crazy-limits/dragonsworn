@@ -1,11 +1,12 @@
 package crazylimits.dragonsworn.mc.phase;
 
+import crazylimits.dragonsworn.ai.Foothold;
 import crazylimits.dragonsworn.anim.DragonAnim;
 import crazylimits.dragonsworn.flight.FlightModel;
+import crazylimits.dragonsworn.flight.Wingbeat;
 import crazylimits.dragonsworn.mc.DragonBrain;
 import crazylimits.dragonsworn.mc.DragonPhases;
 import crazylimits.dragonsworn.mc.DragonswornDragon;
-import crazylimits.dragonsworn.nav.Foothold;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.BlockParticleOption;
 import net.minecraft.core.particles.ParticleTypes;
@@ -14,7 +15,6 @@ import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.boss.enderdragon.phases.AbstractDragonPhaseInstance;
 import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
 import net.minecraft.world.phys.Vec3;
-
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -83,7 +83,7 @@ public class LiftoffPhase extends AbstractDragonPhaseInstance implements Dragons
 	 */
 	private void jump() {
 		// off a perch: the next downstroke at once (clinging, the wings were beating already)
-		brain().forceFlight(FlightModel.Force.HOVER, narrow ? DragonAnim.DOWNSTROKE_START : DragonAnim.TAKEOFF_PHASE);
+		brain().forceFlight(FlightModel.Force.HOVER, narrow ? Wingbeat.DOWNSTROKE_START : DragonAnim.TAKEOFF_PHASE);
 		dragon.setDeltaMovement(0.0, narrow ? 0.4 : 0.55, 0.0);
 		if (dragon.level() instanceof ServerLevel level) {
 			BlockPos below = BlockPos.containing(dragon.getX(), dragon.getY() - 0.5, dragon.getZ());

@@ -1,6 +1,6 @@
 package crazylimits.dragonsworn.mc.breath.mixin;
 
-import crazylimits.dragonsworn.anim.BreathAttack;
+import crazylimits.dragonsworn.attack.BreathAttack;
 import crazylimits.dragonsworn.mc.breath.BreathStreamPhase;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.boss.enderdragon.phases.AbstractDragonSittingPhase;

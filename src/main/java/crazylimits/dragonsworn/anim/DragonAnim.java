@@ -1,5 +1,7 @@
 package crazylimits.dragonsworn.anim;
 
+import crazylimits.dragonsworn.flight.Wingbeat;
+
 import java.util.Locale;
 
 /** Every animation in {@code ender_dragon.animation.json}, in the order {@code tools/anims.py} writes them. */
@@ -60,7 +62,7 @@ public enum DragonAnim {
 	GLIDE_BITE(false),
 	/** The bite standing in the air, the hover's beat going on: one whole beat. As {@link #ATTACK}'s timing. */
 	HOVER_BITE(false),
-	/** The stream breath in the hover: the breath pass's timing ({@link BreathPass}), three beats long. */
+	/** The stream breath in the hover: the breath pass's timing ({@code attack/BreathPass}), three beats long. */
 	HOVER_BREATH(false);
 
 	/**
@@ -68,19 +70,6 @@ public enum DragonAnim {
 	 * cycle (see {@code tools/walk.py}). Played at this speed, a planted foot does not slide.
 	 */
 	public static final double WALK_BLOCKS_PER_SECOND = 36.0 / (0.75 * 2.4) / 16.0;
-	/** One wingbeat ({@link #FLY}, {@link #HOVER}, {@link #FLAP}), in seconds. */
-	public static final double FLAP_SECONDS = 1.6;
-	/**
-	 * One {@link #FLAP} push, in seconds: a whole beat out of the glide and back into it (see
-	 * {@code tools/anims.py} flap).
-	 */
-	public static final double PUSH_SECONDS = FLAP_SECONDS;
-	/**
-	 * Where in a beat (0..1) the downstroke runs: the wings push air between these phases (55 % of the
-	 * beat, as big birds do). Beat phase 0 is wings level and rising; they are at the top at the start
-	 * of the downstroke and at the bottom at its end ({@code tools/flight.py}).
-	 */
-	public static final double DOWNSTROKE_START = 0.225, DOWNSTROKE_END = 0.775;
 	/**
 	 * {@link #TAKEOFF}: when all four limbs push off the ground together (the jump), when the wings reach
 	 * the top and the first power stroke starts, and its length. It ends on a beat boundary of the hover
@@ -88,7 +77,7 @@ public enum DragonAnim {
 	 * two stay in step.
 	 */
 	public static final double TAKEOFF_JUMP_SECONDS = 0.55, TAKEOFF_TOP_SECONDS = 0.8, TAKEOFF_SECONDS = 2.04;
-	public static final double TAKEOFF_PHASE = DOWNSTROKE_START - (TAKEOFF_TOP_SECONDS - TAKEOFF_JUMP_SECONDS) / FLAP_SECONDS;
+	public static final double TAKEOFF_PHASE = Wingbeat.DOWNSTROKE_START - (TAKEOFF_TOP_SECONDS - TAKEOFF_JUMP_SECONDS) / Wingbeat.FLAP_SECONDS;
 	/**
 	 * {@link #LAND}: the flare starts, the braking stroke is done, all four feet strike the ground (the
 	 * wings swept down onto their claws), and its length (it ends standing).
@@ -133,7 +122,7 @@ public enum DragonAnim {
 		return this == ATTACK || this == UPRIGHT_BITE || this == CLING_BITE || this == GLIDE_BITE || this == HOVER_BITE;
 	}
 
-	/** A stream breath in flight ({@link BreathPass}'s timing): the pass's on the glide, or the hover's. */
+	/** A stream breath in flight ({@code attack/BreathPass}'s timing): the pass's on the glide, or the hover's. */
 	public boolean breathesInFlight() {
 		return this == GLIDE_BREATH || this == HOVER_BREATH;
 	}
@@ -156,12 +145,5 @@ public enum DragonAnim {
 			if (anim.name().equalsIgnoreCase(name) || anim.id.equals(name)) return anim;
 		}
 		return null;
-	}
-
-	/** Strength of a downstroke at beat phase {@code u} (0..1, wraps): 0 outside it, peaking at 1. */
-	public static double downstroke(double u) {
-		u -= Math.floor(u);
-		if (u < DOWNSTROKE_START || u > DOWNSTROKE_END) return 0.0;
-		return Math.sin(Math.PI * (u - DOWNSTROKE_START) / (DOWNSTROKE_END - DOWNSTROKE_START));
 	}
 }

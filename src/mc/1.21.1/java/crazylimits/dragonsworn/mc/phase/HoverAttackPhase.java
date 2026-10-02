@@ -1,10 +1,10 @@
 package crazylimits.dragonsworn.mc.phase;
 
-import crazylimits.dragonsworn.config.DragonConfig;
-import crazylimits.dragonsworn.anim.BreathPass;
 import crazylimits.dragonsworn.anim.DragonAnim;
-import crazylimits.dragonsworn.anim.HoverAttack;
+import crazylimits.dragonsworn.attack.BreathPass;
+import crazylimits.dragonsworn.attack.HoverAttack;
 import crazylimits.dragonsworn.body.Strike;
+import crazylimits.dragonsworn.config.DragonConfig;
 import crazylimits.dragonsworn.flight.FlightModel;
 import crazylimits.dragonsworn.mc.DragonBrain;
 import crazylimits.dragonsworn.mc.DragonPhases;
@@ -25,7 +25,6 @@ import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
-
 import org.jetbrains.annotations.Nullable;
 
 /**

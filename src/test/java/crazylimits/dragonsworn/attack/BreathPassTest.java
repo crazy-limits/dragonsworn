@@ -1,8 +1,8 @@
-package crazylimits.dragonsworn.anim;
+package crazylimits.dragonsworn.attack;
 
 import org.junit.jupiter.api.Test;
 
-import static crazylimits.dragonsworn.anim.BreathPass.*;
+import static crazylimits.dragonsworn.attack.BreathPass.*;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;

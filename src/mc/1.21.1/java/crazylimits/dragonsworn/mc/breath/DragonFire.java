@@ -1,8 +1,8 @@
 package crazylimits.dragonsworn.mc.breath;
 
-import crazylimits.dragonsworn.config.DragonConfig;
 import com.mojang.serialization.MapCodec;
 import crazylimits.dragonsworn.Dragonsworn;
+import crazylimits.dragonsworn.config.DragonConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;

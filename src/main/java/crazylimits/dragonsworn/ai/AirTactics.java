@@ -3,7 +3,9 @@ package crazylimits.dragonsworn.ai;
 import crazylimits.dragonsworn.config.DragonConfig;
 
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Which attack a flying dragon makes on its target. Game-free, so it is unit tested; the brain asks it
@@ -29,12 +31,56 @@ public final class AirTactics {
 		AIR
 	}
 
-	public enum Attack { SNATCH, BREATH_PASS, FIREBALL_PASS, CHARGE, BARRAGE, FLYBY_BITE, HOVER_BITE, HOVER_BREATH }
+	/** Every attack from the air, each switched on or off by the server ({@code [attacks]}). */
+	public enum Attack {
+		SNATCH(DragonConfig.SNATCH),
+		BREATH_PASS(DragonConfig.BREATH_PASS),
+		FIREBALL_PASS(DragonConfig.FIREBALL_PASS),
+		CHARGE(DragonConfig.CHARGE),
+		BARRAGE(DragonConfig.BARRAGE),
+		FLYBY_BITE(DragonConfig.FLYBY_BITE),
+		HOVER_BITE(DragonConfig.HOVER_BITE),
+		HOVER_BREATH(DragonConfig.HOVER_BREATH);
 
-	/** Each repertoire in fallback order (the last can always start); its odds are the server's ({@link DragonConfig}, {@code [attacks.*]}). */
-	private static final Attack[] GROUND_ATTACKS = {Attack.SNATCH, Attack.BREATH_PASS, Attack.FIREBALL_PASS, Attack.CHARGE, Attack.BARRAGE};
-	private static final Attack[] WALL_ATTACKS = {Attack.SNATCH, Attack.FLYBY_BITE, Attack.BREATH_PASS, Attack.HOVER_BITE, Attack.HOVER_BREATH, Attack.BARRAGE};
-	private static final Attack[] AIR_ATTACKS = {Attack.FLYBY_BITE, Attack.HOVER_BITE, Attack.HOVER_BREATH, Attack.BARRAGE};
+		private final DragonConfig.Flag allowed;
+
+		Attack(DragonConfig.Flag allowed) {
+			this.allowed = allowed;
+		}
+
+		/** Whether the server lets the dragon use it at all. */
+		public boolean enabled() {
+			return allowed.get();
+		}
+	}
+
+	/** One attack of a repertoire, with the server's weight for it being the first choice ({@code [attacks.*]}). */
+	private record Option(Attack attack, DragonConfig.Num weight) {
+	}
+
+	/**
+	 * Each {@link Reach}'s repertoire in fallback order (the last can always start). Adding an attack: an
+	 * {@link Attack} with its flag, a weight per reach in {@link DragonConfig}, and its line(s) here.
+	 */
+	private static final Map<Reach, List<Option>> REPERTOIRES = new EnumMap<>(Map.of(
+			Reach.GROUND, List.of(
+					new Option(Attack.SNATCH, DragonConfig.GROUND_SNATCH),
+					new Option(Attack.BREATH_PASS, DragonConfig.GROUND_BREATH_PASS),
+					new Option(Attack.FIREBALL_PASS, DragonConfig.GROUND_FIREBALL_PASS),
+					new Option(Attack.CHARGE, DragonConfig.GROUND_CHARGE),
+					new Option(Attack.BARRAGE, DragonConfig.GROUND_BARRAGE)),
+			Reach.WALL, List.of(
+					new Option(Attack.SNATCH, DragonConfig.WALL_SNATCH),
+					new Option(Attack.FLYBY_BITE, DragonConfig.WALL_FLYBY_BITE),
+					new Option(Attack.BREATH_PASS, DragonConfig.WALL_BREATH_PASS),
+					new Option(Attack.HOVER_BITE, DragonConfig.WALL_HOVER_BITE),
+					new Option(Attack.HOVER_BREATH, DragonConfig.WALL_HOVER_BREATH),
+					new Option(Attack.BARRAGE, DragonConfig.WALL_BARRAGE)),
+			Reach.AIR, List.of(
+					new Option(Attack.FLYBY_BITE, DragonConfig.AIR_FLYBY_BITE),
+					new Option(Attack.HOVER_BITE, DragonConfig.AIR_HOVER_BITE),
+					new Option(Attack.HOVER_BREATH, DragonConfig.AIR_HOVER_BREATH),
+					new Option(Attack.BARRAGE, DragonConfig.AIR_BARRAGE))));
 
 	private AirTactics() {}
 
@@ -49,74 +95,32 @@ public final class AirTactics {
 	 * barrage, unless the server disabled it). Empty when every attack of the repertoire is disabled.
 	 */
 	public static List<Attack> choices(Reach reach, double roll) {
-		Attack[] repertoire = switch (reach) {
-			case GROUND -> GROUND_ATTACKS;
-			case WALL -> WALL_ATTACKS;
-			case AIR -> AIR_ATTACKS;
-		};
 		// a disabled attack is out altogether, not even a fallback
-		List<Attack> attacks = new ArrayList<>();
-		for (Attack a : repertoire) if (enabled(a)) attacks.add(a);
-		if (attacks.isEmpty()) return List.of();
+		List<Option> options = new ArrayList<>();
+		for (Option o : REPERTOIRES.get(reach)) if (o.attack.enabled()) options.add(o);
+		if (options.isEmpty()) return List.of();
 		double total = 0.0;
-		for (Attack a : attacks) total += odds(reach, a);
-		int pick = attacks.size() - 1;
+		for (Option o : options) total += o.weight.get();
+		int pick = options.size() - 1;
 		if (total > 0.0) {
 			double sum = 0.0;
-			for (int i = 0; i < attacks.size(); i++) {
-				sum += odds(reach, attacks.get(i)) / total;
+			for (int i = 0; i < options.size(); i++) {
+				sum += options.get(i).weight.get() / total;
 				if (roll < sum) {
 					pick = i;
 					break;
 				}
 			}
 		}
-		return List.copyOf(attacks.subList(pick, attacks.size()));
-	}
-
-	/** Whether the server lets the dragon use {@code attack} at all. */
-	public static boolean enabled(Attack attack) {
-		return switch (attack) {
-			case SNATCH -> DragonConfig.SNATCH.get();
-			case BREATH_PASS -> DragonConfig.BREATH_PASS.get();
-			case FIREBALL_PASS -> DragonConfig.FIREBALL_PASS.get();
-			case CHARGE -> DragonConfig.CHARGE.get();
-			case BARRAGE -> DragonConfig.BARRAGE.get();
-			case FLYBY_BITE -> DragonConfig.FLYBY_BITE.get();
-			case HOVER_BITE -> DragonConfig.HOVER_BITE.get();
-			case HOVER_BREATH -> DragonConfig.HOVER_BREATH.get();
-		};
+		List<Attack> attacks = new ArrayList<>();
+		for (Option o : options.subList(pick, options.size())) attacks.add(o.attack);
+		return List.copyOf(attacks);
 	}
 
 	/** The weight of {@code attack} being the first choice at {@code reach} (0 where it is not in the repertoire). */
 	static double odds(Reach reach, Attack attack) {
-		DragonConfig.Num weight = switch (reach) {
-			case GROUND -> switch (attack) {
-				case SNATCH -> DragonConfig.GROUND_SNATCH;
-				case BREATH_PASS -> DragonConfig.GROUND_BREATH_PASS;
-				case FIREBALL_PASS -> DragonConfig.GROUND_FIREBALL_PASS;
-				case CHARGE -> DragonConfig.GROUND_CHARGE;
-				case BARRAGE -> DragonConfig.GROUND_BARRAGE;
-				default -> null;
-			};
-			case WALL -> switch (attack) {
-				case SNATCH -> DragonConfig.WALL_SNATCH;
-				case FLYBY_BITE -> DragonConfig.WALL_FLYBY_BITE;
-				case BREATH_PASS -> DragonConfig.WALL_BREATH_PASS;
-				case HOVER_BITE -> DragonConfig.WALL_HOVER_BITE;
-				case HOVER_BREATH -> DragonConfig.WALL_HOVER_BREATH;
-				case BARRAGE -> DragonConfig.WALL_BARRAGE;
-				default -> null;
-			};
-			case AIR -> switch (attack) {
-				case FLYBY_BITE -> DragonConfig.AIR_FLYBY_BITE;
-				case HOVER_BITE -> DragonConfig.AIR_HOVER_BITE;
-				case HOVER_BREATH -> DragonConfig.AIR_HOVER_BREATH;
-				case BARRAGE -> DragonConfig.AIR_BARRAGE;
-				default -> null;
-			};
-		};
-		return weight == null ? 0.0 : weight.get();
+		for (Option o : REPERTOIRES.get(reach)) if (o.attack == attack) return o.weight.get();
+		return 0.0;
 	}
 
 	/** Whether {@code reach} keeps the dragon in the air: it attacks from there more often. */

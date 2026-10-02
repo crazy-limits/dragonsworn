@@ -2,7 +2,7 @@ package crazylimits.dragonsworn.neoforge;
 
 import com.mojang.brigadier.arguments.StringArgumentType;
 import crazylimits.dragonsworn.Dragonsworn;
-import crazylimits.dragonsworn.anim.DragonCommand;
+import crazylimits.dragonsworn.debug.DragonCommand;
 import crazylimits.dragonsworn.mc.breath.BreathParticles;
 import crazylimits.dragonsworn.mc.breath.client.VoidFlameParticle;
 import crazylimits.dragonsworn.mc.client.ArenaTour;
@@ -19,8 +19,8 @@ import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.EntityRenderersEvent;
-import net.neoforged.neoforge.client.event.RegisterParticleProvidersEvent;
 import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
+import net.neoforged.neoforge.client.event.RegisterParticleProvidersEvent;
 import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 
 public final class DragonswornNeoForgeClient {

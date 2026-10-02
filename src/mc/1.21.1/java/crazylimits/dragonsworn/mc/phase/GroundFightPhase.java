@@ -1,20 +1,20 @@
 package crazylimits.dragonsworn.mc.phase;
 
-import crazylimits.dragonsworn.config.DragonConfig;
 import crazylimits.dragonsworn.ai.CombatStance;
+import crazylimits.dragonsworn.ai.Foothold;
 import crazylimits.dragonsworn.ai.GroundTactics;
 import crazylimits.dragonsworn.ai.Roaming;
 import crazylimits.dragonsworn.anim.DragonAnim;
 import crazylimits.dragonsworn.body.Grip;
 import crazylimits.dragonsworn.body.PoseTrack;
 import crazylimits.dragonsworn.body.Strike;
+import crazylimits.dragonsworn.config.DragonConfig;
 import crazylimits.dragonsworn.mc.DragonBrain;
 import crazylimits.dragonsworn.mc.DragonPhases;
 import crazylimits.dragonsworn.mc.DragonSounds;
 import crazylimits.dragonsworn.mc.DragonswornDragon;
 import crazylimits.dragonsworn.mc.PreyHold;
 import crazylimits.dragonsworn.nav.BlockGrid;
-import crazylimits.dragonsworn.nav.Foothold;
 import crazylimits.dragonsworn.nav.GroundPlanner;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.BlockParticleOption;
@@ -38,8 +38,8 @@ import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-
 import org.jetbrains.annotations.Nullable;
+
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.random.RandomGenerator;

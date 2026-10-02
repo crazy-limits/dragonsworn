@@ -1,5 +1,6 @@
 package crazylimits.dragonsworn.nav;
 
+import crazylimits.dragonsworn.ai.Foothold;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashSet;

@@ -1,5 +1,9 @@
 package crazylimits.dragonsworn.limb;
 
+import crazylimits.dragonsworn.math.Maths;
+
+import java.util.Arrays;
+
 /**
  * Turning on the spot by stepping round, the way a big animal (or a person) turns: the feet stay where
  * they are planted while the body turns over them, and a foot left too far behind where the animation
@@ -51,7 +55,7 @@ public final class TurnSteps {
 	private boolean started;
 
 	public TurnSteps() {
-		java.util.Arrays.fill(step, -1.0);
+		Arrays.fill(step, -1.0);
 	}
 
 	/**
@@ -68,32 +72,47 @@ public final class TurnSteps {
 		this.cx = cx;
 		this.cz = cz;
 		if (!active) {
-			// the animation takes the feet back, gradually, from where they stand
-			weight = Math.max(0.0, weight - FADE * dt);
-			for (int i = 0; i < FEET; i++) {
-				if (step[i] >= 0.0) {
-					double[] p = at(i);
-					planted[i][0] = p[i * 2];
-					planted[i][1] = p[i * 2 + 1];
-				}
-				step[i] = -1.0;
-				rest[i][0] = places[i][0];
-				rest[i][1] = places[i][1];
-			}
-			if (weight == 0.0) started = false;
-			java.util.Arrays.fill(strained, false);
+			fadeOut(dt, places);
 			return;
 		}
 		weight = Math.min(1.0, weight + FADE * dt);
-		if (!started) {
-			for (int i = 0; i < FEET; i++) {
-				planted[i][0] = rest[i][0] = places[i][0];
-				planted[i][1] = rest[i][1] = places[i][1];
-				restVelocity[i][0] = restVelocity[i][1] = 0.0;
-				step[i] = -1.0;
+		if (!started) start(places);
+		followPlaces(dt, places);
+		advanceSteps(dt, plant);
+		stepLaggards();
+		Arrays.fill(strained, false);
+	}
+
+	/** Inactive: the animation takes the feet back, gradually, from where they stand. */
+	private void fadeOut(double dt, double[][] places) {
+		weight = Math.max(0.0, weight - FADE * dt);
+		for (int i = 0; i < FEET; i++) {
+			if (step[i] >= 0.0) {
+				double[] p = at(i);
+				planted[i][0] = p[i * 2];
+				planted[i][1] = p[i * 2 + 1];
 			}
-			started = true;
+			step[i] = -1.0;
+			rest[i][0] = places[i][0];
+			rest[i][1] = places[i][1];
 		}
+		if (weight == 0.0) started = false;
+		Arrays.fill(strained, false);
+	}
+
+	/** Becoming active: every foot planted where the animation has it. */
+	private void start(double[][] places) {
+		for (int i = 0; i < FEET; i++) {
+			planted[i][0] = rest[i][0] = places[i][0];
+			planted[i][1] = rest[i][1] = places[i][1];
+			restVelocity[i][0] = restVelocity[i][1] = 0.0;
+			step[i] = -1.0;
+		}
+		started = true;
+	}
+
+	/** Where the animation puts each foot now, and how fast that place moves (smoothed): steps aim ahead along it. */
+	private void followPlaces(double dt, double[][] places) {
 		for (int i = 0; i < FEET; i++) {
 			if (dt > 1e-6) {
 				double k = Math.min(1.0, 0.5 * dt);
@@ -103,7 +122,10 @@ public final class TurnSteps {
 			rest[i][0] = places[i][0];
 			rest[i][1] = places[i][1];
 		}
-		// feet in the air: on toward where their place is going, quicker while the other pair is left far behind
+	}
+
+	/** Feet in the air: on toward where their place is going, quicker while the other pair is left far behind. */
+	private void advanceSteps(double dt, Plant plant) {
 		double[] waiting = new double[2];
 		for (int i = 0; i < FEET; i++) if (step[i] < 0.0) waiting[PAIR[i]] = Math.max(waiting[PAIR[i]], urgency(i));
 		for (int i = 0; i < FEET; i++) {
@@ -118,7 +140,13 @@ public final class TurnSteps {
 				if (plant != null) plant.planted(i);
 			}
 		}
-		// planted feet left behind: the furthest behind steps, its diagonal partner with it
+	}
+
+	/**
+	 * Planted feet left behind: the furthest behind steps, its diagonal partner with it; a limb at full
+	 * stretch steps now, on its own if the other pair is still in the air; one {@link #SNAP}-far is put back.
+	 */
+	private void stepLaggards() {
 		int worst = -1;
 		double worstLag = TRIGGER;
 		for (int i = 0; i < FEET; i++) {
@@ -134,26 +162,26 @@ public final class TurnSteps {
 				worst = i;
 			}
 		}
-		// a limb at full stretch steps now, on its own if the other pair is still in the air
 		for (int i = 0; i < FEET; i++) {
 			if (!strained[i] || step[i] >= 0.0 || !pairStepping(1 - PAIR[i])) continue;
-			from[i][0] = planted[i][0];
-			from[i][1] = planted[i][1];
-			step[i] = 0.0;
-			target(i, STEP_TICKS + LEAD_TICKS * 0.5);
+			beginStep(i);
 			if (i == worst) worst = -1;
 		}
 		if (worst >= 0 && (!pairStepping(1 - PAIR[worst]) || worstLag > FORCE)) {
 			for (int i = 0; i < FEET; i++) {
 				if (PAIR[i] != PAIR[worst] || step[i] >= 0.0) continue;
 				if (i != worst && urgency(i) < TRIGGER * 0.4) continue;
-				from[i][0] = planted[i][0];
-				from[i][1] = planted[i][1];
-				step[i] = 0.0;
-				target(i, STEP_TICKS + LEAD_TICKS * 0.5);
+				beginStep(i);
 			}
 		}
-		java.util.Arrays.fill(strained, false);
+	}
+
+	/** Lifts planted foot i toward where its place will be when it lands. */
+	private void beginStep(int i) {
+		from[i][0] = planted[i][0];
+		from[i][1] = planted[i][1];
+		step[i] = 0.0;
+		target(i, STEP_TICKS + LEAD_TICKS * 0.5);
 	}
 
 	private void target(int i, double ahead) {
@@ -194,7 +222,7 @@ public final class TurnSteps {
 			at[i * 2] = planted[i][0];
 			at[i * 2 + 1] = planted[i][1];
 		} else {
-			double u = smooth(s);
+			double u = Maths.smoothstep(s);
 			at[i * 2] = from[i][0] + (to[i][0] - from[i][0]) * u;
 			at[i * 2 + 1] = from[i][1] + (to[i][1] - from[i][1]) * u;
 		}
@@ -203,16 +231,16 @@ public final class TurnSteps {
 
 	/** How far foot i must be moved from where the animation puts it (world x), already faded. */
 	public double offsetX(int i) {
-		return started ? (at(i)[i * 2] - rest[i][0]) * smooth(weight) : 0.0;
+		return started ? (at(i)[i * 2] - rest[i][0]) * Maths.smoothstep(weight) : 0.0;
 	}
 
 	public double offsetZ(int i) {
-		return started ? (at(i)[i * 2 + 1] - rest[i][1]) * smooth(weight) : 0.0;
+		return started ? (at(i)[i * 2 + 1] - rest[i][1]) * Maths.smoothstep(weight) : 0.0;
 	}
 
 	/** How high foot i is lifted off the ground now (blocks). */
 	public double lift(int i) {
-		return step[i] < 0.0 ? 0.0 : LIFT * Math.sin(Math.PI * Math.min(1.0, step[i])) * smooth(weight);
+		return step[i] < 0.0 ? 0.0 : LIFT * Math.sin(Math.PI * Math.min(1.0, step[i])) * Maths.smoothstep(weight);
 	}
 
 	public boolean stepping(int i) {
@@ -221,10 +249,5 @@ public final class TurnSteps {
 
 	public double weight() {
 		return weight;
-	}
-
-	private static double smooth(double u) {
-		u = Math.max(0.0, Math.min(1.0, u));
-		return u * u * (3.0 - 2.0 * u);
 	}
 }

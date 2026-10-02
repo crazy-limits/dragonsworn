@@ -1,4 +1,7 @@
-package crazylimits.dragonsworn.anim;
+package crazylimits.dragonsworn.attack;
+
+import crazylimits.dragonsworn.anim.DragonAnim;
+import crazylimits.dragonsworn.flight.Wingbeat;
 
 /**
  * The hover attacks: where it cannot come down by its prey, the dragon flies in close, stands in the air
@@ -14,8 +17,8 @@ package crazylimits.dragonsworn.anim;
  * below level, up a little at prey in the air, {@link #YAW_ARC} either side), and the dragon turns after it.
  */
 public final class HoverAttack {
-	/** Bites in one spell at most, ticks between them, and how long the whole spell may last. */
-	public static final int BITES = 3, BITE_RECOVERY = 14, MAX_TICKS = 600;
+	/** Ticks between bites (their number is {@link DragonConfig#HOVER_BITES}), and how long the whole spell may last. */
+	public static final int BITE_RECOVERY = 14, MAX_TICKS = 600;
 	/**
 	 * It never starts at prey further than this (past where a wild dragon keeps a target, for it may have
 	 * roamed on since: it flies in itself), and gives up beyond {@link #LOST_RANGE}.
@@ -23,8 +26,7 @@ public final class HoverAttack {
 	public static final double MAX_RANGE = 160.0, LOST_RANGE = 200.0;
 	/** Ticks it may take to get into position before it gives up (the prey keeps away). */
 	public static final int APPROACH_TICKS = 400;
-	/** Damage of a bite, and how hard it pushes the prey away from the dragon. */
-	public static final float BITE_DAMAGE = 10.0F;
+	/** How hard a bite pushes the prey away from the dragon (its damage: {@link DragonConfig#HOVER_BITE_DAMAGE}). */
 	public static final double BITE_PUSH = 0.9;
 	/** Blocks off the prey (across) and over it the breath is poured from. */
 	public static final double BREATH_DISTANCE = 11.0, BREATH_RISE = 5.0;
@@ -36,11 +38,10 @@ public final class HoverAttack {
 	public static final double WINDUP_TURN = 5.0, STREAM_TURN = 3.0;
 	/** How far the flames carry, and the damage per hit (every {@link BreathPass#DAMAGE_INTERVAL}). */
 	public static final double RANGE = 20.0;
-	public static final float BREATH_DAMAGE = 5.0F;
 	/** Ticks the breath plays: the animation's three beats, and the blend into it. */
-	public static final int BREATH_TICKS = (int) Math.round(3 * DragonAnim.FLAP_SECONDS * 20.0) + DragonAnim.BLEND_TICKS;
+	public static final int BREATH_TICKS = (int) Math.round(3 * Wingbeat.FLAP_SECONDS * 20.0) + DragonAnim.BLEND_TICKS;
 	/** Ticks a bite plays: one beat, and the blend into it. */
-	public static final int BITE_TICKS = (int) Math.round(DragonAnim.FLAP_SECONDS * 20.0) + DragonAnim.BLEND_TICKS;
+	public static final int BITE_TICKS = (int) Math.round(Wingbeat.FLAP_SECONDS * 20.0) + DragonAnim.BLEND_TICKS;
 	/** Ticks from the start of a bite to the jaws closing, as the model shows it. */
 	public static final int HIT_TICKS = FlybyBite.HIT_TICKS;
 	/** The aim stops following the prey this long before the blow: the window to dodge. */
@@ -50,7 +51,7 @@ public final class HoverAttack {
 
 	/** Whether the hover's beat is at a boundary ({@code phase} 0..1; -1: not beating), one tick's worth either way. */
 	public static boolean onBeat(double phase) {
-		double tick = 1.0 / (DragonAnim.FLAP_SECONDS * 20.0);
+		double tick = 1.0 / (Wingbeat.FLAP_SECONDS * 20.0);
 		return phase >= 0.0 && (phase < tick || phase > 1.0 - tick);
 	}
 

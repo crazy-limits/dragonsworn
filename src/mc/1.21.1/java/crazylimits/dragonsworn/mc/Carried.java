@@ -1,7 +1,6 @@
 package crazylimits.dragonsworn.mc;
 
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
-
 import org.jetbrains.annotations.Nullable;
 
 /**

@@ -1,6 +1,7 @@
 package crazylimits.dragonsworn.anim;
 
 import crazylimits.dragonsworn.flight.FlightModel;
+import crazylimits.dragonsworn.flight.Wingbeat;
 
 /**
  * Which frame of which animation the dragon is on, so the server (hitboxes, attack timing) and the
@@ -43,15 +44,15 @@ public final class AnimClock {
 	/** The animation showing now. */
 	public DragonAnim anim() {
 		if (current == null) return DragonAnim.GLIDE;
-		if (current.anim() == DragonAnim.FLAP && seconds >= flaps * DragonAnim.PUSH_SECONDS) return DragonAnim.GLIDE;
+		if (current.anim() == DragonAnim.FLAP && seconds >= flaps * Wingbeat.PUSH_SECONDS) return DragonAnim.GLIDE;
 		return current.anim();
 	}
 
 	/** Seconds into {@link #anim()}. */
 	public double seconds() {
 		if (current != null && current.anim() == DragonAnim.FLAP) {
-			double pushes = flaps * DragonAnim.PUSH_SECONDS;
-			return seconds >= pushes ? seconds - pushes : seconds % DragonAnim.PUSH_SECONDS;
+			double pushes = flaps * Wingbeat.PUSH_SECONDS;
+			return seconds >= pushes ? seconds - pushes : seconds % Wingbeat.PUSH_SECONDS;
 		}
 		return seconds;
 	}

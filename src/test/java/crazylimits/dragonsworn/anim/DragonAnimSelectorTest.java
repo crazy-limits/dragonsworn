@@ -1,7 +1,8 @@
 package crazylimits.dragonsworn.anim;
 
+import crazylimits.dragonsworn.ai.Foothold;
 import crazylimits.dragonsworn.flight.FlightModel;
-import crazylimits.dragonsworn.nav.Foothold;
+import crazylimits.dragonsworn.flight.Wingbeat;
 import org.junit.jupiter.api.Test;
 
 import static crazylimits.dragonsworn.anim.DragonAnimSelector.*;
@@ -84,7 +85,7 @@ class DragonAnimSelectorTest {
 		Choice choice = select(Kind.AIR, null, 0, push, 1);
 		clock.tick(choice, push, 1);
 		assertEquals(DragonAnim.FLAP, clock.anim());
-		for (int i = 0; i < Math.ceil(DragonAnim.PUSH_SECONDS * 20) + 1; i++) clock.tick(choice, push, 1);
+		for (int i = 0; i < Math.ceil(Wingbeat.PUSH_SECONDS * 20) + 1; i++) clock.tick(choice, push, 1);
 		assertEquals(DragonAnim.GLIDE, clock.anim());
 	}
 

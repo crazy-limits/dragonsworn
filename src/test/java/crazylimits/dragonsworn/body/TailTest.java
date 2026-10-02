@@ -1,6 +1,7 @@
 package crazylimits.dragonsworn.body;
 
 import crazylimits.dragonsworn.anim.DragonAnim;
+import crazylimits.dragonsworn.flight.Wingbeat;
 import crazylimits.dragonsworn.nav.BlockGrid;
 import org.junit.jupiter.api.Test;
 
@@ -110,7 +111,7 @@ class TailTest {
 		for (int k = 0; k < 9; k++) {
 			double lo = Double.MAX_VALUE, hi = -Double.MAX_VALUE;
 			for (int i = 0; i < 40; i++) {
-				double x = motion(DragonAnim.FLY, i * DragonAnim.FLAP_SECONDS / 40).x[k];
+				double x = motion(DragonAnim.FLY, i * Wingbeat.FLAP_SECONDS / 40).x[k];
 				lo = Math.min(lo, x);
 				hi = Math.max(hi, x);
 			}
@@ -118,7 +119,7 @@ class TailTest {
 		}
 		// hovering it hangs; gliding it sways, the tip most; in flight it does not lie down
 		double hang = 0;
-		for (int i = 0; i < 40; i++) for (double x : motion(DragonAnim.HOVER, i * DragonAnim.FLAP_SECONDS / 40).x) hang += x;
+		for (int i = 0; i < 40; i++) for (double x : motion(DragonAnim.HOVER, i * Wingbeat.FLAP_SECONDS / 40).x) hang += x;
 		assertTrue(hang > 0, "the hover's tail hangs");
 		TailMotion.Pose glide = motion(DragonAnim.GLIDE, 0.5);
 		assertTrue(Math.abs(glide.y[8]) > Math.abs(glide.y[0]) && Math.abs(glide.y[8]) > 0.5);
@@ -138,7 +139,7 @@ class TailTest {
 		int best = 0;
 		double max = -Double.MAX_VALUE;
 		for (int i = 0; i < 40; i++) {
-			double x = motion(DragonAnim.FLY, i * DragonAnim.FLAP_SECONDS / 40).x[segment];
+			double x = motion(DragonAnim.FLY, i * Wingbeat.FLAP_SECONDS / 40).x[segment];
 			if (x > max) {
 				max = x;
 				best = i;

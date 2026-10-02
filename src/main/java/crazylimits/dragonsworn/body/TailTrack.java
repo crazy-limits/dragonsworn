@@ -1,6 +1,7 @@
 package crazylimits.dragonsworn.body;
 
 import crazylimits.dragonsworn.anim.DragonAnim;
+import crazylimits.dragonsworn.math.Maths;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -53,14 +54,10 @@ public final class TailTrack {
 		double k = Math.min(1.0, x - i);
 		int a = i * VALUES, b = a + VALUES, n = TailChain.SEGMENTS;
 		for (int s = 0; s < n; s++) {
-			out.x[s] = lerp(track.data[a + s], track.data[b + s], k);
-			out.y[s] = lerp(track.data[a + n + s], track.data[b + n + s], k);
+			out.x[s] = Maths.lerp(track.data[a + s], track.data[b + s], k);
+			out.y[s] = Maths.lerp(track.data[a + n + s], track.data[b + n + s], k);
 		}
-		out.rest = lerp(track.data[a + 2 * n], track.data[b + 2 * n], k);
-		out.lift = lerp(track.data[a + 2 * n + 1], track.data[b + 2 * n + 1], k);
-	}
-
-	private static double lerp(double a, double b, double k) {
-		return a + (b - a) * k;
+		out.rest = Maths.lerp(track.data[a + 2 * n], track.data[b + 2 * n], k);
+		out.lift = Maths.lerp(track.data[a + 2 * n + 1], track.data[b + 2 * n + 1], k);
 	}
 }

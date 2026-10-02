@@ -2,7 +2,6 @@ package crazylimits.dragonsworn.ai;
 
 import crazylimits.dragonsworn.ai.GroundTactics.Action;
 import crazylimits.dragonsworn.ai.GroundTactics.Decision;
-import crazylimits.dragonsworn.nav.Foothold;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;

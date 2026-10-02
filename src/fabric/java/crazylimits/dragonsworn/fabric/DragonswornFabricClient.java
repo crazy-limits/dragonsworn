@@ -1,7 +1,7 @@
 package crazylimits.dragonsworn.fabric;
 
 import com.mojang.brigadier.arguments.StringArgumentType;
-import crazylimits.dragonsworn.anim.DragonCommand;
+import crazylimits.dragonsworn.debug.DragonCommand;
 import crazylimits.dragonsworn.mc.breath.BreathParticles;
 import crazylimits.dragonsworn.mc.breath.DragonFire;
 import crazylimits.dragonsworn.mc.breath.client.VoidFlameParticle;
@@ -10,10 +10,10 @@ import crazylimits.dragonsworn.mc.client.DragonRenderer;
 import crazylimits.dragonsworn.mc.client.Showcase;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.blockrenderlayer.v1.BlockRenderLayerMap;
-import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.fabricmc.fabric.api.client.particle.v1.ParticleFactoryRegistry;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.particle.v1.ParticleFactoryRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.network.chat.Component;

@@ -1,7 +1,7 @@
 package crazylimits.dragonsworn.anim;
 
+import crazylimits.dragonsworn.ai.Foothold;
 import crazylimits.dragonsworn.flight.FlightModel;
-import crazylimits.dragonsworn.nav.Foothold;
 
 /**
  * Picks the dragon's animation. Game-free, so it is unit tested; the server runs it too (it needs the

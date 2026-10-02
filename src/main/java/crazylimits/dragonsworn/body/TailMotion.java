@@ -1,6 +1,7 @@
 package crazylimits.dragonsworn.body;
 
 import crazylimits.dragonsworn.anim.DragonAnim;
+import crazylimits.dragonsworn.math.Maths;
 
 /**
  * What every animation does with the tail, made procedural: the animations key it straight and this
@@ -113,7 +114,7 @@ public final class TailMotion {
 			}
 			case FLY, FLAP, GLIDE, HOVER, TAKEOFF, LAND, CLING, CLING_BITE, GLIDE_BREATH, GLIDE_BITE, HOVER_BITE, HOVER_BREATH -> throw new IllegalStateException("No tail track for " + anim);
 			case ROAR -> {
-				double snap = ease((t - 0.6 + 0.08) / 0.15), fade = 1 - ease((t - 1.6) / 0.5);
+				double snap = Maths.smoothstep((t - 0.6 + 0.08) / 0.15), fade = 1 - Maths.smoothstep((t - 1.6) / 0.5);
 				double shake = 2 * Math.sin(t * 40) * snap * fade;
 				standing(out, 0.0);
 				bone(out, 2, 0.0, shake * 2);
@@ -127,13 +128,13 @@ public final class TailMotion {
 				bone(out, 2, 0.0, -9 * Math.sin(w - 1.0));
 			}
 			case TAIL_SWEEP -> {
-				standing(out, 26 * ease(t / 0.6) * (1 - ease((t - 1.0) / 0.8)));
+				standing(out, 26 * Maths.smoothstep(t / 0.6) * (1 - Maths.smoothstep((t - 1.0) / 0.8)));
 				// the tip rattles
 				if (t > 0.35 && t < 0.65) for (int k = 6; k < out.y.length; k++) out.y[k] = 3.5 * Math.sin(t * 75 + k);
 			}
 			case DEATH -> {
 				// tucked as the wings close round it
-				double tuck = ease(t / DragonAnim.DEATH_WRAP_SECONDS);
+				double tuck = Maths.smoothstep(t / DragonAnim.DEATH_WRAP_SECONDS);
 				for (int k = 0; k < out.x.length; k++) out.x[k] = TUCK[k] * tuck;
 			}
 		}
@@ -161,10 +162,5 @@ public final class TailMotion {
 		System.arraycopy(from.y, 0, to.y, 0, from.y.length);
 		to.rest = from.rest;
 		to.lift = from.lift;
-	}
-
-	static double ease(double x) {
-		x = Math.max(0.0, Math.min(1.0, x));
-		return x * x * (3.0 - 2.0 * x);
 	}
 }

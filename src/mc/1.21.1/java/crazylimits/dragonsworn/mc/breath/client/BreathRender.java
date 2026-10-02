@@ -1,7 +1,7 @@
 package crazylimits.dragonsworn.mc.breath.client;
 
-import crazylimits.dragonsworn.anim.BreathAttack;
-import crazylimits.dragonsworn.anim.BreathPass;
+import crazylimits.dragonsworn.attack.BreathAttack;
+import crazylimits.dragonsworn.attack.BreathPass;
 import crazylimits.dragonsworn.mc.breath.BreathParticles;
 import crazylimits.dragonsworn.mc.breath.BreathStreamPhase;
 import crazylimits.dragonsworn.mc.phase.BreathPassPhase;

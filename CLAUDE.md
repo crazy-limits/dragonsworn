@@ -29,7 +29,10 @@ Targets 1.21.11 and 26.2 (GeckoLib 5) are paused in `settings.gradle.kts` until 
 - `src/main/java` -- game-free core (Stonecutter-processed), tested in `src/test`: `anim` (what plays),
   `flight` (wingbeat-driven flight model), `body` (procedural bank/neck/tail, wings turned against the body pitch, + hitbox placement from the
   generated pose track), `nav` (air/ground A*, landing sites, runways), `ai` (ground tactics, free roaming, combat stance),
-  `limb` (foot IK on uneven ground, body tilt over terrain, head look-at; applied by `mc/client/LimbAnimator`).
+  `limb` (foot IK on uneven ground, body tilt over terrain, head look-at; applied by `mc/client/LimbAnimator`),
+  `attack` (breath, breath pass, fly-by and hover attack geometry/timing), `config` (`DragonConfig`: every AI knob and
+  the only home of its default), `math` (shared clamps, easing, angles, 3x3 rotations), `arena`, `debug`.
+  Packages form layers: `ArchitectureTest` fails on an import cycle or any game/loader import in the core.
 - `src/mc/<version>/java` -- Minecraft bridge per MC version: `mc` (DragonBrain: AI director, movement,
   collision, parts; phases in `mc/phase`; mixins), `mc/client` (GeckoLib renderer, model, showcase).
 - `src/fabric`, `src/neoforge` -- entrypoints only (`src/neoforge/mc<version>` for moved APIs).
@@ -122,10 +125,10 @@ strike's IK all use it. Showcase stage `tailCage` checks the drawn tail never ov
 `body/PartSolver` places every part where the model draws it (both sides, `DragonBrain.placeParts`): the pose the
 model *shows* (`AnimClock.shownSeconds`: GeckoLib plays an animation `BLEND_TICKS` late, after blending into it from
 whatever pose showed when the choice changed: `PartSolver` blends from the frame it last solved, as GeckoLib from its
-bone snapshot), then the same bends the renderer adds. The neck is exact FK (`PartSolver.bendNeck`): each bone's
+bone snapshot), then the same bends the renderer adds. The neck is exact FK (`body/NeckChain.bend`): each bone's
 keyed pitch/yaw are recovered from the frame's pivots (no neck bone keys roll or position) and the bends go into
 Ry/Rx as GeckoLib adds them to the bone's rotation; the strike's IK and the breath's straightening
-(`PartSolver.neckAim`) use it too. The head-look (`limb/HeadLook`) ticks on both sides in `DragonBrain.look`
+(`NeckChain.aim`) use it too. The head-look (`limb/HeadLook`) ticks on both sides in `DragonBrain.look`
 (measured from the head posed by the last solve), and the renderer reads it with the partial tick. Showcase stage
 `hitboxes` (`-Pdragonsworn.showcase=hitboxes`) compares the drawn head/neck anchors with the hitboxes as the head turns.
 
@@ -135,10 +138,10 @@ root to tip, body heave/pitch answering the push, head stabilized ~70 %): one ph
 (C-infinity, so no key snaps), drives every joint as harmonics: shoulder, then the hand (elbow hinge) ~0.08 beat
 later, the fan's pleats and fingers rippling after; sweep forward on the downstroke (ellipse + figure-eight),
 twist leading edge down on the downstroke and up on the upstroke. The body's heave, pitch and surge are the
-periodic response of a damped mass to `DragonAnim.downstroke` (the very curve the server's thrust and lift use),
+periodic response of a damped mass to `flight/Wingbeat.downstroke` (the very curve the server's thrust and lift use),
 so it is lowest early in the downstroke and peaks at the start of the upstroke. `flight_pose` solves the neck each
 frame so the head holds still, legs trail by inertia. Beat phase 0 = wings level and rising; top at
-`DOWNSTROKE_START` 0.225, bottom at `DOWNSTROKE_END` 0.775 (mirrored in `DragonAnim`). A push (`flap`) is one whole
+`DOWNSTROKE_START` 0.225, bottom at `DOWNSTROKE_END` 0.775 (`flight/Wingbeat`). A push (`flap`) is one whole
 beat out of the glide and back. On the ground all four limbs stay planted: the takeoff crouches and pushes off
 on all fours, the wings leave the ground only at the jump, and it ends on a hover beat boundary; the server starts
 the hover at `DragonAnim.TAKEOFF_PHASE` at the jump so beats and lift stay in step (`FlightModel.startAtPhase`).
@@ -155,7 +158,7 @@ the body rides over the planted feet into the stance.
 `DragonBrain.footing()` (the takeoff before the jump, the landing after the touch) switches body/limb IK to ground.
 
 ## Breath attack
-`anim/BreathAttack` (core, tested) + `mc/breath/` (phase, particles, mixins in `dragonsworn.breath.mixins.json`).
+`attack/BreathAttack` (core, tested) + `mc/breath/` (phase, particles, mixins in `dragonsworn.breath.mixins.json`).
 After the perched roar the dragon sometimes pours a void-flame stream instead of vanilla's cloud; the server
 burns along `BreathAttack`'s cone, the client spawns flames from the model's mouth (`BreathRender`). Over the 2 s inhale
 the dragon heats up (`mc/client/HeatGlowLayer`): its chest glows first, the glow climbs the throat to the jaw and
@@ -181,7 +184,7 @@ runs out straight from the chest with the head low at the chest's height; the po
 the game's aim off). The neck follows a moving target alone; the body turns only once the target leaves the neck's
 `NECK_ARC` (`BreathAttack.bodyTurns`). Showcase `-Pdragonsworn.showcase=breath` runs the breath stages only,
 including a husk walking across the stream (head line vs husk, body must not turn).
-**Breath pass** (`anim/BreathPass` core, tested; `mc/phase/BreathPassPhase`, wild attacks and the arena's holding
+**Breath pass** (`attack/BreathPass` core, tested; `mc/phase/BreathPassPhase`, wild attacks and the arena's holding
 pattern): run-up, back in `BreathPass.HEIGHT` over the prey, and once lined up `START_DISTANCE` short of it the
 action `GLIDE_BREATH` (`anims.glide_breath`: the glide, a short inhale, then the straight neck swung ~50 deg down,
 jaw open) on a forced glide; the aim is a direction from the neck's base inside a cone ahead and below
@@ -218,7 +221,7 @@ player nearest it on the island (`perchByPlayer`: `GroundApproachPhase.perch`, t
 takeoffs are all `LIFTOFF`), or flies on when nobody stands where it can land. Showcase stage `stance` checks the cycle (hits are fed to the brain as the husk's).
 
 ## Narrow footholds
-`nav/Foothold`: where all four limbs do not fit (`LandingSite.fits(x, z, foothold)`), a ground assault
+`ai/Foothold`: where all four limbs do not fit (`LandingSite.fits(x, z, foothold)`), a ground assault
 (`DragonBrain.tryGroundAssault`) comes down within a bite of its prey (`LandingSite.near`, every column, at the prey's
 height) on a smaller one: `UPRIGHT` (ground under the 3x3 round its feet: sat up on its hind feet, the tail laid
 behind, the wings held out half spread for balance, teetering, a righting stroke at `BALANCE_SECONDS`) or `CLING`
@@ -252,12 +255,12 @@ ground but no landing site nor foothold: a wall's top, a lone pillar, a player p
 elytra, flying, or `AIRBORNE_GAP` blocks of air under it); the brain tries `choices` in order until one starts
 (the last, the barrage, always does; the End fight uses vanilla's strafe for it). Wild: `wildTick`; the End fight:
 `arenaTick` (a player in the air, or one it cannot land by). Against WALL/AIR it attacks every 80-160 ticks.
-**Fly-by bite** (`anim/FlybyBite` core, `mc/phase/FlybyBitePhase`, animation `GLIDE_BITE`): run-up, then a level
+**Fly-by bite** (`attack/FlybyBite` core, `mc/phase/FlybyBitePhase`, animation `GLIDE_BITE`): run-up, then a level
 glide on the line that puts the bite's resting jaws (`Strike.rest`: the blow frame's head part before the IK) on the
 prey's middle, the body `CLEARANCE` over and `PULL` behind it (the neck's sweet spot for a low bite, measured);
 it settles to that height from `LEVEL_OFF` (no stoop at the end), homes in from `HOME_IN`, starts the bite
 `HIT_TICKS` short and holds the speed that arrives exactly then. Prey in the air is led by its velocity. Damage and
-knockback (along the flight) grow with speed. **Hover attacks** (`anim/HoverAttack`, `mc/phase/HoverAttackPhase`,
+knockback (along the flight) grow with speed. **Hover attacks** (`attack/HoverAttack`, `mc/phase/HoverAttackPhase`,
 `HOVER_BITE` one beat long, `HOVER_BREATH` three beats with the breath pass's timing so `BreathPassPhase.breathTicks`,
 `BreathRender` and the heat glow serve both): it picks a side round the prey where the hovering body is clear and
 sees it, hovers at the bite's spot (`biteSpot`) or `BREATH_DISTANCE` off and `BREATH_RISE` over, faces the prey

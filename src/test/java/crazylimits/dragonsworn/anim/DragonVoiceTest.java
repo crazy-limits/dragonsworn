@@ -1,5 +1,6 @@
 package crazylimits.dragonsworn.anim;
 
+import crazylimits.dragonsworn.flight.Wingbeat;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -34,11 +35,11 @@ class DragonVoiceTest {
 
 	@Test
 	void oneSwingPerWingbeatOnTheDownstroke() {
-		List<double[]> swings = cues(DragonAnim.FLY, 10 * DragonAnim.FLAP_SECONDS, DragonVoice.Cue.WING);
+		List<double[]> swings = cues(DragonAnim.FLY, 10 * Wingbeat.FLAP_SECONDS, DragonVoice.Cue.WING);
 		assertEquals(10, swings.size());
 		for (double[] at : swings) {
-			double phase = ((at[0] - DragonAnim.BLEND_TICKS / 20.0) / DragonAnim.FLAP_SECONDS) % 1.0;
-			assertTrue(DragonAnim.downstroke(phase) > 0.0, "swing outside the downstroke at phase " + phase);
+			double phase = ((at[0] - DragonAnim.BLEND_TICKS / 20.0) / Wingbeat.FLAP_SECONDS) % 1.0;
+			assertTrue(Wingbeat.downstroke(phase) > 0.0, "swing outside the downstroke at phase " + phase);
 		}
 	}
 
@@ -47,8 +48,8 @@ class DragonVoiceTest {
 		// the clock of a push restarts every stroke (AnimClock); two strokes, sampled as it reports them
 		int swings = 0;
 		double before = 0.0;
-		for (int tick = 1; tick <= 2 * DragonAnim.PUSH_SECONDS * 20; tick++) {
-			double after = (tick / 20.0) % DragonAnim.PUSH_SECONDS;
+		for (int tick = 1; tick <= 2 * Wingbeat.PUSH_SECONDS * 20; tick++) {
+			double after = (tick / 20.0) % Wingbeat.PUSH_SECONDS;
 			if (DragonVoice.due(DragonAnim.FLAP, before, after) == DragonVoice.Cue.WING) swings++;
 			before = after;
 		}

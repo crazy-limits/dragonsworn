@@ -1,8 +1,8 @@
 package crazylimits.dragonsworn.mc.breath;
 
-import crazylimits.dragonsworn.config.DragonConfig;
-import crazylimits.dragonsworn.anim.BreathAttack;
+import crazylimits.dragonsworn.attack.BreathAttack;
 import crazylimits.dragonsworn.body.Strike;
+import crazylimits.dragonsworn.config.DragonConfig;
 import crazylimits.dragonsworn.mc.DragonBrain;
 import crazylimits.dragonsworn.mc.DragonData;
 import crazylimits.dragonsworn.mc.DragonswornDragon;

@@ -1,5 +1,8 @@
 package crazylimits.dragonsworn.anim;
 
+import crazylimits.dragonsworn.flight.Wingbeat;
+import crazylimits.dragonsworn.math.Maths;
+
 /**
  * When the dragon's sounds play, so each comes out with the pose that makes it: a swing on every
  * downstroke, a step as each foot plants, the roar as the jaw snaps open. Cues are timed on what the
@@ -64,8 +67,8 @@ public final class DragonVoice {
 		double blend = DragonAnim.BLEND_TICKS / 20.0;
 		return switch (anim) {
 			case ROAR -> once(DragonAnim.ROAR_SECONDS + blend, before, after) ? Cue.ROAR : null;
-			case FLY, HOVER, CLING, CLING_BITE, HOVER_BITE, HOVER_BREATH -> every(DragonAnim.FLAP_SECONDS, WING_PHASE * DragonAnim.FLAP_SECONDS + blend, before, after) ? Cue.WING : null;
-			case FLAP -> every(DragonAnim.PUSH_SECONDS, WING_PHASE * DragonAnim.FLAP_SECONDS + blend, before, after) ? Cue.WING : null;
+			case FLY, HOVER, CLING, CLING_BITE, HOVER_BITE, HOVER_BREATH -> every(Wingbeat.FLAP_SECONDS, WING_PHASE * Wingbeat.FLAP_SECONDS + blend, before, after) ? Cue.WING : null;
+			case FLAP -> every(Wingbeat.PUSH_SECONDS, WING_PHASE * Wingbeat.FLAP_SECONDS + blend, before, after) ? Cue.WING : null;
 			case TAKEOFF -> once(TAKEOFF_WING + blend, before, after) ? Cue.WING
 					: once(TAKEOFF_STEP + blend, before, after) ? Cue.STEP_HIND : null;
 			case LAND -> once(LAND_WING + blend, before, after) ? Cue.WING
@@ -144,15 +147,10 @@ public final class DragonVoice {
 		public double jaw(double tick) {
 			if (!jaw || tick < start) return 0.0;
 			double t = tick - start;
-			double open = smooth(t / ROAR_SNAP_TICKS);
-			double close = smooth((t - ROAR_OPEN_TICKS) / ROAR_CLOSE_TICKS);
-			if (fadeFrom != Long.MAX_VALUE) close = Math.max(close, smooth((tick - fadeFrom) / ROAR_FADE_TICKS));
+			double open = Maths.smoothstep(t / ROAR_SNAP_TICKS);
+			double close = Maths.smoothstep((t - ROAR_OPEN_TICKS) / ROAR_CLOSE_TICKS);
+			if (fadeFrom != Long.MAX_VALUE) close = Math.max(close, Maths.smoothstep((tick - fadeFrom) / ROAR_FADE_TICKS));
 			return (ROAR_JAW + 2.0 * Math.sin(t * 31.0 / 20.0)) * open * (1.0 - close);
-		}
-
-		private static double smooth(double u) {
-			u = Math.max(0.0, Math.min(1.0, u));
-			return u * u * (3.0 - 2.0 * u);
 		}
 	}
 }

@@ -1,4 +1,6 @@
-package crazylimits.dragonsworn.anim;
+package crazylimits.dragonsworn.debug;
+
+import crazylimits.dragonsworn.anim.DragonAnim;
 
 /** Client-side debug switches, set by {@code /dragonsworn anim} and by the in-game test. */
 public final class DragonDebug {

@@ -1,7 +1,6 @@
 package crazylimits.dragonsworn.ai;
 
 import crazylimits.dragonsworn.config.DragonConfig;
-import crazylimits.dragonsworn.nav.Foothold;
 
 /**
  * What a landed dragon does next against its target. One blow at a time: the bite and the tail strike
@@ -35,7 +34,6 @@ public final class GroundTactics {
 
 	/** |bearing| up to this is in front of the jaws; up to {@link #SIDE_ARC} to the side; beyond, behind. */
 	public static final double FRONT_ARC = 40.0, SIDE_ARC = 125.0;
-	public static final double ROAR_RANGE = 18.0;
 	/** It walks in until the target is this close. */
 	public static final double CLOSE_IN = 5.5;
 	/** It turns only when the target is further off its nose than this. */

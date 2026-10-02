@@ -1,7 +1,5 @@
 package crazylimits.dragonsworn.flight;
 
-import crazylimits.dragonsworn.anim.DragonAnim;
-
 import java.util.random.RandomGenerator;
 
 /**
@@ -51,8 +49,8 @@ public final class FlightModel {
 	/** Shortest glide between pushes, ticks. */
 	static final int MIN_GLIDE = 30;
 	static final double DOUBLE_CHANCE = 0.25;
-	public static final double BEAT_TICKS = DragonAnim.FLAP_SECONDS * 20.0;
-	public static final double PUSH_TICKS = DragonAnim.PUSH_SECONDS * 20.0;
+	public static final double BEAT_TICKS = Wingbeat.FLAP_SECONDS * 20.0;
+	public static final double PUSH_TICKS = Wingbeat.PUSH_SECONDS * 20.0;
 	/** Peak forward acceleration of a downstroke (blocks/tick^2). */
 	static final double FLY_THRUST = 0.10, PUSH_THRUST = 0.075;
 	/** Gliding: what the airflow gives back (it settles near GLIDE_ACCEL / drag), and diving. */
@@ -62,7 +60,7 @@ public final class FlightModel {
 	/** Fully stalled (hanging still), it sinks this fast between beats (blocks/tick^2). */
 	public static final double STALL_SINK = 0.02;
 	/** Mean of the downstroke strength over a beat (a half sine over 0.4 of it). */
-	static final double MEAN_STROKE = (DragonAnim.DOWNSTROKE_END - DragonAnim.DOWNSTROKE_START) * 2.0 / Math.PI;
+	static final double MEAN_STROKE = (Wingbeat.DOWNSTROKE_END - Wingbeat.DOWNSTROKE_START) * 2.0 / Math.PI;
 	/** Lift per unit of downstroke in fast flight (a small heave); slow, it rises to hold STALL_SINK. */
 	static final double CRUISE_LIFT = 0.006, STALL_LIFT = STALL_SINK / MEAN_STROKE;
 
@@ -132,7 +130,7 @@ public final class FlightModel {
 
 	/**
 	 * Puts the beat that just started at phase {@code u} instead of its start (the takeoff's hover picks up
-	 * the beat its power stroke is already in: {@link DragonAnim#TAKEOFF_PHASE}).
+	 * the beat its power stroke is already in: {@code DragonAnim.TAKEOFF_PHASE}).
 	 */
 	public void startAtPhase(long tick, double u) {
 		start = tick - Math.round(u * BEAT_TICKS);
@@ -141,7 +139,7 @@ public final class FlightModel {
 	/** Downstroke strength now, 0..1. */
 	public double stroke(long tick) {
 		double u = beatPhase(tick);
-		return u < 0 ? 0.0 : DragonAnim.downstroke(u);
+		return u < 0 ? 0.0 : Wingbeat.downstroke(u);
 	}
 
 	/** Forward acceleration from the wings this tick (blocks/tick^2), before gliding and diving. */

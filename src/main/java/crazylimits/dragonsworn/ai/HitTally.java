@@ -5,13 +5,11 @@ import crazylimits.dragonsworn.config.DragonConfig;
 /**
  * The hits a landed dragon takes, to know when it is being worn down from where it cannot answer (its
  * blind spots: under the chin, between the wings, behind the hips) and should take to the air:
- * {@link #TOO_MANY} hits within {@link #WINDOW} ticks (defaults: the server's {@link DragonConfig} sets
- * them, up to {@link #CAPACITY} hits).
+ * {@link DragonConfig#OVERWHELM_HITS} hits within {@link DragonConfig#OVERWHELM_WINDOW} ticks.
  */
 public final class HitTally {
-	public static final int TOO_MANY = 4, WINDOW = 50;
-	/** The most recent hits remembered: the most {@code TOO_MANY} can be. */
-	public static final int CAPACITY = 32;
+	/** The most recent hits remembered: the most {@link DragonConfig#OVERWHELM_HITS} can be. */
+	public static final int CAPACITY = DragonConfig.OVERWHELM_HITS.max();
 
 	private final int[] ticks = new int[CAPACITY];
 	private int count, next;

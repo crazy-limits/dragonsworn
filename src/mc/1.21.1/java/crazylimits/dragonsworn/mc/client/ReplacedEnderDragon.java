@@ -2,7 +2,7 @@ package crazylimits.dragonsworn.mc.client;
 
 import crazylimits.dragonsworn.anim.DragonAnim;
 import crazylimits.dragonsworn.anim.DragonAnimSelector;
-import crazylimits.dragonsworn.anim.DragonDebug;
+import crazylimits.dragonsworn.debug.DragonDebug;
 import crazylimits.dragonsworn.mc.DragonBrain;
 import crazylimits.dragonsworn.mc.DragonswornDragon;
 import net.minecraft.world.entity.EntityType;

@@ -5,6 +5,7 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Axis;
 import crazylimits.dragonsworn.body.DragonBody;
 import crazylimits.dragonsworn.body.PartSolver;
+import crazylimits.dragonsworn.limb.BodyFrame;
 import crazylimits.dragonsworn.mc.DragonswornDragon;
 import crazylimits.dragonsworn.mc.breath.client.BreathRender;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -55,10 +56,10 @@ public final class DragonRenderer extends GeoReplacedEntityRenderer<EnderDragon,
 		DragonBody body = DragonswornDragon.brain(this.currentEntity).body;
 		poseStack.translate(0.0, body.lift(partialTick), 0.0);
 		poseStack.mulPose(Axis.YP.rotationDegrees((float) -body.yaw(partialTick)));
-		poseStack.translate(0.0, PartSolver.CENTER_Y, PartSolver.CENTER_Z);
+		poseStack.translate(0.0, BodyFrame.CENTER_Y, BodyFrame.CENTER_Z);
 		poseStack.mulPose(Axis.XP.rotationDegrees((float) body.pitch(partialTick)));
 		poseStack.mulPose(Axis.ZP.rotationDegrees((float) -body.roll(partialTick)));
-		poseStack.translate(0.0, -PartSolver.CENTER_Y, -PartSolver.CENTER_Z);
+		poseStack.translate(0.0, -BodyFrame.CENTER_Y, -BodyFrame.CENTER_Z);
 	}
 
 	@Override

@@ -1,8 +1,8 @@
 package crazylimits.dragonsworn.mc.phase;
 
-import crazylimits.dragonsworn.anim.BreathAttack;
 import crazylimits.dragonsworn.anim.DragonAnim;
-import crazylimits.dragonsworn.anim.FlybyBite;
+import crazylimits.dragonsworn.attack.BreathAttack;
+import crazylimits.dragonsworn.attack.FlybyBite;
 import crazylimits.dragonsworn.body.Strike;
 import crazylimits.dragonsworn.config.DragonConfig;
 import crazylimits.dragonsworn.flight.FlightModel;
@@ -22,7 +22,6 @@ import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-
 import org.jetbrains.annotations.Nullable;
 
 /**
