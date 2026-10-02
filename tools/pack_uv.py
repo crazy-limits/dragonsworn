@@ -1,21 +1,25 @@
-"""Repacks the dragon's texture: every face gets its own per-face UV in a small atlas.
+"""Lays the dragon's texture out as box UV: every cube wears its own unfolded net, grouped by body part.
 
     python3 tools/pack_uv.py      (build_assets.py runs it, after heat.py)
 
 Reads out/ender_dragon.geo.json and the textures drawn on its layout (the skin, the glowmask and the heat
-frames, all treated as one stack of channels), and writes them back repacked:
+frames, all treated as one stack of channels), and writes them back laid out for editing:
 
-* the right wing wears the left wing's art, mirrored across the body: each right face samples the left
-  face at the mirror image of its points;
-* faces whose texels overlap keep sharing them; identical regions share one patch, also when one is the other rotated or flipped (GeckoLib's per-face
-  `uv_size` may be negative and `uv_rotation` turns it by 90 degrees);
-* faces that are transparent in every texture (and faces with no area) all sample one clear texel;
-* the patches are packed (MaxRects) into the smallest power-of-two texture they fit in.
+* every cube gets box UV (Blockbench's "Box UV": one `uv` offset, the faces unfolded round the top face);
+  no per-face UV is left;
+* the right wing wears the left wing's nets through the `mirror` flag (its cubes are the left's mirror image
+  across x = 0), so the wing is painted once;
+* cubes that would wear identical nets share one (the toes, the fingers, the horns), also mirrored;
+* the nets are packed by body part (body, neck, head, legs and feet, tail, wing), each part in its own block,
+  GAP texels apart, and the blocks into the smallest power-of-two texture they fit in.
 
-Every move maps whole texels onto whole texels, so each face samples exactly the texels it did before;
-`verify` checks that for every face against the GeckoLib quad builder's UVs (BakedModelFactory / GeoQuad).
+A net face as big as the face's old texels gets exactly those texels; GeckoLib sizes a box-UV face by the
+cube's size rounded down, so a face of fractional size (the tail's split segments) is resampled (nearest)
+onto it. `verify` checks every other face texel for texel against the GeckoLib quad builder's UVs
+(BakedModelFactory / GeoQuad).
 """
 import glob
+import itertools
 import json
 import math
 import os
@@ -31,6 +35,7 @@ GEO = os.path.join(OUT, 'ender_dragon.geo.json')
 TEXTURES = ['ender_dragon.png', 'ender_dragon_glowmask.png']   # + heat/ender_dragon_heat_*.png
 FACES = ['north', 'east', 'south', 'west', 'up', 'down']
 MIRROR_FACE = {'east': 'west', 'west': 'east'}     # what a face is across x = 0
+GAP, PART_GAP = 2, 4                               # clear texels between nets, between body parts
 
 
 def texture_files():
@@ -78,24 +83,30 @@ def face_params(cube):
 	}
 
 
-def corners(params):
-	"""The texture point at each of the face's four vertices."""
+def corners(params, mirror=False):
+	"""The texture point at each of the face's four vertices (a mirrored cube's u runs the other way:
+	GeoQuad.build skips its swap)."""
 	(u, v), (us, vs), rot = params
 	val = {'A': u + us, 'B': v, 'C': u, 'D': v + vs}
+	if mirror:
+		val['A'], val['C'] = val['C'], val['A']
 	return [(val[a], val[b]) for a, b in ROTATIONS[rot]]
 
 
-def params_for(target):
-	"""(uv, uv_size, rotation) giving the four vertices exactly these texture points."""
-	for rot, layout in enumerate(ROTATIONS):
-		val, ok = {}, True
-		for (a, b), (tu, tv) in zip(layout, target):
-			for k, t in ((a, tu), (b, tv)):
-				if val.setdefault(k, t) != t:
-					ok = False
-		if ok:
-			return (val['C'], val['B']), (val['A'] - val['C'], val['D'] - val['B']), rot
-	raise ValueError(f'not a rectangle: {target}')
+def drawn(cube):
+	"""{face drawn: texture corners} as GeckoLib builds the cube: a mirrored cube's east net goes on its west
+	face and back (BakedModelFactory.VertexSet.verticesForQuad), with u reversed."""
+	mirror = bool(cube.get('mirror'))
+	box = not isinstance(cube['uv'], dict)
+	out = {}
+	for f, p in face_params(cube).items():
+		g = f
+		if mirror:
+			g = {'west': 'east', 'east': 'west'}.get(f, f)
+			if not box:
+				g = {'up': 'down', 'down': 'up'}.get(g, g)
+		out[g] = corners(p, mirror)
+	return out
 
 
 def has_area(quad):
@@ -149,48 +160,67 @@ def grid(cs):
 	return s.ravel()[:, None], t.ravel()[:, None]
 
 
-# ---- patches ----------------------------------------------------------------------------------------
-
-def orient(arr, t):
-	"""One of the 8 symmetries of a patch: t = (transpose, flip u, flip v)."""
-	tr, fu, fv = t
-	if tr:
-		arr = arr.transpose(1, 0, 2)
-	if fu:
-		arr = arr[:, ::-1]
-	if fv:
-		arr = arr[::-1]
-	return arr
+def rect(cs):
+	"""The texel rectangle (u0, v0, u1, v1) a face's corners span."""
+	us, vs = zip(*cs)
+	return math.floor(min(us)), math.floor(min(vs)), math.ceil(max(us)), math.ceil(max(vs))
 
 
-def orient_point(lu, lv, w, h, t):
-	"""Where a point (lu, lv) of a w x h patch lands in orient(patch, t)."""
-	tr, fu, fv = t
-	if tr:
-		lu, lv, w, h = lv, lu, h, w
-	return (w - lu if fu else lu), (h - lv if fv else lv)
+# ---- nets -------------------------------------------------------------------------------------------
+
+def net(cube, mirror, look, stack):
+	"""The box-UV net (offset 0, 0) on which the cube, mirrored or not, shows `look` ({face: corners in
+	`stack`}), and its footprint: the rectangle round every face it draws."""
+	x, y, z = (math.floor(s) for s in cube['size'])
+	arr = np.zeros((z + y, 2 * (z + x), stack.shape[2]), np.uint8)
+	box = {**cube, 'uv': [0, 0], 'mirror': mirror}
+	foot = None
+	for f, cs in drawn(box).items():
+		if f not in look:
+			continue
+		u0, v0, u1, v1 = rect(cs)
+		if u1 <= u0 or v1 <= v0:
+			continue
+		foot = (u0, v0, u1, v1) if foot is None else (min(foot[0], u0), min(foot[1], v0), max(foot[2], u1), max(foot[3], v1))
+		cs = np.array(cs, float)
+		uu, vv = np.meshgrid(np.arange(u0, u1) + 0.5, np.arange(v0, v1) + 0.5)
+		st = np.linalg.solve(np.array([cs[0] - cs[1], cs[2] - cs[1]]).T, np.stack([uu.ravel(), vv.ravel()]) - cs[1][:, None])
+		arr[v0:v1, u0:u1] = sample(look[f], stack, st[0][:, None], st[1][:, None]).reshape(v1 - v0, u1 - u0, -1)
+	return arr, foot
 
 
-SYMMETRIES = [(tr, fu, fv) for tr in (0, 1) for fu in (0, 1) for fv in (0, 1)]
+def part(bone):
+	"""Which block of the texture a bone's nets go in."""
+	for prefix, name in (('left_wing', 'wing'), ('right_wing', 'wing'), ('neck', 'neck'), ('tail', 'tail'),
+						 ('upperleg', 'legs'), ('lowerleg', 'legs'), ('foot', 'legs'), ('body', 'body')):
+		if bone.startswith(prefix):
+			return name
+	assert bone.startswith(('jaw', 'eyebrow', 'horn')), bone
+	return 'head'
 
 
-def maxrects(sizes, width, height):
-	"""Places (w, h) rectangles (biggest first, best short side fit, 90 degree turns allowed); None if they do not fit."""
+PARTS = ['body', 'neck', 'head', 'legs', 'tail', 'wing']
+
+
+def maxrects(sizes, width, height, mins=None):
+	"""Places (w, h) rectangles (biggest first, best short side fit, never turned: a net cannot be), item i no
+	nearer the top left than mins[i]; None if they do not fit."""
 	free = [(0, 0, width, height)]
 	placed = {}
 	for i in sorted(range(len(sizes)), key=lambda i: (-max(sizes[i]), -min(sizes[i]))):
-		w, h = sizes[i]
+		rw, rh = sizes[i]
+		mx, my = mins[i] if mins else (0, 0)
 		best = None
 		for fx, fy, fw, fh in free:
-			for turned, (rw, rh) in ((False, (w, h)), (True, (h, w))):
-				if rw <= fw and rh <= fh:
-					score = (min(fw - rw, fh - rh), max(fw - rw, fh - rh), fy, fx)
-					if best is None or score < best[0]:
-						best = (score, fx, fy, rw, rh, turned)
+			x, y = max(fx, mx), max(fy, my)
+			if x + rw <= fx + fw and y + rh <= fy + fh:
+				score = (y, min(fx + fw - x - rw, fy + fh - y - rh), x)
+				if best is None or score < best[0]:
+					best = (score, x, y)
 		if best is None:
 			return None
-		_, x, y, rw, rh, turned = best
-		placed[i] = (x, y, turned)
+		_, x, y = best
+		placed[i] = (x, y)
 		split = []
 		for fx, fy, fw, fh in free:
 			if x >= fx + fw or x + rw <= fx or y >= fy + fh or y + rh <= fy:
@@ -206,6 +236,28 @@ def maxrects(sizes, width, height):
 	return placed
 
 
+def shapes(sizes, gap, keep=6):
+	"""The ways to pack rectangles gap apart into a block: for each width the least height, only those no other
+	beats on both, the keep smallest by area: [(width, height, places)]."""
+	found = []
+	padded = [(w + gap, h + gap) for w, h in sizes]
+	widest, total = max(w for w, _ in sizes), sum(w + gap for w, _ in sizes)
+	for width in range(widest, total + 1):
+		lo, hi = max(h for _, h in sizes), sum(h + gap for _, h in sizes)
+		if found and found[-1][1] == lo:
+			break                       # as low as it gets: wider only wastes
+		while lo < hi:
+			mid = (lo + hi) // 2
+			if maxrects(padded, width + gap, mid + gap):
+				hi = mid
+			else:
+				lo = mid + 1
+		if not found or lo < found[-1][1]:
+			found.append((width, lo))
+	found = sorted(found, key=lambda s: s[0] * s[1])[:keep]
+	return [(w, h, maxrects(padded, w + gap, h + gap)) for w, h in found]
+
+
 def pack():
 	geo = json.load(open(GEO))
 	g = geo['minecraft:geometry'][0]
@@ -217,117 +269,104 @@ def pack():
 	faces = {}
 	for b in g['bones']:
 		for ci, c in enumerate(b.get('cubes', [])):
-			params, qs = face_params(c), quads(c)
-			for f in FACES:
-				if f in params:
-					faces[(b['name'], ci, f)] = {'corners': corners(params[f]), 'area': has_area(qs[f])}
+			qs = quads(c)
+			for f, cs in drawn(c).items():
+				faces[(b['name'], ci, f)] = {'corners': cs, 'area': has_area(qs[f])}
 	mirror_wing(g['bones'], faces)
 
-	# faces whose texels overlap (a mirrored face beside its original, a split chain face) share one region
-	live = {}
-	for key, face in faces.items():
-		us, vs = zip(*face['corners'])
-		x0, x1, y0, y1 = math.floor(min(us)), math.ceil(max(us)), math.floor(min(vs)), math.ceil(max(vs))
-		if face['area'] and x1 > x0 and y1 > y0 and stack[y0:y1, x0:x1, 3::4].any():
-			live[key] = (x0, y0, x1, y1)
-		else:
-			face['patch'] = None        # transparent everywhere, or no area: the clear texel
-	group = {k: k for k in live}
-
-	def root(k):
-		while group[k] != k:
-			group[k] = group[group[k]]
-			k = group[k]
-		return k
-	items = sorted(live.items(), key=lambda kv: kv[1])
-	for i, (a, ra) in enumerate(items):
-		for b, rb in items[i + 1:]:
-			if rb[0] >= ra[2]:
+	# every cube's net, shared by cubes that would wear the same one (mirrored or not); the left wing before the right
+	nets, keys, wears = [], {}, {}
+	cubes = [(b, ci, c) for b in g['bones'] for ci, c in enumerate(b.get('cubes', []))]
+	cubes.sort(key=lambda bc: bc[0]['name'].startswith('right_wing'))
+	for b, ci, c in cubes:
+		look = {f: faces[(b['name'], ci, f)]['corners'] for f in FACES
+				if (b['name'], ci, f) in faces and faces[(b['name'], ci, f)]['area']}
+		for mirror in (False, True):
+			arr, foot = net(c, mirror, look, stack)
+			key = (arr.shape, foot, arr.tobytes())
+			if key in keys:
+				wears[id(c)] = (keys[key], mirror)
 				break
-			if rb[1] < ra[3] and ra[1] < rb[3]:
-				group[root(a)] = root(b)
-	regions = {}
-	for k, r in live.items():
-		g0 = regions.get(root(k))
-		regions[root(k)] = r if g0 is None else (min(g0[0], r[0]), min(g0[1], r[1]), max(g0[2], r[2]), max(g0[3], r[3]))
+		else:
+			assert not b['name'].startswith('right_wing'), f'{b["name"]} does not mirror the left wing'
+			arr, foot = net(c, False, look, stack)
+			keys[(arr.shape, foot, arr.tobytes())] = len(nets)
+			wears[id(c)] = (len(nets), False)
+			nets.append({'arr': arr, 'foot': foot, 'part': part(b['name']), 'name': c['name']})
 
-	patches, keys = [], {}         # unique patches (canonical orientation) and their index by content
-	patches.append(np.zeros((1, 1, stack.shape[2]), np.uint8))   # the clear texel
-	for key in live:
-		x0, y0, x1, y1 = regions[root(key)]
-		patch = stack[y0:y1, x0:x1]
-		forms = [(orient(patch, t), t) for t in SYMMETRIES]
-		canon, t = min(forms, key=lambda ft: (ft[0].shape, ft[0].tobytes()))
-		k = (canon.shape, canon.tobytes())
-		if k not in keys:
-			keys[k] = len(patches)
-			patches.append(np.ascontiguousarray(canon))
-		faces[key].update(patch=keys[k], origin=(x0, y0), size=(x1 - x0, y1 - y0), t=t)
+	# each body part's nets packed into a block, the blocks into the smallest texture (trying each block's shapes)
+	options = []
+	for name in PARTS:
+		members = [i for i, n in enumerate(nets) if n['part'] == name]
+		sizes = [(nets[i]['foot'][2] - nets[i]['foot'][0], nets[i]['foot'][3] - nets[i]['foot'][1]) for i in members]
+		options.append([(members, bw, bh, places) for bw, bh, places in shapes(sizes, GAP)])
+	combos = sorted(itertools.product(*options), key=lambda bs: sum((bw + PART_GAP) * (bh + PART_GAP) for _, bw, bh, _ in bs))
 
-	sizes = [(p.shape[1], p.shape[0]) for p in patches]
-	area = sum(w * h for w, h in sizes)
+	def fit(width, height):
+		for blocks in combos:
+			sizes = [(bw + PART_GAP, bh + PART_GAP) for _, bw, bh, _ in blocks]
+			if sum(w * h for w, h in sizes) > width * height:
+				return None
+			# a net's offset may not go negative (Blockbench): its block sits at least as far in as its footprint is
+			mins = [(max(max(nets[i]['foot'][0] - places[k][0], 0) for k, i in enumerate(members)),
+					 max(max(nets[i]['foot'][1] - places[k][1], 0) for k, i in enumerate(members))) for members, _, _, places in blocks]
+			if placed := maxrects(sizes, width + PART_GAP, height + PART_GAP, mins):
+				return blocks, placed
 	for width, height in sorted(((2 ** a, 2 ** b) for a in range(4, 12) for b in range(4, 12)), key=lambda s: (s[0] * s[1], abs(math.log2(s[0] / s[1])), -s[0])):
-		if width * height >= area and (placed := maxrects(sizes, width, height)):
+		if found := fit(width, height):
+			blocks, placed = found
 			break
 	else:
-		raise RuntimeError('patches do not fit in 2048x2048')
+		raise RuntimeError('the nets do not fit in 2048x2048')
 	atlas = np.zeros((height, width, stack.shape[2]), np.uint8)
-	for i, (x, y, turned) in placed.items():
-		p = orient(patches[i], (1, 0, 0)) if turned else patches[i]
-		atlas[y:y + p.shape[0], x:x + p.shape[1]] = p
+	for (members, _, _, places), (bx, by) in zip(blocks, (placed[k] for k in range(len(blocks)))):
+		for k, i in enumerate(members):
+			n = nets[i]
+			u0, v0, u1, v1 = n['foot']
+			x, y = bx + places[k][0], by + places[k][1]
+			n['uv'] = [x - u0, y - v0]
+			assert min(n['uv']) >= 0, n['name']
+			atlas[y:y + v1 - v0, x:x + u1 - u0] = n['arr'][v0:v1, u0:u1]
 
-	for b in g['bones']:
-		for ci, c in enumerate(b.get('cubes', [])):
-			uv = {}
-			for f in FACES:
-				face = faces.get((b['name'], ci, f))
-				if face is None:
-					continue
-				if face['patch'] is None:
-					x, y, _ = placed[0]
-					target = [(x + 1, y), (x, y), (x, y + 1), (x + 1, y + 1)]   # the clear texel
-				else:
-					x, y, turned = placed[face['patch']]
-					(x0, y0), (w, h) = face['origin'], face['size']
-					cw, ch = (h, w) if face['t'][0] else (w, h)        # the canonical patch's size
-					target = []
-					for cu, cv in face['corners']:
-						lu, lv = orient_point(cu - x0, cv - y0, w, h, face['t'])
-						if turned:
-							lu, lv = orient_point(lu, lv, cw, ch, (1, 0, 0))
-						target.append((x + lu, y + lv))
-				(u, v), (su, sv), rot = params_for(target)
-				uv[f] = {'uv': [u, v], 'uv_size': [su, sv]}
-				if rot:
-					uv[f]['uv_rotation'] = rot * 90
-			c['uv'] = uv
+	for _, _, c in cubes:
+		i, mirror = wears[id(c)]
+		c['uv'] = list(nets[i]['uv'])
+		c.pop('mirror', None)
+		if mirror:
+			c['mirror'] = True
 	g['description']['texture_width'], g['description']['texture_height'] = width, height
 
-	verify(faces, stack, g, atlas)
+	resampled = verify(g, faces, stack, atlas)
 	json.dump(geo, open(GEO, 'w'))
 	for i, f in enumerate(files):
 		Image.fromarray(np.ascontiguousarray(atlas[..., 4 * i:4 * i + 4])).save(os.path.join(OUT, f), optimize=True)
-	print(f'  uv: {W}x{H} -> {width}x{height}, {len(patches) - 1} patches for {sum(1 for f in faces.values() if f["patch"] is not None)} faces'
-		  f' ({100 * area / (width * height):.0f} % used)')
+	print(f'  uv: {W}x{H} -> {width}x{height} box UV, {len(nets)} nets for {len(cubes)} cubes'
+		  f' ({sum(1 for _, m in wears.values() if m)} mirrored, {resampled} faces resampled)')
 
 
-def verify(faces, old, g, new):
-	"""Every face samples the same texels (all textures) through its new UVs as through its old ones."""
-	bad = 0
+def verify(g, faces, old, new):
+	"""Every face whose net is as big as its old texels samples the same texels (all textures) as before, a
+	clear one stays clear; returns how many faces were resampled instead."""
+	bad = resampled = 0
 	for b in g['bones']:
 		for ci, c in enumerate(b.get('cubes', [])):
-			params = face_params(c)
-			for f, p in params.items():
+			assert not isinstance(c['uv'], dict)
+			for f, cs in drawn(c).items():
 				face = faces[(b['name'], ci, f)]
-				nc = np.array(corners(p), float)
-				if face['patch'] is None:
-					tex = new[int(math.floor(nc[:, 1].min())), int(math.floor(nc[:, 0].min()))]
-					bad += int(tex.any())
+				if not face['area']:
 					continue
+				o, n = rect(face['corners']), rect(cs)
 				s, t = grid(face['corners'])
-				bad += int((sample(face['corners'], old, s, t) != sample(nc, new, s, t)).any())
+				was = sample(face['corners'], old, s, t)
+				if not was.any():
+					bad += int(sample(cs, new, s, t).any())     # clear stays clear
+				elif sorted((o[2] - o[0], o[3] - o[1])) != sorted((n[2] - n[0], n[3] - n[1])):
+					resampled += 1
+				else:
+					bad += int((was != sample(cs, new, s, t)).any())
 	if bad:
 		raise AssertionError(f'{bad} faces sample different texels after packing')
+	return resampled
 
 
 if __name__ == '__main__':

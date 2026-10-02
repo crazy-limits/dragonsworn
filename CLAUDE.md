@@ -1,26 +1,27 @@
 # CLAUDE.md
 
-Dragonfall: an Ender Dragon overhaul (design notes: `~/Documents/Notes/obsidian-notes/Minecraft/Mods/Ideas/Dragonfall*.md`).
+Dragonsworn (formerly Dragonfall): an Ender Dragon overhaul (design notes: `~/Documents/Notes/obsidian-notes/Minecraft/Mods/Ideas/Dragonfall*.md`).
 Stage 1 so far: the boss **model, animations and AI**. The entity stays vanilla `minecraft:ender_dragon`:
 its renderer is replaced (GeckoLib replaced-entity renderer) and mixins add phases, flight, hitboxes and
-synced state (`src/mc/<version>/java/.../mc/mixin`, `dragonfall.mixins.json`).
+synced state (`src/mc/<version>/java/.../mc/mixin`, `dragonsworn.mixins.json`).
 
 ## Build (Stonecutter 0.9.8, same layout as bookworm)
 
 ```bash
 ./gradlew :1.21.1-fabric:build :1.21.1-neoforge:build      # jars + unit tests
-./gradlew :1.21.1-fabric:runClient -Pdragonfall.showcase    # in-game test (also :1.21.1-neoforge)
-./gradlew :1.21.1-fabric:runClient -Pdragonfall.arena       # End monolith tour: df-arena-*.png, arena-report.txt
+./gradlew :1.21.1-fabric:runClient -Pdragonsworn.showcase    # in-game test (also :1.21.1-neoforge)
+./gradlew :1.21.1-fabric:runClient -Pdragonsworn.arena       # End monolith tour: df-arena-*.png, arena-report.txt
 ```
 The showcase creates a flat world, summons NoAI dragons, plays every animation, then tests the AI live
 (leaf cage + stone pillar, ground assault on a husk, takeoff, hitbox shots, a running landing) and the breath; it writes
 screenshots to `run/<target>/screenshots/df-*.png`, a report to `run/<target>/showcase-report.txt`, and quits.
-`-Pdragonfall.showcase=landing` runs only the live AI's ground assault + takeoff and the running landing (~2 min).
-`-Pdragonfall.showcase=stance` runs only the wild fight's ground -> air break -> ground cycle (~1.5 min).
-`-Pdragonfall.showcase=pass` runs only the breath pass over a husk (~20 s).
-`-Pdragonfall.showcase=death` runs only a wild dragon's death (brought down in the air: the rise, then the cocoon; ~25 s).
-`-Pdragonfall.showcase=narrow` runs only the narrow footholds (a 3x3 platform, a lone pillar beside a husk's pillar).
-`-Pdragonfall.showcase=air` runs only the air attacks (a husk on a lone 16-block pillar, one hanging in the air: fly-by
+`-Pdragonsworn.showcase=landing` runs only the live AI's ground assault + takeoff and the running landing (~2 min).
+`-Pdragonsworn.showcase=stance` runs only the wild fight's ground -> air break -> ground cycle (~1.5 min).
+`-Pdragonsworn.showcase=pass` runs only the breath pass over a husk (~20 s).
+`-Pdragonsworn.showcase=death` runs only a wild dragon's death (brought down in the air: the rise, then the cocoon; ~25 s).
+`-Pdragonsworn.showcase=config` runs only the config screen check (screenshots, the file written).
+`-Pdragonsworn.showcase=narrow` runs only the narrow footholds (a 3x3 platform, a lone pillar beside a husk's pillar).
+`-Pdragonsworn.showcase=air` runs only the air attacks (a husk on a lone 16-block pillar, one hanging in the air: fly-by
 bite, hover bite, hover breath each, then the wild AI's own choice; ~6 min).
 Targets 1.21.11 and 26.2 are declared (GeckoLib 5) but their `src/mc/<version>` bridge is not written yet.
 
@@ -51,10 +52,12 @@ Targets 1.21.11 and 26.2 are declared (GeckoLib 5) but their `src/mc/<version>` 
   wrist). Every hind toe is its own bone hinged at its knuckle (`foot_*_toe1..3`, the toe + the claw under its
   tip) and each hind foot has a back toe (`foot_*_back_toe`: the middle toe + claw again, turned 180 degrees);
   no animation keys them: `limb/Toes` (core, tested) turns them in `LimbAnimator.toes` (see Grabs).
-- `pack_uv.py` -- last step: turns every face into per-face UV, points every right-wing face at the left face
-  it mirrors, shares identical patches (also flipped/turned: negative `uv_size`, `uv_rotation`) and packs
-  them (skin, glowmask, heat frames together) into the smallest power-of-two texture; it asserts that every
-  face samples exactly the texels it did before.
+- `pack_uv.py` -- last step: lays the texture out as **box UV** (no per-face UV, so it edits like any Blockbench
+  model): every cube its own unfolded net, the right wing wearing the left's nets through `mirror: true`, cubes
+  with identical nets sharing one (toes, fingers, horns), the nets packed by body part (body, neck, head, legs,
+  tail, wing: one block each, `GAP` apart) into the smallest power-of-two texture (512x512), skin, glowmask and
+  heat frames together. It asserts every face samples exactly the texels it did before, except the tail's
+  fractional-length segments (`tail_1..5`: GeckoLib floors box-UV sizes), which are resampled nearest.
 - `anims.py` -- every animation as a pose function. Ground poses are solved by IK (`walk.py`, `stand.py`,
   `ik.py` on the FK in `rig.py`), so planted feet do not slide (residuals < 0.02 px).
 - `flight.py` -- the wingbeat (see Flight below). `anims.py` builds every flying pose from it through `flight_pose`.
@@ -98,6 +101,8 @@ Targets 1.21.11 and 26.2 are declared (GeckoLib 5) but their `src/mc/<version>` 
   cracks, then open ones with lit edges) on a `hatch` 0..2 property (`mc/mixin/DragonEggBlockMixin`, vanilla's
   `HATCH`) and blockstate. Nothing raises it yet (hatching comes later). The item is a flat sprite like the
   sniffer egg's (`textures/item/dragon_egg`; `items/dragon_egg.json` for 1.21.4+). `egg.py <png>` previews it all.
+- `icon.py` -- the mod icon (`assets/dragonsworn/icon.png`, 128x128 pixel art, drawn: the dragon over the island,
+  twisted spires with crystals beaming to it, a player seen from behind looking up). `icon.py <png>` previews it x4.
 
 ## Tail
 Fully procedural. `body/TailMotion` (core, tested) is what the keyframes used to do per animation (ported from
@@ -122,7 +127,7 @@ keyed pitch/yaw are recovered from the frame's pivots (no neck bone keys roll or
 Ry/Rx as GeckoLib adds them to the bone's rotation; the strike's IK and the breath's straightening
 (`PartSolver.neckAim`) use it too. The head-look (`limb/HeadLook`) ticks on both sides in `DragonBrain.look`
 (measured from the head posed by the last solve), and the renderer reads it with the partial tick. Showcase stage
-`hitboxes` (`-Pdragonfall.showcase=hitboxes`) compares the drawn head/neck anchors with the hitboxes as the head turns.
+`hitboxes` (`-Pdragonsworn.showcase=hitboxes`) compares the drawn head/neck anchors with the hitboxes as the head turns.
 
 ## Flight
 `tools/flight.py` is the wingbeat, after big birds (research notes: downstroke 55 % of the beat, joints breaking
@@ -150,7 +155,7 @@ the body rides over the planted feet into the stance.
 `DragonBrain.footing()` (the takeoff before the jump, the landing after the touch) switches body/limb IK to ground.
 
 ## Breath attack
-`anim/BreathAttack` (core, tested) + `mc/breath/` (phase, particles, mixins in `dragonfall.breath.mixins.json`).
+`anim/BreathAttack` (core, tested) + `mc/breath/` (phase, particles, mixins in `dragonsworn.breath.mixins.json`).
 After the perched roar the dragon sometimes pours a void-flame stream instead of vanilla's cloud; the server
 burns along `BreathAttack`'s cone, the client spawns flames from the model's mouth (`BreathRender`). Over the 2 s inhale
 the dragon heats up (`mc/client/HeatGlowLayer`): its chest glows first, the glow climbs the throat to the jaw and
@@ -163,18 +168,18 @@ layout, before `pack_uv.py` repacks it with the skin. Every fireball (roam pass/
 Through that windup the head turns to the target (look attention full, `BreathAttack.fireballAiming`, both sides); it
 fires only once the head points within `FIREBALL_CONE` of it (waits up to `FIREBALL_AIM_TICKS`, else drops the
 shot: never backwards), from in front of the mouth; projectiles never hit their owner's own parts (`ProjectileMixin`).
-**Dragon fire** (`mc/breath/DragonFire`, block `dragonfall:dragon_fire`): every fire attack leaves it where it lands
+**Dragon fire** (`mc/breath/DragonFire`, block `dragonsworn:dragon_fire`): every fire attack leaves it where it lands
 (`DragonFire.spread`): the stream and the breath pass where they splash (`BreathStreamPhase.burn`), the fireball a few
 flames right where it bursts, the perched cloud breath under its cloud. Soul fire tinted violet, `DAMAGE` 3 a touch
 (fire: 1); it does not spread or burn blocks, stands on any solid top and burns out after 5-10 s; the dragon is
 immune. Created inside the loaders' block registration; cutout via `BlockRenderLayerMap` (Fabric) or the models'
 `render_type` (NeoForge). Showcase `breath` checks the fire and its damage against vanilla fire's; `pass` the pass's. The
-dragon-fireball and perched-breath clouds use the `dragonfall:void_flame` particle. Mouth constants in
+dragon-fireball and perched-breath clouds use the `dragonsworn:void_flame` particle. Mouth constants in
 `BreathAttack` come from the `breath` pose in `anims.py`: re-derive them if that pose changes. The neck lunges out
 `BREATH_LUNGE` before the fire, because the model plays the animation `BLEND_TICKS` late. Pouring, the neck
 runs out straight from the chest with the head low at the chest's height; the pose keys no neck sway (it would throw
 the game's aim off). The neck follows a moving target alone; the body turns only once the target leaves the neck's
-`NECK_ARC` (`BreathAttack.bodyTurns`). Showcase `-Pdragonfall.showcase=breath` runs the breath stages only,
+`NECK_ARC` (`BreathAttack.bodyTurns`). Showcase `-Pdragonsworn.showcase=breath` runs the breath stages only,
 including a husk walking across the stream (head line vs husk, body must not turn).
 **Breath pass** (`anim/BreathPass` core, tested; `mc/phase/BreathPassPhase`, wild attacks and the arena's holding
 pattern): run-up, back in `BreathPass.HEIGHT` over the prey, and once lined up `START_DISTANCE` short of it the
@@ -183,7 +188,7 @@ jaw open) on a forced glide; the aim is a direction from the neck's base inside 
 (`PITCH_MIN..MAX`, `YAW_ARC`) that swings after the prey at `STREAM_TURN`, so the flames rake the ground along the
 flight path through it. Synced as `DragonData.STRIKE` (the ground point), the neck straightened onto it by
 `body/Strike` as the perched breath's; the client times flames, heat and sounds off the animation clock
-(`BreathPassPhase.breathTicks`), the flames carrying the dragon's speed. Showcase `-Pdragonfall.showcase=pass`.
+(`BreathPassPhase.breathTicks`), the flames carrying the dragon's speed. Showcase `-Pdragonsworn.showcase=pass`.
 
 ## Ground combat
 `ai/GroundTactics` (core, tested) picks one blow at a time (bite and tail share one recovery): in front the bite,
@@ -192,7 +197,7 @@ target just hurt it from there (then the tail). `body/Strike` (core, tested) aim
 keyframes: the neck + head (or the 9 tail segments) are bent so that on the blow's frame the jaws (or the tail's
 tip) are exactly on the aim; the same bends go into the hitboxes (`PartSolver`) and the renderer (`DragonModel`),
 the aim is synced in `DragonData.STRIKE`. The aim follows the target until `REACTION_TICKS` before the blow, then
-only what is at the jaws/tip when it lands is hit (a dodge is a miss). Through a tail strike the head keeps
+only what is at the jaws/tip when it lands is hit (a dodge is a miss; the jaws hit anything within `Strike.BITE_HIT_RADIUS`, config `bite_radius`, 2 blocks: the fly-by `FlybyBite.RADIUS` 2.5, wider than the IK's reach tolerance `BITE_RADIUS`). Through a tail strike the head keeps
 watching the target (`LimbAnimator.look`, gaze from between the eyes on `jaw_upper`); the tail drops its
 balancing counter-swing then, so the strike's aim stays exact. Whether a blow reaches at all is the IK's
 answer, so the dragon has real blind spots; `ai/HitTally` makes it take off when hit too often at once. The
@@ -256,7 +261,7 @@ knockback (along the flight) grow with speed. **Hover attacks** (`anim/HoverAtta
 `HOVER_BITE` one beat long, `HOVER_BREATH` three beats with the breath pass's timing so `BreathPassPhase.breathTicks`,
 `BreathRender` and the heat glow serve both): it picks a side round the prey where the hovering body is clear and
 sees it, hovers at the bite's spot (`biteSpot`) or `BREATH_DISTANCE` off and `BREATH_RISE` over, faces the prey
-(`DragonfallPhase.hoverLook`) and starts each attack on a beat boundary (`onBeat`, `DragonBrain.beatPhase`): up to
+(`DragonswornPhase.hoverLook`) and starts each attack on a beat boundary (`onBeat`, `DragonBrain.beatPhase`): up to
 `BITES` bites, or one breath whose aim chases the prey inside a cone that reaches a little above level.
 
 ## Soft hitboxes
@@ -275,7 +280,7 @@ route, kept while its next leg is clear, corners cut when a later waypoint is in
 it into within `LOOKAHEAD_TICKS` makes it `swerve` at once and replan; a route leg steeply up (over a wall) is flown
 hovering. Walking: `nav/GroundPlanner` clears the whole body (`BODY_RADIUS`, low steps under the belly), keeps off
 walls, and a bent path (a detour) is walked even where it leads away from the target; `followGround` never climbs a
-wall the wrists are against. Showcase stage `walls` (`-Pdragonfall.showcase=walls`) checks all of it.
+wall the wrists are against. Showcase stage `walls` (`-Pdragonsworn.showcase=walls`) checks all of it.
 
 ## Turning on the spot
 Standing (idle, bite, roar, breath), the feet never slide as the body turns: `limb/TurnSteps` (core, tested) keeps
@@ -304,7 +309,7 @@ ground (the user wants the dragon standing on its feet, not on its claws), hang 
 open wide for a landing or a swoop, on a slightly springy lag. Toe bones are set from their rest pose every frame
 (GeckoLib does not reset unkeyed bones every frame: adding to them spins them). The seize (`GroundFightPhase`): a bite that
 may keep its prey (only one that lands: dodged, nothing is held), shaken and chewed, then flung; anyone else hitting the head or neck makes it let go
-(`DragonBrain.hurtBy`). Showcase stage `grabs` (`-Pdragonfall.showcase=grabs` runs only it).
+(`DragonBrain.hurtBy`). Showcase stage `grabs` (`-Pdragonsworn.showcase=grabs` runs only it).
 
 ## Sound
 `python3 tools/sounds.py` (needs numpy + soundfile) cuts vanilla's dragon sounds (read from Loom's asset cache)
@@ -326,13 +331,29 @@ vanilla's two guarded ones (the user removed the caged style). The
 crystal stays exactly where vanilla puts it (bedrock at `height`, crystal at `height + 1`), the shape is a pure
 function of the spike (respawn rebuilds it identically; the ground is probed outside the tower's footprint for that
 reason), nothing goes further than `REACH` (a feature's write radius), and every block is blast-proof.
-`mc/arena/mixin/SpikeFeatureMixin` (`dragonfall.arena.mixins.json`) swaps `placeSpike` for `mc/arena/Monoliths.place`,
-so worldgen and the respawn ritual both use it. An End crystal on bedrock (the spires', the exit portal's) burns
+`mc/arena/mixin/SpikeFeatureMixin` (`dragonsworn.arena.mixins.json`) swaps `placeSpike` for `mc/arena/Monoliths.place`,
+so worldgen and the respawn ritual both use it. Both it and `EndPlatformFeatureMixin` step aside (vanilla's or
+the other mod's build) when the server config turns them off (`end_island.spires`, `end_island.entrance_platform`)
+or when any other mod's mixin is applied to the same class (`mc/arena/OtherMods`: YUNG's Better End Island
+injects at HEAD of both methods, as we do). An End crystal on bedrock (the spires', the exit portal's) burns
 `DragonFire` under itself instead of common fire (`EndCrystalMixin` -> `DragonFire.crystalFire`); dragon fire on
 bedrock never burns out. `mc/client/ArenaTour` is its in-game test.
 The entrance platform (where the portal drops you) is a sphere, `arena/EntrancePlatform` (core, tested): radius 5
 round vanilla's arrival spot, its bottom quarter obsidian (the floor's top stays vanilla's), the rest air;
 `EndPlatformFeatureMixin` swaps vanilla's `createEndPlatform` for it (worldgen and every portal arrival).
+
+## Server config
+`config/DragonConfig` (core, tested) is every AI knob as a constant (`SEIZE_CHANCE.get()`, read where used, so a
+reload acts at once): targeting, wandering, stance, ground combat (which blows, odds, cooldowns, damage), air
+attacks (on/off each, and per-`Reach` first-choice weights: `AirTactics.choices` drops a disabled attack, even as a
+fallback), attack details, the arena's choices, `end_island`. Its defaults are the AI classes' own constants (tests
+run on them). `config/Toml` reads/writes the file: `config/dragonsworn-server.toml`, loaded by
+`DragonswornCommon.loadConfig` at init, server start and `/reload`; clamped, problems logged, missing keys written
+back. Config screens (`mc/client/config/ConfigScreens`): YACL if installed, else Cloth Config, else the vanilla-widget
+`PlainConfigScreen`, all generated from the option list; opened by Mod Menu (`DragonswornModMenu`, `src/fabric/mc1.21.1`)
+and NeoForge's mods list (`IConfigScreenFactory`). The libraries are compile-only (`deps.modmenu/yacl/cloth-config`).
+Showcase stage `config` photographs the screen (`df-config-*.png`); `-Pdragonsworn.configLibs` puts YACL and Cloth
+in the dev client (Fabric), `-Pdragonsworn.configScreen=plain|cloth|yacl` picks one.
 
 ## Licensing
 Model and texture derive from the "Ender Dragon Reborn" pack by Parrie43 (All Rights Reserved). Personal use

@@ -10,6 +10,8 @@ stonecutter {
 }
 
 fun prop(key: String): String = stonecutter.properties.get<String>(key)
+/** A property this version may not declare (optional integrations). */
+fun optionalProp(key: String): String? = runCatching { stonecutter.properties.get<String>(key) }.getOrNull()
 
 val modId = prop("mod.id")
 val mcVersion = stonecutter.current.version
@@ -60,6 +62,8 @@ repositories {
 	maven("https://maven.fabricmc.net/") { name = "Fabric" }
 	maven("https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/") { name = "GeckoLib"; content { includeGroup("software.bernie.geckolib") } }
 	maven("https://api.modrinth.com/maven") { name = "Modrinth"; content { includeGroup("maven.modrinth") } }
+	maven("https://maven.quiltmc.org/repository/release/") { name = "Quilt"; content { includeGroup("org.quiltmc.parsers") } }
+	maven("https://maven.shedaniel.me/") { name = "Shedaniel"; content { includeGroup("me.shedaniel.cloth") } }
 }
 
 dependencies {
@@ -68,6 +72,17 @@ dependencies {
 	modImplementation("net.fabricmc:fabric-loader:${prop("deps.fabric-loader")}")
 	modImplementation("net.fabricmc.fabric-api:fabric-api:${prop("deps.fabric-api")}")
 	if (isUnobfuscated) implementation(prop("deps.geckolib")) else modImplementation(prop("deps.geckolib"))
+	// config screens: built with YACL or Cloth Config when the player has one (else a plain screen), Mod Menu's button;
+	// none of them is needed at runtime
+	listOf("deps.modmenu", "deps.yacl", "deps.cloth-config").mapNotNull { optionalProp(it) }.forEach { modCompileOnly(it) { isTransitive = false } }
+	// `-Pdragonsworn.configLibs`: YACL and Cloth Config in the dev client too, to see their screens
+	if (providers.gradleProperty("dragonsworn.configLibs").isPresent) {
+		listOf("deps.yacl", "deps.cloth-config").mapNotNull { optionalProp(it) }.forEach { modLocalRuntime(it) { isTransitive = false } }
+		// YACL's own libraries (its released jar nests them; the Modrinth maven's dev classpath does not)
+		localRuntime("org.quiltmc.parsers:json:0.2.1")
+		localRuntime("org.quiltmc.parsers:gson:0.2.1")
+		localRuntime("me.shedaniel.cloth:basic-math:0.6.1")     // Cloth Config's, likewise
+	}
 }
 
 loom {
@@ -78,22 +93,26 @@ loom {
 		programArgs("--username", "Dev")
 		configName = "Fabric $mcVersion Client"
 	}
-	// `-Pdragonfall.showcase`: the client builds a test world, spawns the dragon, plays every animation,
+	// `-Pdragonsworn.showcase`: the client builds a test world, spawns the dragon, plays every animation,
 	// photographs it into run/<target>/screenshots and quits. The in-game test; see Showcase.java.
-	if (providers.gradleProperty("dragonfall.showcase").isPresent) {
+	if (providers.gradleProperty("dragonsworn.showcase").isPresent) {
 		runs.named("client") {
-			vmArgs("-Ddragonfall.showcase=true")
-			// `-Pdragonfall.showcase=<stage>` runs only that stage (see Showcase.ONLY)
-			val only = providers.gradleProperty("dragonfall.showcase").get()
-			if (only.isNotBlank() && only != "true") vmArgs("-Ddragonfall.showcase.only=$only")
+			vmArgs("-Ddragonsworn.showcase=true")
+			// `-Pdragonsworn.showcase=<stage>` runs only that stage (see Showcase.ONLY)
+			val only = providers.gradleProperty("dragonsworn.showcase").get()
+			if (only.isNotBlank() && only != "true") vmArgs("-Ddragonsworn.showcase.only=$only")
 			programArgs("--width", "1600", "--height", "900")
 		}
 	}
-	// `-Pdragonfall.arena`: a tour of the End's monoliths, photographed, then a dragon respawn that must
+	// `-Pdragonsworn.arena`: a tour of the End's monoliths, photographed, then a dragon respawn that must
 	// rebuild them exactly (see ArenaTour.java).
-	if (providers.gradleProperty("dragonfall.arena").isPresent) {
+	// `-Pdragonsworn.configScreen=plain|cloth|yacl`: which library builds the config screen (ConfigScreens)
+	if (providers.gradleProperty("dragonsworn.configScreen").isPresent) {
+		runs.named("client") { vmArgs("-Ddragonsworn.configScreen=" + providers.gradleProperty("dragonsworn.configScreen").get()) }
+	}
+	if (providers.gradleProperty("dragonsworn.arena").isPresent) {
 		runs.named("client") {
-			vmArgs("-Ddragonfall.arena=true")
+			vmArgs("-Ddragonsworn.arena=true")
 			programArgs("--width", "1600", "--height", "900")
 		}
 	}

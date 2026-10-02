@@ -5,7 +5,7 @@
 Vanilla's dragon has two sounds it repeats: `growl` (a 3 s roar with a long rumbling tail, played every
 10-20 s and as the ambient sound) and `wings` (two swings per file, played on vanilla's own flap timer,
 not on the model's wingbeat). Sources are read from Loom's asset cache (any Minecraft version whose
-index has them, newest first). Out, in src/mc/shared/resources/assets/dragonfall/sounds/entity/ender_dragon:
+index has them, newest first). Out, in src/mc/shared/resources/assets/dragonsworn/sounds/entity/ender_dragon:
 
 * roar1-4   the roar itself: from the growl's onset, loud while the roar animation holds the jaw open
             (ROAR_LOUD), then faded out by the time it closes (anims.py ROAR_AT .. ROAR_CLOSE + 0.4 s).
@@ -26,7 +26,7 @@ import soundfile as sf
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-ASSETS = os.path.join(ROOT, 'src', 'mc', 'shared', 'resources', 'assets', 'dragonfall')
+ASSETS = os.path.join(ROOT, 'src', 'mc', 'shared', 'resources', 'assets', 'dragonsworn')
 DST = os.path.join(ASSETS, 'sounds', 'entity', 'ender_dragon')
 CACHE = os.path.expanduser('~/.gradle/caches/fabric-loom/assets')
 SR = 44100
@@ -151,16 +151,16 @@ def build():
 		for k, clip in enumerate(clips, 1):
 			path = os.path.join(DST, f'{event}{k}.ogg')
 			sf.write(path, clip.astype(np.float32), SR, format='OGG', subtype='VORBIS')
-			names.append({'name': f'dragonfall:entity/ender_dragon/{event}{k}', 'attenuation_distance': distance})
+			names.append({'name': f'dragonsworn:entity/ender_dragon/{event}{k}', 'attenuation_distance': distance})
 			print(f'  {os.path.relpath(path, ROOT)}  {len(clip) / SR:.2f}s')
-		sounds[f'entity.ender_dragon.{event}'] = {'subtitle': f'subtitles.dragonfall.entity.ender_dragon.{event}', 'sounds': names}
+		sounds[f'entity.ender_dragon.{event}'] = {'subtitle': f'subtitles.dragonsworn.entity.ender_dragon.{event}', 'sounds': names}
 	with open(os.path.join(ASSETS, 'sounds.json'), 'w') as f:
 		json.dump(sounds, f, indent='\t')
 		f.write('\n')
 	lang = os.path.join(ASSETS, 'lang', 'en_us.json')
 	entries = json.load(open(lang)) if os.path.exists(lang) else {}
 	for event, (_, _, subtitle) in EVENTS.items():
-		entries[f'subtitles.dragonfall.entity.ender_dragon.{event}'] = subtitle
+		entries[f'subtitles.dragonsworn.entity.ender_dragon.{event}'] = subtitle
 	os.makedirs(os.path.dirname(lang), exist_ok=True)
 	with open(lang, 'w') as f:
 		json.dump(entries, f, indent='\t')

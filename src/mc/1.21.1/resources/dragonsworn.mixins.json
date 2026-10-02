@@ -1,0 +1,24 @@
+{
+	"required": true,
+	"minVersion": "0.8",
+	"package": "crazylimits.dragonsworn.mc.mixin",
+	"compatibilityLevel": "JAVA_${java}",
+	"injectors": { "defaultRequire": 1 },
+	"mixins": [
+		"DragonDeathPhaseMixin",
+		"DragonEggBlockMixin",
+		"EnderDragonMixin",
+		"EnderDragonPartAccessor",
+		"EnderDragonPhaseInvoker",
+		"EnderDragonPhaseManagerMixin",
+		"EntityAccessor",
+		"EntityMixin",
+		"ServerGamePacketListenerImplMixin",
+		"ServerLevelMixin"
+	],
+	"client": [
+		"client.CameraMixin",
+		"client.ClientLevelMixin",
+		"client.LivingEntityRendererMixin"
+	]
+}

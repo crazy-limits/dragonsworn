@@ -10,6 +10,8 @@ stonecutter {
 }
 
 fun prop(key: String): String = stonecutter.properties.get<String>(key)
+/** A property this version may not declare (optional integrations). */
+fun optionalProp(key: String): String? = runCatching { stonecutter.properties.get<String>(key) }.getOrNull()
 
 val modId = prop("mod.id")
 val mcVersion = stonecutter.current.version
@@ -52,6 +54,9 @@ repositories {
 
 dependencies {
 	implementation(prop("deps.geckolib"))
+	// config screens: built with YACL or Cloth Config when the player has one (else a plain screen), Mod Menu's button;
+	// none of them is needed at runtime
+	listOf("deps.modmenu", "deps.yacl", "deps.cloth-config").mapNotNull { optionalProp(it) }.forEach { compileOnly(it) { isTransitive = false } }
 }
 
 neoForge {
@@ -64,17 +69,17 @@ neoForge {
 			ideName = "NeoForge $mcVersion Client"
 			programArgument("--username")
 			programArgument("Dev")
-			// `-Pdragonfall.showcase` makes the client build a test world, spawn the dragon, play every
+			// `-Pdragonsworn.showcase` makes the client build a test world, spawn the dragon, play every
 			// animation, photograph it and quit -- the NeoForge half of the in-game test.
-			if (providers.gradleProperty("dragonfall.showcase").isPresent) {
-				jvmArgument("-Ddragonfall.showcase=true")
-				val only = providers.gradleProperty("dragonfall.showcase").get()
-				if (only.isNotBlank() && only != "true") jvmArgument("-Ddragonfall.showcase.only=$only")
+			if (providers.gradleProperty("dragonsworn.showcase").isPresent) {
+				jvmArgument("-Ddragonsworn.showcase=true")
+				val only = providers.gradleProperty("dragonsworn.showcase").get()
+				if (only.isNotBlank() && only != "true") jvmArgument("-Ddragonsworn.showcase.only=$only")
 				programArguments.addAll("--width", "1600", "--height", "900")
 			}
-			// `-Pdragonfall.arena`: a tour of the End's monoliths (see ArenaTour.java)
-			if (providers.gradleProperty("dragonfall.arena").isPresent) {
-				jvmArgument("-Ddragonfall.arena=true")
+			// `-Pdragonsworn.arena`: a tour of the End's monoliths (see ArenaTour.java)
+			if (providers.gradleProperty("dragonsworn.arena").isPresent) {
+				jvmArgument("-Ddragonsworn.arena=true")
 				programArguments.addAll("--width", "1600", "--height", "900")
 			}
 		}

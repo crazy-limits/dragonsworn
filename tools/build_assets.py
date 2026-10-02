@@ -18,7 +18,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 OUT = os.path.join(HERE, 'out')
-NS = 'dragonfall'
+NS = 'dragonsworn'
 
 
 def copy(src, *dst):
@@ -34,6 +34,7 @@ subprocess.run([sys.executable, os.path.join(HERE, 'particles.py')], check=True,
 subprocess.run([sys.executable, os.path.join(HERE, 'egg.py')], check=True, cwd=HERE)
 subprocess.run([sys.executable, os.path.join(HERE, 'dragon_fire.py')], check=True, cwd=HERE)
 subprocess.run([sys.executable, os.path.join(HERE, 'crystal_beam.py')], check=True, cwd=HERE)
+subprocess.run([sys.executable, os.path.join(HERE, 'icon.py')], check=True, cwd=HERE)
 shutil.copyfile(os.path.join(HERE, 'source', 'dragon_eyes.png'), os.path.join(OUT, 'ender_dragon_glowmask.png'))
 subprocess.run([sys.executable, os.path.join(HERE, 'heat.py')], check=True, cwd=HERE)
 subprocess.run([sys.executable, os.path.join(HERE, 'pack_uv.py')], check=True, cwd=HERE)

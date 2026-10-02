@@ -17,7 +17,7 @@ plugins {
 	id("dev.kikugie.loom-back-compat") version "0.4.2"
 }
 
-rootProject.name = "dragonfall"
+rootProject.name = "dragonsworn"
 
 stonecutter {
 	create(rootProject) {

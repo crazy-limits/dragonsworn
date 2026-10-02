@@ -25,7 +25,7 @@ import numpy as np
 from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DST = os.path.join(os.path.dirname(HERE), 'src', 'mc', 'shared', 'resources', 'assets', 'dragonfall', 'textures', 'particle')
+DST = os.path.join(os.path.dirname(HERE), 'src', 'mc', 'shared', 'resources', 'assets', 'dragonsworn', 'textures', 'particle')
 
 SS = 4                   # supersampling
 # fire, hottest to coolest; smoke, lit to shadowed; smoke lit by the fire beside it

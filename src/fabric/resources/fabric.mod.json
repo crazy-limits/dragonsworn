@@ -6,15 +6,17 @@
 	"description": "${description}",
 	"authors": ["crazylimits"],
 	"license": "${license}",
+	"icon": "assets/dragonsworn/icon.png",
 	"environment": "*",
 	"mixins": [
-		"dragonfall.mixins.json",
-		"dragonfall.breath.mixins.json",
-		"dragonfall.arena.mixins.json"
+		"dragonsworn.mixins.json",
+		"dragonsworn.breath.mixins.json",
+		"dragonsworn.arena.mixins.json"
 	],
 	"entrypoints": {
-		"main": ["crazylimits.dragonfall.fabric.DragonfallFabric"],
-		"client": ["crazylimits.dragonfall.fabric.DragonfallFabricClient"]
+		"main": ["crazylimits.dragonsworn.fabric.DragonswornFabric"],
+		"client": ["crazylimits.dragonsworn.fabric.DragonswornFabricClient"],
+		"modmenu": ["crazylimits.dragonsworn.fabric.DragonswornModMenu"]
 	},
 	"depends": {
 		"fabricloader": ">=${loaderVersion}",
@@ -22,5 +24,10 @@
 		"java": ">=${java}",
 		"fabric-api": "*",
 		"geckolib": "*"
+	},
+	"suggests": {
+		"modmenu": "*",
+		"yet_another_config_lib_v3": "*",
+		"cloth-config": "*"
 	}
 }

@@ -8,15 +8,16 @@ version = "${version}"
 displayName = "${name}"
 description = '''${description}'''
 authors = "crazylimits"
+logoFile = "assets/dragonsworn/icon.png"
 
 [[mixins]]
-config = "dragonfall.mixins.json"
+config = "dragonsworn.mixins.json"
 
 [[mixins]]
-config = "dragonfall.breath.mixins.json"
+config = "dragonsworn.breath.mixins.json"
 
 [[mixins]]
-config = "dragonfall.arena.mixins.json"
+config = "dragonsworn.arena.mixins.json"
 
 [[dependencies.${id}]]
 modId = "neoforge"
@@ -37,4 +38,18 @@ modId = "geckolib"
 type = "required"
 versionRange = "[0,)"
 ordering = "AFTER"
+side = "CLIENT"
+
+[[dependencies.${id}]]
+modId = "yet_another_config_lib_v3"
+type = "optional"
+versionRange = "[3,)"
+ordering = "NONE"
+side = "CLIENT"
+
+[[dependencies.${id}]]
+modId = "cloth_config"
+type = "optional"
+versionRange = "[15,)"
+ordering = "NONE"
 side = "CLIENT"

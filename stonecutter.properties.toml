@@ -5,8 +5,8 @@
 
 loomx.loom_version = "1.17-SNAPSHOT"
 
-mod.id = "dragonfall"
-mod.name = "Dragonfall"
+mod.id = "dragonsworn"
+mod.name = "Dragonsworn"
 mod.group = "crazylimits"
 mod.version = "0.1.0"
 mod.description = "An overhauled Ender Dragon: a new animated boss model whose wings fold like a fan and carry it on the ground."
@@ -33,6 +33,10 @@ deps.geckolib = "software.bernie.geckolib:geckolib-fabric-1.21.11:5.4.5"
 deps.minecraft = "1.21.1"
 deps.fabric-api = "0.116.15+1.21.1"
 deps.geckolib = "software.bernie.geckolib:geckolib-fabric-1.21.1:4.9.3"
+# config screens (compile-only, all optional at runtime)
+deps.modmenu = "maven.modrinth:modmenu:11.0.5"
+deps.yacl = "maven.modrinth:yacl:3.8.2+1.21.1-fabric"
+deps.cloth-config = "maven.modrinth:cloth-config:15.0.140+fabric"
 
 [neoforge]
 
@@ -50,3 +54,6 @@ deps.geckolib = "software.bernie.geckolib:geckolib-neoforge-1.21.11:5.4.5"
 deps.minecraft = "1.21.1"
 deps.neoforge = "21.1.249"
 deps.geckolib = "software.bernie.geckolib:geckolib-neoforge-1.21.1:4.9.3"
+# config screens (compile-only, all optional at runtime)
+deps.yacl = "maven.modrinth:yacl:3.8.2+1.21.1-neoforge"
+deps.cloth-config = "maven.modrinth:cloth-config:15.0.140+neoforge"

@@ -15,7 +15,7 @@ import zipfile
 from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DST = os.path.join(os.path.dirname(HERE), 'src', 'mc', 'shared', 'resources', 'assets', 'dragonfall', 'textures', 'block')
+DST = os.path.join(os.path.dirname(HERE), 'src', 'mc', 'shared', 'resources', 'assets', 'dragonsworn', 'textures', 'block')
 JARS = os.path.expanduser('~/.gradle/caches/fabric-loom/*/minecraft-client.jar')
 # how much of soul fire's green becomes red (below 1 leans the hue from magenta to violet), and how much of
 # its red becomes green (below 1 turns the pale, nearly white texels lavender instead of periwinkle)
