@@ -139,6 +139,7 @@ tasks.processResources {
 		"version" to prop("mod.version"),
 		"description" to prop("mod.description"),
 		"license" to prop("mod.license"),
+		"authors" to prop("mod.authors"),
 		"mcVersion" to mcVersion,
 		"loaderVersion" to prop("deps.fabric-loader"),
 		"java" to javaVersion.toString(),
@@ -154,3 +155,6 @@ dependencies {
 }
 
 tasks.test { useJUnitPlatform() }
+
+// LGPL: the licence travels with the binary (and says which assets it does not cover)
+tasks.named<Jar>("jar") { from(rootProject.files("LICENSE", "COPYING", "LICENSE-ASSETS.md")) }

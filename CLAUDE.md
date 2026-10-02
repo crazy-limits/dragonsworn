@@ -23,7 +23,7 @@ screenshots to `run/<target>/screenshots/df-*.png`, a report to `run/<target>/sh
 `-Pdragonsworn.showcase=narrow` runs only the narrow footholds (a 3x3 platform, a lone pillar beside a husk's pillar).
 `-Pdragonsworn.showcase=air` runs only the air attacks (a husk on a lone 16-block pillar, one hanging in the air: fly-by
 bite, hover bite, hover breath each, then the wild AI's own choice; ~6 min).
-Targets 1.21.11 and 26.2 are declared (GeckoLib 5) but their `src/mc/<version>` bridge is not written yet.
+Targets 1.21.11 and 26.2 (GeckoLib 5) are paused in `settings.gradle.kts` until their `src/mc/<version>` bridge is written.
 
 ## Layout
 - `src/main/java` -- game-free core (Stonecutter-processed), tested in `src/test`: `anim` (what plays),

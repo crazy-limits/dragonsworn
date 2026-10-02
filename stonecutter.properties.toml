@@ -11,7 +11,8 @@ mod.group = "crazylimits"
 mod.version = "0.1.0"
 mod.description = "An overhauled Ender Dragon: a new animated boss model whose wings fold like a fan and carry it on the ground."
 mod.authors = "crazylimits"
-mod.license = "All-Rights-Reserved"
+# SPDX: the code is LGPL-3.0; the model, textures and sounds are not (see LICENSE-ASSETS.md)
+mod.license = "LGPL-3.0-only AND LicenseRef-All-Rights-Reserved"
 
 # GeckoLib: 4.x on the 1.21.1 line (entity-based renderers), 5.x from 1.21.2 on (render states).
 # A `maven.modrinth:` coordinate is used where GeckoLib's own maven has no artifact for that target.

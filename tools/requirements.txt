@@ -1,0 +1,5 @@
+# The asset pipeline (python3 tools/build_assets.py), Python 3.9+
+Pillow>=10
+numpy>=1.24
+# only tools/sounds.py
+soundfile>=0.12

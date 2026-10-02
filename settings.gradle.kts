@@ -26,8 +26,11 @@ stonecutter {
 
 		// Newest first. Each entry becomes a Gradle subproject, e.g. :1.21.1-neoforge.
 		// Add a Minecraft version here AND in stonecutter.properties.toml -- nowhere else.
-		match("26.2", "fabric", "neoforge")
-		match("1.21.11", "fabric", "neoforge")
+		// Paused until their src/mc/<version> bridge exists (every declared target is configured, and
+		// downloaded, on each Gradle run, and buildAll/testAll could not pass). Their deps stay in the
+		// properties file; uncomment to start a port.
+		// match("26.2", "fabric", "neoforge")
+		// match("1.21.11", "fabric", "neoforge")
 		match("1.21.1", "fabric", "neoforge")
 
 		vcsVersion = "1.21.1-neoforge"

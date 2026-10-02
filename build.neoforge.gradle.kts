@@ -54,9 +54,9 @@ repositories {
 
 dependencies {
 	implementation(prop("deps.geckolib"))
-	// config screens: built with YACL or Cloth Config when the player has one (else a plain screen), Mod Menu's button;
-	// none of them is needed at runtime
-	listOf("deps.modmenu", "deps.yacl", "deps.cloth-config").mapNotNull { optionalProp(it) }.forEach { compileOnly(it) { isTransitive = false } }
+	// config screens: built with YACL or Cloth Config when the player has one (else a plain screen);
+	// neither is needed at runtime
+	listOf("deps.yacl", "deps.cloth-config").mapNotNull { optionalProp(it) }.forEach { compileOnly(it) { isTransitive = false } }
 }
 
 neoForge {
@@ -81,6 +81,10 @@ neoForge {
 			if (providers.gradleProperty("dragonsworn.arena").isPresent) {
 				jvmArgument("-Ddragonsworn.arena=true")
 				programArguments.addAll("--width", "1600", "--height", "900")
+			}
+			// `-Pdragonsworn.configScreen=plain|cloth|yacl`: which library builds the config screen (ConfigScreens)
+			if (providers.gradleProperty("dragonsworn.configScreen").isPresent) {
+				jvmArgument("-Ddragonsworn.configScreen=" + providers.gradleProperty("dragonsworn.configScreen").get())
 			}
 		}
 		register("server") {
@@ -108,6 +112,7 @@ tasks.processResources {
 		"neoVersion" to prop("deps.neoforge"),
 		"java" to javaVersion.toString(),
 		"license" to prop("mod.license"),
+		"authors" to prop("mod.authors"),
 	)
 	inputs.properties(tokens)
 	filesMatching(listOf("META-INF/neoforge.mods.toml", "*.mixins.json")) { expand(tokens) }
@@ -122,3 +127,6 @@ dependencies {
 }
 
 tasks.test { useJUnitPlatform() }
+
+// LGPL: the licence travels with the binary (and says which assets it does not cover)
+tasks.named<Jar>("jar") { from(rootProject.files("LICENSE", "COPYING", "LICENSE-ASSETS.md")) }

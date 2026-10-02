@@ -7,7 +7,7 @@ modId = "${id}"
 version = "${version}"
 displayName = "${name}"
 description = '''${description}'''
-authors = "crazylimits"
+authors = "${authors}"
 logoFile = "assets/dragonsworn/icon.png"
 
 [[mixins]]

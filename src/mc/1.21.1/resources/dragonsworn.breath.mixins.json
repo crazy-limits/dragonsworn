@@ -2,7 +2,7 @@
 	"required": true,
 	"minVersion": "0.8",
 	"package": "crazylimits.dragonsworn.mc.breath.mixin",
-	"compatibilityLevel": "JAVA_21",
+	"compatibilityLevel": "JAVA_${java}",
 	"mixins": [
 		"DragonFireballMixin",
 		"DragonSittingAttackingPhaseMixin",
