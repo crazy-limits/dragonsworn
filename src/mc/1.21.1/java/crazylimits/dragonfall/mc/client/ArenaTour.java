@@ -3,6 +3,7 @@ package crazylimits.dragonfall.mc.client;
 import com.google.common.collect.ImmutableList;
 import crazylimits.dragonfall.arena.Monolith;
 import crazylimits.dragonfall.mc.arena.Monoliths;
+import crazylimits.dragonfall.mc.breath.DragonFire;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
 import net.minecraft.client.gui.screens.PauseScreen;
@@ -156,6 +157,10 @@ public final class ArenaTour {
 		})));
 		STEPS.add(new Step(1, m -> verify(m, spikes, "rebuilt")));
 		shoot(view(95, 115, 95, 0, 75, 0), "overview-rebuilt", 20);
+		// the crystal beam's runes, close up: a crystal over the altar beaming at a point 24 blocks off
+		command("execute in minecraft:the_end run summon minecraft:end_crystal 0.5 100 0.5 {beam_target:[I;24,98,0],ShowBottom:0b}", 5);
+		shoot(view(8, 101.5, 4.5, 8, 99.5, 0.5), "beam", 40);
+		shoot(view(-2, 100, 5, 14, 98.5, 0.5), "beam-along", 20);
 	}
 
 	/** The world holds the monolith exactly (nothing missing, nothing stray around it) and its crystal. */
@@ -179,8 +184,7 @@ public final class ArenaTour {
 				for (BlockPos pos : BlockPos.betweenClosed(m.centerX - reach, m.groundY, m.centerZ - reach,
 						m.centerX + reach, m.height + 30, m.centerZ + reach)) {
 					BlockState s = end.getBlockState(pos);
-					boolean ours = s.is(Blocks.OBSIDIAN) || s.is(Blocks.IRON_BARS);
-					if (ours && m.at(pos.getX(), pos.getY(), pos.getZ()) == null) {
+					if (s.is(Blocks.OBSIDIAN) && m.at(pos.getX(), pos.getY(), pos.getZ()) == null) {
 						stray++;
 						if (samples.size() < 8) samples.add("stray " + (pos.getX() - m.centerX) + "," + pos.getY() + "," + (pos.getZ() - m.centerZ));
 					}
@@ -191,6 +195,8 @@ public final class ArenaTour {
 				check(wrong[0] == 0, what + ": the world holds the monolith (" + wrong[0] + " of " + m.size() + " blocks differ)");
 				check(stray == 0, what + ": no stray blocks around it (" + stray + ")");
 				check(crystals == 1, what + ": one crystal at vanilla's spot (" + crystals + ")");
+				boolean fire = end.getBlockState(new BlockPos(m.centerX, m.crystalY(), m.centerZ)).is(DragonFire.BLOCK);
+				check(fire, what + ": dragon fire under the crystal");
 				if (!samples.isEmpty()) REPORT.add("     e.g. " + String.join("; ", samples));
 			}
 			return null;
@@ -202,7 +208,6 @@ public final class ArenaTour {
 			case AIR -> state.isAir();
 			case OBSIDIAN -> state.is(Blocks.OBSIDIAN);
 			case BEDROCK -> state.is(Blocks.BEDROCK);
-			case IRON_BARS -> state.is(Blocks.IRON_BARS);
 		};
 	}
 

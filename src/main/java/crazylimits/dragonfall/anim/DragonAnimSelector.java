@@ -1,6 +1,7 @@
 package crazylimits.dragonfall.anim;
 
 import crazylimits.dragonfall.flight.FlightModel;
+import crazylimits.dragonfall.nav.Foothold;
 
 /**
  * Picks the dragon's animation. Game-free, so it is unit tested; the server runs it too (it needs the
@@ -35,9 +36,16 @@ public final class DragonAnimSelector {
 	 * @param horizontalSpeed blocks per tick
 	 */
 	public static Choice select(Kind kind, DragonAnim action, int actionSeq, FlightModel.Plan flight, double horizontalSpeed) {
+		return select(kind, Foothold.STAND, action, actionSeq, flight, horizontalSpeed);
+	}
+
+	/** As above; {@code foothold}: how it stands on the ground ({@link Kind#GROUND}), sat up it never walks. */
+	public static Choice select(Kind kind, Foothold foothold, DragonAnim action, int actionSeq, FlightModel.Plan flight, double horizontalSpeed) {
 		if (kind == Kind.DYING) return new Choice(DragonAnim.DEATH, 0);
 		if (action != null) return new Choice(action, actionSeq);
 		if (kind == Kind.PERCH_BREATH) return new Choice(DragonAnim.BREATH, 0);
+		if (kind == Kind.GROUND && foothold == Foothold.UPRIGHT) return new Choice(DragonAnim.UPRIGHT, 0);
+		if (kind == Kind.GROUND && foothold == Foothold.CLING) return new Choice(DragonAnim.CLING, 0);
 		return switch (kind) {
 			case PERCH_SCANNING, PERCH_FLAMING, PERCH_ATTACKING, GROUND -> {
 				if (horizontalSpeed > WALK_THRESHOLD) yield new Choice(DragonAnim.WALK, 0);

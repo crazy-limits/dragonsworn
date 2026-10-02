@@ -23,6 +23,8 @@ public final class DragonVoice {
 	public static final double ROAR_AT = DragonAnim.ROAR_SECONDS + DragonAnim.BLEND_TICKS / 20.0;
 	/** Where in a beat the swing sounds: a little into the downstroke, so its peak meets the fastest sweep. */
 	public static final double WING_PHASE = 0.3;
+	/** {@link DragonAnim#UPRIGHT}: the righting stroke's push (its downstroke, past the middle of it). */
+	static final double UPRIGHT_WING = DragonAnim.BALANCE_SECONDS + 0.6 * DragonAnim.BALANCE_LENGTH;
 	/** {@link DragonAnim#TAKEOFF}: all four push off (the step), the first power stroke goes down (the swing). */
 	static final double TAKEOFF_STEP = 0.5, TAKEOFF_WING = DragonAnim.TAKEOFF_TOP_SECONDS + 0.12;
 	/**
@@ -62,13 +64,14 @@ public final class DragonVoice {
 		double blend = DragonAnim.BLEND_TICKS / 20.0;
 		return switch (anim) {
 			case ROAR -> once(DragonAnim.ROAR_SECONDS + blend, before, after) ? Cue.ROAR : null;
-			case FLY, HOVER -> every(DragonAnim.FLAP_SECONDS, WING_PHASE * DragonAnim.FLAP_SECONDS + blend, before, after) ? Cue.WING : null;
+			case FLY, HOVER, CLING, CLING_BITE, HOVER_BITE, HOVER_BREATH -> every(DragonAnim.FLAP_SECONDS, WING_PHASE * DragonAnim.FLAP_SECONDS + blend, before, after) ? Cue.WING : null;
 			case FLAP -> every(DragonAnim.PUSH_SECONDS, WING_PHASE * DragonAnim.FLAP_SECONDS + blend, before, after) ? Cue.WING : null;
 			case TAKEOFF -> once(TAKEOFF_WING + blend, before, after) ? Cue.WING
 					: once(TAKEOFF_STEP + blend, before, after) ? Cue.STEP_HIND : null;
 			case LAND -> once(LAND_WING + blend, before, after) ? Cue.WING
 					: once(LAND_STEP + blend, before, after) ? Cue.STEP_HIND
 					: once(LAND_HANDS + blend, before, after) ? Cue.STEP_FRONT : null;
+			case UPRIGHT -> every(DragonAnim.UPRIGHT_SECONDS, UPRIGHT_WING + blend, before, after) ? Cue.WING : null;
 			case WALK -> {
 				for (int i = 0; i < WALK_PLANTS.length; i++) {
 					if (every(WALK_CYCLE, WALK_PLANTS[i] % WALK_CYCLE + blend, before, after)) yield WALK_FEET[i];
@@ -81,7 +84,7 @@ public final class DragonVoice {
 
 	/** An attack: a roar going on fades out, and the dragon does not start one. */
 	public static boolean attacking(DragonAnim anim) {
-		return anim == DragonAnim.ATTACK || anim == DragonAnim.TAIL_SWEEP || anim == DragonAnim.BREATH;
+		return anim != null && (anim.bites() || anim == DragonAnim.TAIL_SWEEP || anim == DragonAnim.BREATH || anim.breathesInFlight());
 	}
 
 	private static boolean once(double at, double before, double after) {

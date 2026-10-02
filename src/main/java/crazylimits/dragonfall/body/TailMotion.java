@@ -8,20 +8,21 @@ import crazylimits.dragonfall.anim.DragonAnim;
  * {@code tools/anims.py}, {@code walk.py} and {@code stand.py}, ported).
  *
  * <ul>
- *   <li><b>Standing</b> (idle, roar, bite, tail strike, breath, the takeoff's crouch): the tail curls
+ *   <li><b>Standing</b> (idle, roar, bite, tail strike, breath, the takeoff's crouch, sat up): the tail curls
  *       down toward its tip and lies on the ground: {@link Pose#rest} asks {@link Tail} to lower it from
  *       the root until it rests on what is under it. On top: the idle's slow sway, a wave to the tip;
  *       the roar's shake; the tail strike's lift and rattling tip (the telegraph).</li>
  *   <li><b>Walking</b>: it swings against the hips, the swing lagging down its length, and rises and
  *       falls with each hind footfall.</li>
- *   <li><b>Flying</b> (fly, flap, glide, hover, takeoff, land): made with the animation ({@link TailTrack}):
+ *   <li><b>Flying</b> (fly, flap, glide, hover, takeoff, land, and clinging to a perch): made with the animation ({@link TailTrack}):
  *       a rope hung from the body, the body's every heave and pitch running down it as a wave; it drops on
  *       each downstroke, hangs when the body stands up or brakes, sways with the glide, and lies down
  *       where the animation stands (the takeoff's crouch, the landing after the touch).</li>
- *   <li><b>Dying</b>: it slumps and curls to one side.</li>
+ *   <li><b>Dying</b>: wrapped in its wings, it tucks the tail forward between its legs ({@link #TUCK}).</li>
  * </ul>
- * One-shots carry on as their animation chain does ({@code ReplacedEnderDragon}): a roar, bite, strike,
- * breath or landing into the idle, the takeoff into the hover, a push into the glide.
+ * One-shots carry on as their animation chain does ({@code ReplacedEnderDragon}, {@link DragonAnim#then}): a
+ * roar, bite, strike, breath or landing into the idle, the takeoff into the hover, a push into the glide,
+ * a bite sat up or clinging back into that.
  *
  * <p>Bends in {@link TailChain}'s convention (degrees, +X lowers the far end, +Y swings it right).
  */
@@ -31,6 +32,11 @@ public final class TailMotion {
 	/** The standing tail's curl toward its tip, on the second and third original bones. */
 	static final double[] CURL = {6.0, 9.0};
 	private static final double WALK_CYCLE = 2.4, WALK_BODY_PITCH = 6.0;
+	/**
+	 * The dying cocoon's tail, per segment (root to tip): bent hard down at the root, it runs forward under
+	 * the belly between the drawn-up legs, the tip turning up toward the chest.
+	 */
+	static final double[] TUCK = {50.0, 50.0, 40.0, 25.0, 15.0, 5.0, 0.0, -5.0, -5.0};
 
 	/** A tail pose: per-segment bends, how much it lies on the ground and how far it is lifted from there. */
 	public static final class Pose {
@@ -79,22 +85,12 @@ public final class TailMotion {
 		if (anim.loops()) {
 			t -= Math.floor(t / length) * length;
 		} else if (t > length) {
-			// what the chain plays next
-			switch (anim) {
-				case ROAR, ATTACK, TAIL_SWEEP, BREATH, LAND -> {
-					sample(DragonAnim.IDLE, t - length, out);
-					return;
-				}
-				case TAKEOFF -> {
-					sample(DragonAnim.HOVER, t - length, out);
-					return;
-				}
-				case FLAP -> {
-					sample(DragonAnim.GLIDE, t - length, out);
-					return;
-				}
-				default -> t = length;
+			// what the chain plays next (the death holds its last frame)
+			if (anim != DragonAnim.DEATH) {
+				sample(anim.then(), t - length, out);
+				return;
 			}
+			t = length;
 		}
 		t = Math.max(0.0, t);
 		if (TailTrack.has(anim)) {
@@ -115,24 +111,30 @@ public final class TailMotion {
 				bone(out, 1, 2 * Math.cos(2 * w), -9 * Math.sin(w - 1.0));
 				bone(out, 2, 3 * Math.cos(2 * w - 0.5), -12 * Math.sin(w - 1.6));
 			}
-			case FLY, FLAP, GLIDE, HOVER, TAKEOFF, LAND -> throw new IllegalStateException("No tail track for " + anim);
+			case FLY, FLAP, GLIDE, HOVER, TAKEOFF, LAND, CLING, CLING_BITE, GLIDE_BREATH, GLIDE_BITE, HOVER_BITE, HOVER_BREATH -> throw new IllegalStateException("No tail track for " + anim);
 			case ROAR -> {
 				double snap = ease((t - 0.6 + 0.08) / 0.15), fade = 1 - ease((t - 1.6) / 0.5);
 				double shake = 2 * Math.sin(t * 40) * snap * fade;
 				standing(out, 0.0);
 				bone(out, 2, 0.0, shake * 2);
 			}
-			case ATTACK, BREATH -> standing(out, 0.0);
+			case ATTACK, BREATH, UPRIGHT_BITE -> standing(out, 0.0);
+			case UPRIGHT -> {
+				// laid behind as a prop, swaying against the wings' teeter
+				double w = 2 * Math.PI * t / length;
+				standing(out, 0.0);
+				bone(out, 1, 0.0, -6 * Math.sin(w - 0.4));
+				bone(out, 2, 0.0, -9 * Math.sin(w - 1.0));
+			}
 			case TAIL_SWEEP -> {
 				standing(out, 26 * ease(t / 0.6) * (1 - ease((t - 1.0) / 0.8)));
 				// the tip rattles
 				if (t > 0.35 && t < 0.65) for (int k = 6; k < out.y.length; k++) out.y[k] = 3.5 * Math.sin(t * 75 + k);
 			}
 			case DEATH -> {
-				double slump = ease((t - 0.8) / 1.2);
-				bone(out, 0, 4 * slump, -8 * slump);
-				bone(out, 1, 4 * slump, -12 * slump);
-				bone(out, 2, 2 * slump, -16 * slump);
+				// tucked as the wings close round it
+				double tuck = ease(t / DragonAnim.DEATH_WRAP_SECONDS);
+				for (int k = 0; k < out.x.length; k++) out.x[k] = TUCK[k] * tuck;
 			}
 		}
 	}

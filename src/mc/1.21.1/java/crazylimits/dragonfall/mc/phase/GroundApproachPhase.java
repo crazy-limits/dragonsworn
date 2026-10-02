@@ -6,6 +6,7 @@ import crazylimits.dragonfall.mc.DragonBrain;
 import crazylimits.dragonfall.mc.DragonPhases;
 import crazylimits.dragonfall.mc.DragonfallDragon;
 import crazylimits.dragonfall.nav.BlockGrid;
+import crazylimits.dragonfall.nav.Foothold;
 import crazylimits.dragonfall.nav.LandingSite;
 import crazylimits.dragonfall.nav.Runway;
 import net.minecraft.util.Mth;
@@ -31,6 +32,10 @@ import org.jetbrains.annotations.Nullable;
  *   <li><b>Hovering</b>: fly to a point {@link #ABOVE} blocks over the site, check it still fits, then
  *       hover straight down onto it.</li>
  * </ul>
+ * A narrow foothold ({@link Foothold#UPRIGHT}, {@link Foothold#CLING}: a ledge, a pillar's top) is always
+ * hovered down onto: there is no runway there.
+ * Landed, it fights (or rests), or for a perch ({@link #perch}: the End fight's, by its players) it
+ * perches there as vanilla's dragon did on the exit portal: scans, roars, breathes and takes off.
  * If the site no longer fits (somebody built on it) or the dragon cannot get there, it gives up and stays
  * in the air; a running approach that cannot line up falls back to hovering down.
  */
@@ -55,7 +60,9 @@ public class GroundApproachPhase extends AbstractDragonPhaseInstance implements 
 	private int[] site;
 	@Nullable
 	private LivingEntity target;
-	private boolean descending, decided, onLine;
+	private boolean descending, decided, onLine, perch;
+	/** How it will stand on the site. */
+	private Foothold foothold = Foothold.STAND;
 	private int ticks;
 	@Nullable
 	private Runway runway;
@@ -76,10 +83,22 @@ public class GroundApproachPhase extends AbstractDragonPhaseInstance implements 
 
 	/** Lands on {@code site} ({x, y, z}), then fights {@code target} (or rests, when null). */
 	public static void start(EnderDragon dragon, int[] site, @Nullable LivingEntity target) {
+		start(dragon, site, target, Foothold.STAND);
+	}
+
+	/** As above, standing on the site with {@code foothold} (it fits there: {@link LandingSite#fits(int, int, Foothold)}). */
+	public static void start(EnderDragon dragon, int[] site, @Nullable LivingEntity target, Foothold foothold) {
 		dragon.getPhaseManager().setPhase(DragonPhases.GROUND_APPROACH);
 		GroundApproachPhase phase = dragon.getPhaseManager().getPhase(DragonPhases.GROUND_APPROACH);
 		phase.site = site;
 		phase.target = target;
+		phase.foothold = foothold;
+	}
+
+	/** Lands on {@code site} ({x, y, z}) and perches there (vanilla's perch, anywhere). */
+	public static void perch(EnderDragon dragon, int[] site) {
+		start(dragon, site, null);
+		dragon.getPhaseManager().getPhase(DragonPhases.GROUND_APPROACH).perch = true;
 	}
 
 	@Override
@@ -91,7 +110,8 @@ public class GroundApproachPhase extends AbstractDragonPhaseInstance implements 
 	public void begin() {
 		site = null;
 		target = null;
-		descending = decided = onLine = false;
+		descending = decided = onLine = perch = false;
+		foothold = Foothold.STAND;
 		ticks = 0;
 		runway = null;
 		landTick = -1;
@@ -119,6 +139,11 @@ public class GroundApproachPhase extends AbstractDragonPhaseInstance implements 
 		return fallback;
 	}
 
+	/** How it will stand on the site. */
+	public Foothold foothold() {
+		return foothold;
+	}
+
 	/** Coming in to land running (a runway was found), not hovering down. */
 	public boolean runningIn() {
 		return runway != null;
@@ -144,7 +169,7 @@ public class GroundApproachPhase extends AbstractDragonPhaseInstance implements 
 		if (!decided) {
 			decided = true;
 			// its motion: within its own tick it has not moved yet (x - xo is 0 here)
-			if (motion.horizontalDistance() >= Runway.MIN_SPEED) {
+			if (motion.horizontalDistance() >= Runway.MIN_SPEED && foothold == Foothold.STAND) {
 				runway = Runway.plan(brain().grid(), site, dragon.getX(), dragon.getZ());
 			}
 		}
@@ -154,7 +179,7 @@ public class GroundApproachPhase extends AbstractDragonPhaseInstance implements 
 		}
 		double horizontal = Math.hypot(site[0] + 0.5 - dragon.getX(), site[2] + 0.5 - dragon.getZ());
 		if (!descending && horizontal < 5.0 && Math.abs(dragon.getY() - (site[1] + ABOVE)) < 6.0) {
-			if (new LandingSite(brain().grid()).fits(site[0], site[2]) == BlockGrid.NO_GROUND) {
+			if (new LandingSite(brain().grid()).fits(site[0], site[2], foothold) == BlockGrid.NO_GROUND) {
 				giveUp();
 				return;
 			}
@@ -163,7 +188,8 @@ public class GroundApproachPhase extends AbstractDragonPhaseInstance implements 
 		if (descending && dragon.getY() - site[1] < 1.0 && horizontal < 2.0) {
 			dragon.setPos(site[0] + 0.5, site[1], site[2] + 0.5);
 			dragon.setDeltaMovement(Vec3.ZERO);
-			GroundFightPhase.start(dragon, target);
+			GroundFightPhase.thud(dragon);
+			touchDown();
 		}
 	}
 
@@ -246,8 +272,14 @@ public class GroundApproachPhase extends AbstractDragonPhaseInstance implements 
 		if (t >= Runway.TOUCH_TICKS + Runway.SKID_TICKS) dragon.setDeltaMovement(Vec3.ZERO);
 		if (t >= Math.round(DragonAnim.LAND_SECONDS * 20) + DragonAnim.BLEND_TICKS) {
 			brain().clearAction();
-			GroundFightPhase.start(dragon, target, false);
+			touchDown();
 		}
+	}
+
+	/** On its feet: perches, or fights (rests). The landing's thud has sounded already. */
+	private void touchDown() {
+		if (perch) dragon.getPhaseManager().setPhase(EnderDragonPhase.SITTING_SCANNING);
+		else GroundFightPhase.start(dragon, target, false, foothold);
 	}
 
 	/** The ground under the dragon on the strip (it was checked flat to within a block of the site). */

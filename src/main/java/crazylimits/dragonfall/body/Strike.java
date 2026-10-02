@@ -1,5 +1,6 @@
 package crazylimits.dragonfall.body;
 
+import crazylimits.dragonfall.anim.BreathPass;
 import crazylimits.dragonfall.anim.DragonAnim;
 
 import java.util.Arrays;
@@ -18,7 +19,7 @@ import java.util.Arrays;
  * <p>The aim is a fixed point, not the prey: whatever moved away before the blow is missed. Out of reach,
  * the chain stretches as far as it goes and stops short, a miss too ({@link #solve} returns how short).
  *
- * <p>The stream breath ({@link DragonAnim#BREATH}) is aimed too, but by direction: the neck is drawn out
+ * <p>The stream breaths ({@link DragonAnim#BREATH}, the pass's {@link DragonAnim#GLIDE_BREATH} and the hover's) are aimed too, but by direction: the neck is drawn out
  * straight along the line from its base to the aim, the head pointing down it, so the flames leave the
  * mouth straight at the aim.
  *
@@ -59,7 +60,12 @@ public final class Strike {
 
 	/** Whether {@code anim} is a strike (has an aim). */
 	public static boolean strikes(DragonAnim anim) {
-		return anim == DragonAnim.ATTACK || anim == DragonAnim.TAIL_SWEEP || anim == DragonAnim.BREATH;
+		return anim != null && (anim.bites() || anim == DragonAnim.TAIL_SWEEP || breathes(anim));
+	}
+
+	/** A stream breath: aimed by direction, the neck straightened onto the aim ({@link #straighten}). */
+	static boolean breathes(DragonAnim anim) {
+		return anim == DragonAnim.BREATH || anim.breathesInFlight();
 	}
 
 	/** The moment (animation seconds) the blow lands: the frame the aim is solved on. */
@@ -67,12 +73,33 @@ public final class Strike {
 		return switch (anim) {
 			case TAIL_SWEEP -> DragonAnim.TAIL_HIT_SECONDS;
 			case BREATH -> BREATH_FRAME;
+			case GLIDE_BREATH, HOVER_BREATH -> BreathPass.AIM_SECONDS;
 			default -> DragonAnim.BITE_SECONDS;
 		};
 	}
 
 	public static double radius(DragonAnim anim) {
 		return anim == DragonAnim.TAIL_SWEEP ? TAIL_RADIUS : BITE_RADIUS;
+	}
+
+	/**
+	 * Where a bite's jaws are on its blow's frame before the strike bends the neck, with the body as it is
+	 * at {@code partialTick}: relative to the dragon, as {forward, up, right} along its facing. A bite
+	 * reaches what is near it (the IK does the rest), so a flying dragon puts itself there to bite.
+	 */
+	public static double[] rest(DragonAnim anim, DragonBody body, float partialTick) {
+		double[] frame = new double[PoseTrack.POINTS * 3], world = new double[3];
+		PoseTrack.sample(anim, hitSeconds(anim), frame);
+		PartSolver.toWorld(body, partialTick, frame, HEAD_PART, world, 0);
+		double yaw = Math.toRadians(body.yaw(partialTick)), fx = Math.sin(yaw), fz = -Math.cos(yaw);
+		return new double[] {world[0] * fx + world[2] * fz, world[1], -world[0] * fz + world[2] * fx};
+	}
+
+	/** The neck's base (its first pivot) on {@code anim}'s frame at {@code seconds}, relative to the dragon in world axes: where a breath's aim is measured from. */
+	public static void neckBase(DragonAnim anim, double seconds, DragonBody body, float partialTick, double[] out) {
+		double[] frame = new double[PoseTrack.POINTS * 3];
+		PoseTrack.sample(anim, seconds, frame);
+		PartSolver.toWorld(body, partialTick, frame, PoseTrack.NECK_START, out, 0);
 	}
 
 	/** Aims {@code anim} (a {@link #strikes strike}) at a point relative to the dragon. */
@@ -118,7 +145,7 @@ public final class Strike {
 			}
 		}
 		PartSolver.toModel(body, partialTick, aimX, aimY, aimZ, target);
-		if (anim == DragonAnim.BREATH) return straighten();
+		if (breathes(anim)) return straighten();
 
 		double miss = 0.0;
 		for (int it = 0; it < ITERATIONS; it++) {
@@ -159,36 +186,25 @@ public final class Strike {
 
 	/**
 	 * The breath: each neck segment, then the head, root first, turned so it points from its pivot along
-	 * the line from the neck's base to the aim. Returns how far the mouth's line passes from the aim.
+	 * the line from the neck's base to the aim ({@link PartSolver#neckAim}). Returns how far the mouth's
+	 * line passes from the aim.
 	 */
 	private double straighten() {
 		Arrays.fill(bendX, 0.0);
 		Arrays.fill(bendY, 0.0);
 		int joints = PoseTrack.NECK_PIVOTS, base = PoseTrack.NECK_START;
-		end(false, joints, tip);
-		double ox = work[base * 3], oy = work[base * 3 + 1], oz = work[base * 3 + 2];
-		double dx = target[0] - ox, dy = target[1] - oy, dz = target[2] - oz, len = Math.sqrt(dx * dx + dy * dy + dz * dz);
-		if (len < 1e-6) return 0.0;
-		dx /= len;
-		dy /= len;
-		dz /= len;
+		double ox = frame[base * 3], oy = frame[base * 3 + 1], oz = frame[base * 3 + 2];
+		double[] direction = {target[0] - ox, target[1] - oy, target[2] - oz};
+		if (Math.sqrt(direction[0] * direction[0] + direction[1] * direction[1] + direction[2] * direction[2]) < 1e-6) return 0.0;
 		for (int i = 0; i < joints; i++) {
-			// this joint's own turn taken out: later joints do not move its far end
 			double baseX = i < neckX.length ? neckX[i] : 0.0, baseY = i < neckY.length ? neckY[i] : 0.0;
-			bendX[i] = -baseX;
-			bendY[i] = -baseY;
-			end(false, joints, tip);
-			int a = base + i, b = i + 1 < joints ? base + i + 1 : HEAD_PART;
-			double vx = work[b * 3] - work[a * 3], vy = work[b * 3 + 1] - work[a * 3 + 1], vz = work[b * 3 + 2] - work[a * 3 + 2];
-			double v = Math.sqrt(vx * vx + vy * vy + vz * vz), r = Math.hypot(vy, vz);
-			// X first (pitch in the y-z plane): bring the height to the aim's slope; then Y turns it round
-			double phi = Math.atan2(vy, vz), q = Math.max(-1.0, Math.min(1.0, v * dy / Math.max(r, 1e-6)));
-			double psi1 = Math.asin(q), psi2 = Math.PI - psi1;
-			double psi = Math.abs(wrap(phi - psi1)) <= Math.abs(wrap(phi - psi2)) ? psi1 : psi2;
-			double theta = wrap(phi - psi);
-			double turn = wrap(Math.atan2(dx, dz) - Math.atan2(vx, r * Math.cos(psi)));
-			bendX[i] = clamp(Math.toDegrees(theta) - baseX, BREATH_LIMIT);
-			bendY[i] = clamp(Math.toDegrees(turn) - baseY, BREATH_LIMIT);
+			for (int j = 0; j < joints; j++) {
+				totalX[j] = (j < neckX.length ? neckX[j] : 0.0) + bendX[j];
+				totalY[j] = (j < neckY.length ? neckY[j] : 0.0) + bendY[j];
+			}
+			double[] want = PartSolver.neckAim(frame, totalX, totalY, i, direction);
+			bendX[i] = clamp(want[0] - baseX, BREATH_LIMIT);
+			bendY[i] = clamp(want[1] - baseY, BREATH_LIMIT);
 		}
 		end(false, joints, tip);
 		// distance of the aim from the line the head points along
@@ -232,13 +248,18 @@ public final class Strike {
 	 */
 	public static double weight(DragonAnim anim, double seconds, int segment) {
 		double hit = hitSeconds(anim);
-		if (anim == DragonAnim.ATTACK) {
+		if (anim.bites()) {
 			if (seconds <= hit) return ease(seconds / hit);
 			return 1.0 - ease((seconds - hit - 0.1) / 0.5);
 		}
 		if (anim == DragonAnim.BREATH) {
 			// the neck stretches out at the end of the inhale and holds through the stream (see BreathAttack)
 			return ease((seconds - 0.6) / 0.45) * (1.0 - ease((seconds - 4.0) / 0.6));
+		}
+		if (anim.breathesInFlight()) {
+			// with the pose's swing down before the fire, held through the stream, gone over the recovery
+			double fire = BreathPass.WINDUP_TICKS / 20.0, end = fire + BreathPass.STREAM_TICKS / 20.0;
+			return ease((seconds - fire + BreathPass.LUNGE_SECONDS) / BreathPass.LUNGE_LENGTH) * (1.0 - ease((seconds - end) / 0.6));
 		}
 		double whip = 0.15, start = hit - 0.02 - whip - 0.02 * (PoseTrack.TAIL_PIVOTS - 1 - segment);
 		double cocked = -COCK * ease(seconds / (hit - 0.35));
@@ -281,10 +302,6 @@ public final class Strike {
 		double y = a * (ry * i - f * rz) - rx * (d * i - f * g) + c * (d * rz - ry * g);
 		double z = a * (e * rz - ry * h) - b * (d * rz - ry * g) + rx * (d * h - e * g);
 		return new double[]{x / det, y / det, z / det};
-	}
-
-	private static double wrap(double radians) {
-		return Math.atan2(Math.sin(radians), Math.cos(radians));
 	}
 
 	private static double clamp(double v, double limit) {

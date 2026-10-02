@@ -75,10 +75,47 @@ public final class BreathAttack {
 
 	/** How bright the heat glows at {@code tick}: full while inhaling, flickering while it pours, fading over the recovery. */
 	public static double heatBrightness(double tick) {
-		if (tick < WINDUP_TICKS) return 1.0;
+		return brightness(tick, WINDUP_TICKS, STREAM_TICKS, RECOVER_TICKS);
+	}
+
+	/** {@link #heatBrightness} for a breath of these lengths (the pass's too, {@link BreathPass}). */
+	static double brightness(double tick, int windup, int stream, int recover) {
+		if (tick < windup) return 1.0;
 		double flicker = 0.88 + 0.06 * Math.sin(tick * 1.3) + 0.06 * Math.sin(tick * 3.1);
-		double cool = (tick - WINDUP_TICKS - STREAM_TICKS) / RECOVER_TICKS;
+		double cool = (tick - windup - stream) / recover;
 		return flicker * (1.0 - Math.max(0.0, Math.min(1.0, cool)));
+	}
+
+	/**
+	 * A fireball comes out of the same heat: the inhale's glow plays {@link #FIREBALL_SPEEDUP} times
+	 * faster, the fireball flies once it reaches the jaw ({@link #FIREBALL_WINDUP_TICKS}) and the glow
+	 * cools over {@link #FIREBALL_COOL_TICKS}.
+	 */
+	public static final int FIREBALL_SPEEDUP = 3;
+	public static final int FIREBALL_WINDUP_TICKS = (WINDUP_TICKS + FIREBALL_SPEEDUP - 1) / FIREBALL_SPEEDUP;
+	public static final int FIREBALL_COOL_TICKS = RECOVER_TICKS / FIREBALL_SPEEDUP;
+	/**
+	 * Through the windup the head turns to the target; the fireball flies only once the head points
+	 * within {@link #FIREBALL_CONE} degrees of it (never backwards over its own body), waiting up to
+	 * {@link #FIREBALL_AIM_TICKS} more for that, else the shot is dropped.
+	 */
+	public static final double FIREBALL_CONE = 25.0;
+	public static final int FIREBALL_AIM_TICKS = 20;
+
+	/** Whether a fireball started charging {@code tick} ticks ago may still be turning its head to aim. */
+	public static boolean fireballAiming(double tick) {
+		return tick >= 0.0 && tick < FIREBALL_WINDUP_TICKS + FIREBALL_AIM_TICKS;
+	}
+
+	/** {@link #heat} for a fireball, {@code tick} (fractional) from the start of its windup. */
+	public static double fireballHeat(double tick) {
+		return heat(tick * FIREBALL_SPEEDUP);
+	}
+
+	/** How bright a fireball's heat glows: full until the shot, then cooling off. */
+	public static double fireballHeatBrightness(double tick) {
+		double cool = (tick - FIREBALL_WINDUP_TICKS) / FIREBALL_COOL_TICKS;
+		return 1.0 - Math.max(0.0, Math.min(1.0, cool));
 	}
 
 	/** Whether a perched dragon about to attack picks the stream; {@code roll} is uniform in [0, 1). */

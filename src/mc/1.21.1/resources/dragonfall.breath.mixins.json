@@ -7,8 +7,10 @@
 		"DragonFireballMixin",
 		"DragonSittingAttackingPhaseMixin",
 		"DragonSittingFlamingPhaseMixin",
+		"DragonStrafePlayerPhaseMixin",
 		"DragonVoiceMixin",
-		"EnderDragonPhaseInvoker"
+		"EnderDragonPhaseInvoker",
+		"ProjectileMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

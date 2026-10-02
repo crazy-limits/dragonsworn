@@ -198,4 +198,14 @@ class LimbIKTest {
 		assertArrayEquals(new double[]{-40, -12, -25}, shoulder.rot, 1e-6, "the animated pose is a fixed point");
 		assertEquals(-106, elbow.rot[2], 1e-6);
 	}
+
+	@Test
+	void aNaNTargetLeavesTheArmAsAnimated() {
+		// the landing crash: a lifted hand's clearance came out NaN and reached the solve
+		Joint shoulder = joint(-12, 65, -22, -40, -12, -25), elbow = joint(-68, 65, -22, 0, 0, -106);
+		double left = LimbIK.solveArmReach(body(), shoulder, elbow, new double[]{-140, 50, -60}, new double[]{Double.NaN, 0, 0});
+		assertTrue(left > 1e6, "unreached: " + left);
+		assertArrayEquals(new double[]{-40, -12, -25}, shoulder.rot, 0.0);
+		assertEquals(-106, elbow.rot[2], 0.0);
+	}
 }

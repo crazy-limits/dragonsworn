@@ -5,14 +5,20 @@
 	"compatibilityLevel": "JAVA_${java}",
 	"injectors": { "defaultRequire": 1 },
 	"mixins": [
+		"DragonDeathPhaseMixin",
+		"DragonEggBlockMixin",
 		"EnderDragonMixin",
 		"EnderDragonPartAccessor",
 		"EnderDragonPhaseInvoker",
 		"EnderDragonPhaseManagerMixin",
 		"EntityAccessor",
-		"PlayerMixin"
+		"EntityMixin",
+		"ServerGamePacketListenerImplMixin",
+		"ServerLevelMixin"
 	],
 	"client": [
+		"client.CameraMixin",
+		"client.ClientLevelMixin",
 		"client.LivingEntityRendererMixin"
 	]
 }

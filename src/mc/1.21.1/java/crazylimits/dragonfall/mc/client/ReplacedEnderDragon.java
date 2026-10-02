@@ -54,10 +54,9 @@ public final class ReplacedEnderDragon implements GeoReplacedEntity {
 				RawAnimation raw = RawAnimation.begin();
 				if (anim.loops()) raw.thenLoop(anim.id());
 				else if (anim == DragonAnim.DEATH) raw.thenPlayAndHold(anim.id());
-				// the takeoff ends standing in the air: carry on hovering until the next plan arrives
-				else if (anim == DragonAnim.TAKEOFF) raw.thenPlay(anim.id()).thenLoop(DragonAnim.HOVER.id());
-				// roar, bite, sweep and breath play once and settle back into the standing idle
-				else raw.thenPlay(anim.id()).thenLoop(DragonAnim.IDLE.id());
+				// the takeoff ends standing in the air: carry on hovering until the next plan arrives; roar,
+				// bite, sweep and breath play once and settle back into the stance they were played from
+				else raw.thenPlay(anim.id()).thenLoop(anim.then().id());
 				variants[variant] = end(raw, variant);
 			}
 			PLAY.put(anim, variants);

@@ -12,7 +12,6 @@ import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.boss.enderdragon.phases.AbstractDragonPhaseInstance;
 import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.entity.projectile.DragonFireball;
 import net.minecraft.world.phys.Vec3;
 
 import org.jetbrains.annotations.Nullable;
@@ -68,6 +67,11 @@ public class RoamPhase extends AbstractDragonPhaseInstance implements Dragonfall
 		brain().setLookTarget(null);
 	}
 
+	/** The attack it is running (none, pass, barrage), for the showcase. */
+	public String hunt() {
+		return hunt.name();
+	}
+
 	/** Free to start an attack. */
 	public boolean idle() {
 		return hunt == Hunt.NONE;
@@ -90,7 +94,8 @@ public class RoamPhase extends AbstractDragonPhaseInstance implements Dragonfall
 
 	/** What a hovering dragon keeps its head toward. */
 	@Nullable
-	public Vec3 lookTarget() {
+	@Override
+	public Vec3 hoverLook() {
 		return hunt == Hunt.BARRAGE && target != null ? target.position() : null;
 	}
 
@@ -191,13 +196,9 @@ public class RoamPhase extends AbstractDragonPhaseInstance implements Dragonfall
 		}
 	}
 
+	/** Heats up, then fires (the brain times the shot). */
 	private void fireball() {
-		Vec3 head = brain().partCenter(0);
-		Vec3 aim = new Vec3(target.getX() - head.x, target.getY(0.5) - head.y, target.getZ() - head.z);
-		if (!dragon.isSilent()) dragon.level().levelEvent(null, 1017, dragon.blockPosition(), 0);
-		DragonFireball fireball = new DragonFireball(dragon.level(), dragon, aim.normalize());
-		fireball.moveTo(head.x, head.y, head.z, 0.0F, 0.0F);
-		dragon.level().addFreshEntity(fireball);
+		brain().chargeFireball(target);
 	}
 
 	@Nullable

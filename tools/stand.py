@@ -1,7 +1,8 @@
 """The standing (perched) pose: chest raised 30 degrees, propped on the wrists of the folded wings,
 the neck curved like a swan's. All four limbs stand on the ground: each wing's upper arm reaches out
-from the shoulder, the forearm comes down onto the wrist claw like a front leg, and the folded hand
-lies back along the flank, above the claw.
+from the shoulder up to a high elbow, the forearm arches back down to the wrist, and the half spread
+hand lies on the ground along its leading finger, out to the tip, its membrane fanned up from there to
+the forearm: two great arches round the dragon, its biggest face to whoever stands in front of it.
 
 Every frame is solved, not keyed by hand: the four feet stay planted exactly on their marks while the
 body breathes, rears (roar) or lunges (attack). The tail is not keyed: the game lays it on the real
@@ -14,9 +15,10 @@ PITCH = 30.0            # chest up
 LIFT = 10.0             # body raised so the hips sit at ~35 px with the chest up
 # planted feet (editor space, model y = 0 is the ground): hind ankles under the hips, wrist claws forward
 # and out to the side
-FEET = {'lh': [-16.0, 3.0, 16.0], 'rh': [16.0, 3.0, 16.0], 'lf': [-90.0, 0.0, -58.0], 'rf': [90.0, 0.0, -58.0]}
-STAND_ARM = [-40.0, 12.0, -4.0, 72.0]   # reference arm (shoulder x, y, z, elbow z) with the chest up
-FAN = 28                # the hand nearly shut, so the fingers lie back in one bundle
+FEET = {'lh': [-16.0, 3.0, 16.0], 'rh': [16.0, 3.0, 16.0], 'lf': [-100.0, 0.0, -60.0], 'rf': [100.0, 0.0, -60.0]}
+# reference arm (shoulder x, y, z, elbow z, wrist twist) with the chest up: the elbow above the shoulder
+STAND_ARM = [-71.1, -20.4, 2.2, 60.2, 6.9]
+FAN = 12                # the hand half spread
 
 # The swan neck: the base rises steeply out of the raised chest, the upper neck arches forward and
 # the head looks down its nose. Values per segment (base to head), editor X (+ = front up).
@@ -44,7 +46,7 @@ class Stand:
 		targets = dict(FEET, **(feet or {}))
 		if wings is not None:
 			targets = {k: v for k, v in targets.items() if k[1] == 'h'}
-		solve_limbs(pose, targets, self.sol, arm_ref=STAND_ARM, shoulder_pitch=STAND_ARM[0])
+		solve_limbs(pose, targets, self.sol, arm_ref=STAND_ARM, shoulder_pitch=STAND_ARM[0], hand_laid=True)
 		if wings is not None:
 			pose.update(wings)
 		pose.update(neck(swan or SWAN, neck_yaw))

@@ -36,4 +36,15 @@ class GripTest {
 		assertTrue(max < 16.0 && min > -16.0, "within a neck segment's reach");
 		assertTrue(Math.abs(Grip.shakeYaw(0, 3.0, 1.0)) < Math.abs(Grip.shakeYaw(3, 3.0, 1.0)), "the head end throws furthest");
 	}
+
+	@Test
+	void holdsHumanoidsAndCowsButNotAWarden() {
+		assertTrue(Grip.fits(0.6, 1.8), "a player");
+		assertTrue(Grip.fits(0.6, 2.9), "an enderman");
+		assertTrue(Grip.fits(0.9, 1.4), "a cow");
+		assertTrue(Grip.fits(0.9, 1.3), "a sheep");
+		assertFalse(Grip.fits(0.9, 2.9), "a warden");
+		assertFalse(Grip.fits(1.3964844, 1.6), "a horse");
+		assertFalse(Grip.fits(1.4, 2.7), "an iron golem");
+	}
 }

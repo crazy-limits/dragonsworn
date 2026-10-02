@@ -41,6 +41,16 @@ class HeadLookTest {
 	}
 
 	@Test
+	void aStruckTailLetsItsSwingGo() {
+		HeadLook look = settle(50, 0, 1);
+		for (int t = 120; t < 240; t++) look.update(t, 50, 0, 1, false);
+		assertEquals(50, look.yaw(), 0.1, "the head still looks");
+		assertEquals(0.0, look.tailYaw(9), 0.01, "the strike has the tail");
+		look.update(240, 50, 0, 1, true);
+		assertTrue(look.tailYaw(9) < 0.5 * 50 * HeadLook.TAIL_COUNTER / 9, "no snap back");
+	}
+
+	@Test
 	void attentionFadesInAndOut() {
 		HeadLook look = new HeadLook();
 		look.update(0, 40, 0, 1);

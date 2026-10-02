@@ -5,6 +5,7 @@ import crazylimits.dragonfall.flight.FlightModel;
 import crazylimits.dragonfall.mc.DragonBrain;
 import crazylimits.dragonfall.mc.DragonPhases;
 import crazylimits.dragonfall.mc.DragonfallDragon;
+import crazylimits.dragonfall.nav.Foothold;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.BlockParticleOption;
 import net.minecraft.core.particles.ParticleTypes;
@@ -21,6 +22,9 @@ import org.jetbrains.annotations.Nullable;
  * up together and the wings take over; from there it climbs on the wings alone, standing up in the air
  * (the hover), until it is {@link #CLEAR} blocks up or blocked above. Then it carries on into normal flight, where
  * the body leans forward as it picks up speed.
+ *
+ * <p>From a narrow foothold ({@link Foothold#narrow}: sat up, or clinging with its wings already beating)
+ * there is no crouch on all fours: it springs off its hind feet at once, wings beating, into the hover.
  */
 public class LiftoffPhase extends AbstractDragonPhaseInstance implements DragonfallPhase {
 	static final double CLEAR = 12.0;
@@ -28,8 +32,10 @@ public class LiftoffPhase extends AbstractDragonPhaseInstance implements Dragonf
 	private static final int ANIM_TICKS = (int) Math.round(DragonAnim.TAKEOFF_SECONDS * 20);
 	private static final int GIVE_UP = 200;
 
-	private int ticks;
+	private int ticks, jumpTick;
 	private double startY;
+	/** Off a narrow foothold: no takeoff animation, the hover's beat at once. */
+	private boolean narrow;
 
 	public LiftoffPhase(EnderDragon dragon) {
 		super(dragon);
@@ -49,7 +55,11 @@ public class LiftoffPhase extends AbstractDragonPhaseInstance implements Dragonf
 		ticks = 0;
 		startY = dragon.getY();
 		dragon.setDeltaMovement(Vec3.ZERO);
-		if (!dragon.level().isClientSide) brain().startAction(DragonAnim.TAKEOFF);
+		if (dragon.level().isClientSide) return;
+		narrow = brain().foothold().narrow();
+		jumpTick = narrow ? 1 : JUMP_TICK;
+		brain().setFoothold(Foothold.STAND);
+		if (!narrow) brain().startAction(DragonAnim.TAKEOFF);
 	}
 
 	@Override
@@ -60,9 +70,9 @@ public class LiftoffPhase extends AbstractDragonPhaseInstance implements Dragonf
 	@Override
 	public void doServerTick() {
 		ticks++;
-		if (ticks == JUMP_TICK) jump();
-		if (ticks == ANIM_TICKS) brain().clearAction();
-		if (ticks > JUMP_TICK + 10 && (dragon.getY() - startY > CLEAR || dragon.verticalCollision || ticks > GIVE_UP)) {
+		if (ticks == jumpTick) jump();
+		if (ticks == ANIM_TICKS && !narrow) brain().clearAction();
+		if (ticks > jumpTick + 10 && (dragon.getY() - startY > CLEAR || dragon.verticalCollision || ticks > GIVE_UP)) {
 			dragon.getPhaseManager().setPhase(EnderDragonPhase.HOLDING_PATTERN);
 		}
 	}
@@ -72,8 +82,9 @@ public class LiftoffPhase extends AbstractDragonPhaseInstance implements Dragonf
 	 * animation's wings are ({@link DragonAnim#TAKEOFF_PHASE}), so beats and lift stay in step.
 	 */
 	private void jump() {
-		brain().forceFlight(FlightModel.Force.HOVER, DragonAnim.TAKEOFF_PHASE);
-		dragon.setDeltaMovement(0.0, 0.55, 0.0);
+		// off a perch: the next downstroke at once (clinging, the wings were beating already)
+		brain().forceFlight(FlightModel.Force.HOVER, narrow ? DragonAnim.DOWNSTROKE_START : DragonAnim.TAKEOFF_PHASE);
+		dragon.setDeltaMovement(0.0, narrow ? 0.4 : 0.55, 0.0);
 		if (dragon.level() instanceof ServerLevel level) {
 			BlockPos below = BlockPos.containing(dragon.getX(), dragon.getY() - 0.5, dragon.getZ());
 			level.sendParticles(new BlockParticleOption(ParticleTypes.BLOCK, level.getBlockState(below)),
@@ -96,7 +107,7 @@ public class LiftoffPhase extends AbstractDragonPhaseInstance implements Dragonf
 	@Nullable
 	@Override
 	public Vec3 getFlyTargetLocation() {
-		if (ticks < JUMP_TICK) return null;
+		if (ticks < jumpTick) return null;
 		return new Vec3(dragon.getX(), startY + CLEAR + 2.0, dragon.getZ());
 	}
 }

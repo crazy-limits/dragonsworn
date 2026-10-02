@@ -58,7 +58,7 @@ def idle(t, L):
 		body_pitch=1.5 * S(w), body_lift=0.8 * S(w), fan=stand.FAN - 1 + S(w),
 		swan=[sw[0] + 2 * S(w + 0.3), sw[1] + 1.5 * S(w + 0.6), sw[2] - 2 * S(w + 0.9), sw[3] - 2 * S(w + 1.2)],
 		neck_yaw=(3 * S(w / 2 * 2), 4 * S(w + 0.4), 5 * S(w + 0.8), 6 * S(w + 1.2)), head_yaw=8 * S(w + 1.6),
-		jaw=-1.5 - 1.5 * S(2 * w))
+		jaw=-1.5)
 
 
 _walk_cache = {}
@@ -172,7 +172,7 @@ def flight_pose(q):
 		p[f'upperleg_{side}'] = {'r': [thigh + sw, 0, 0]}
 		p[f'lowerleg_{side}'] = {'r': [shin - 0.4 * sw, 0, 0]}
 		p[f'foot_{side}'] = {'r': [foot + 0.7 * sw, 0, 0]}
-	p['jaw_group'] = {'r': [q.get('jaw', -1.0), 0, 0]}
+	p['jaw_group'] = {'r': [q.get('jaw', -1.5), 0, 0]}
 	p['_tail'] = {k: q.get(k, 0.0) for k in ('push', 'droop', 'sway', 'stand', 'lift')}
 	return p
 
@@ -187,8 +187,6 @@ def beat_q(style, u, gain=1.0):
 	q['lag'] = (lh, lp)
 	# the legs hang on by inertia: the body heaving up leaves them behind (swung down)
 	q['leg_swing'] = 12.0 * gain * (flight.HEAVE(u) - flight.HEAVE(u - 0.1))
-	# effort: the jaw parts on each push
-	q['jaw'] = -1.0 - 3.0 * gain * flight.downstroke(u - 0.04)
 	q['push'] = gain * flight.downstroke(u)
 	return q
 
@@ -200,7 +198,7 @@ def glide_q(t, L=3.0):
 	q = dict(GLIDE_WING)
 	q.update(shoulder=8 + 2.5 * S(w + 0.5), elbow=-6 - 2 * S(w), pleats=[3 + 2 * S(w - 0.3 * g) for g in range(3)], twist=1.5 * S(w + 1.0),
 			 heave=1.2 * S(w), pitch=0.8 * S(w + 0.7), surge=0.0, roll=4 * S(w), yaw=0.0,
-			 neck_yaw=(1.5 * S(w), 1.5 * S(w), 0.0, 0.0), head_yaw=4 * S(w + 0.5), jaw=-1.0, sway=S(w))
+			 neck_yaw=(1.5 * S(w), 1.5 * S(w), 0.0, 0.0), head_yaw=4 * S(w + 0.5), jaw=-1.5, sway=S(w))
 	q['lag'] = (1.2 * S(w - 0.4), 0.8 * S(w + 0.3))
 	return q
 
@@ -301,7 +299,7 @@ def takeoff(t, L):
 		pose = standing('takeoff').pose(
 			body_pitch=-7 * crouch + 9 * push, body_lift=-10 * crouch + 8 * push,
 			swan=[sw[0] - 8 * crouch + 4 * push, sw[1] - 2 * crouch, sw[2] + 12 * push, sw[3] + 8 * push],
-			head=stand.HEAD - 4 * crouch + 10 * push, jaw=-1.5 - 10 * push)
+			head=stand.HEAD - 4 * crouch + 10 * push, jaw=-1.5)
 		pose['_tail'] = _standing_tail(14 * push)
 		return pose
 	if 'lift' not in _takeoff:
@@ -366,7 +364,7 @@ def _land_air(t):
 	# the tail drops and spreads as an air brake (TailMotion: droop), the push of the braking stroke
 	q['droop'] = 2.5 * flare
 	q['push'] = flight.downstroke(u) if u < 1.0 else 0.0
-	q['jaw'] = -1.5 - 4 * flare
+	q['jaw'] = -1.5
 	return flight_pose(q)
 
 
@@ -402,7 +400,7 @@ def _land_kw(s):
 	settle = ease((s - 0.3) / 1.0)
 	feet = {k: [v + (stand.FEET[k][i] - v) * ride for i, v in enumerate(TOUCH_FEET[k])] for k in TOUCH_FEET}
 	return dict(body_pitch=pitch0 * (1 - settle) - 6 * absorb, body_lift=lift0 * (1 - ease(s / 0.4)) - 7 * absorb,
-				body_z=0.0, jaw=-1.5 - 5 * (1 - settle), feet=feet)
+				body_z=0.0, jaw=-1.5, feet=feet)
 
 
 def _land_touch():
@@ -516,20 +514,323 @@ def breath(t, L):
 		jaw=-1.5 - jaw, fan=stand.FAN - 1 - 4 * inhale)
 
 
-def death(t, L):
-	fall, slump, wings = ease(t / 1.2), ease((t - 0.8) / 1.2), ease((t - 0.3) / 1.4)
+# The breath pass (BreathPass.java mirrors these): the dragon glides over its prey, head down, pouring
+# the stream onto the ground under its flight path. Shorter than the perched breath: it is flying on.
+PASS_WINDUP, PASS_STREAM, PASS_RECOVER = 1.2, 2.4, 0.8   # seconds
+PASS_LUNGE = 0.5        # the neck swings down this long before the fire (out before the model's blend lag)
+PASS_PITCH = -6.0       # the body tips nose down a little, a shallow stoop
+PASS_NECK, PASS_HEAD = [-40.0, -4.0, 0.0, 0.0], -4.0   # the neck runs straight out ~50 deg below level
+PASS_WING = {'shoulder': 5.0, 'elbow': -8.0, 'sweep': -3.0, 'twist': -1.0}   # held a little lower, swept back
+
+
+def glide_breath(t, L):
+	# 0-1.2 inhale on the glide: the chest swells, the neck draws back and up, the jaw parts (the
+	# telegraph); 0.5 s before the fire the neck swings down. 1.2-3.6 the stream: the straight neck points
+	# down and ahead, the jaw wide open and trembling; the game turns the neck onto its aim on the ground
+	# (body/Strike) and spawns the flames in the mouth. 3.6-4.4 the jaw closes and the glide returns: it
+	# ends on the glide's first frame, which plays next.
+	end = PASS_WINDUP + PASS_STREAM
+	pour = ease((t - PASS_WINDUP + PASS_LUNGE) / 0.3) * (1 - ease((t - end) / PASS_RECOVER))
+	inhale = ease(t / PASS_WINDUP) * (1 - pour) * (1 - ease((t - end) / PASS_RECOVER))
+	jaw = 14 * inhale + 38 * pour
+	shake = 1.2 * S(t * 47) * pour
+	base = glide_q(0.0)
+	q = dict(base)
+	for key, v in PASS_WING.items():
+		q[key] = base[key] + (v - base[key]) * pour
+	q['pitch'] = base['pitch'] + 3.0 * inhale + (PASS_PITCH - base['pitch']) * pour
+	# the pitch is meant (no head held against it): the neck's base curve is made for it
+	q['still'] = q['pitch'] - base['pitch']
+	q['lag'] = (base['lag'][0], base['lag'][1] + q['still'])
+	coiled = [NECK_FLY[0] + 6, NECK_FLY[1] + 6, NECK_FLY[2] - 4, NECK_FLY[3] - 2]
+	drawn = [n + (c - n) * inhale for n, c in zip(NECK_FLY, coiled)]
+	q['neck'] = [d + (s - d) * pour for d, s in zip(drawn, PASS_NECK)]
+	q['head'] = (HEAD_FLY + 8 * inhale) * (1 - pour) + (PASS_HEAD + shake) * pour
+	q['head_yaw'] = base['head_yaw'] * (1 - pour) + shake * pour
+	q['neck_yaw'] = tuple(v * (1 - pour) for v in base['neck_yaw'])
+	q['jaw'] = -1.5 - jaw
+	q['roll'] = base['roll'] * (1 - pour)
+	q['sway'] = 0.0
+	return flight_pose(q)
+
+
+# ---------------------------------------------------------------- attacks in the air
+# Where the dragon cannot come down by its prey (on a wall, a pillar, in the air: ai/AirTactics.java) it
+# fights from the air. GLIDE_BITE: the fly-by bite, on the glide past (and a little over) the prey: the neck
+# draws back and the jaw parts, then the head dashes out and down at it (aimed by body/Strike) and snaps
+# shut at DragonAnim.BITE_SECONDS; it ends on the glide's first frame. HOVER_BITE: the same bite standing in
+# the air, the hover's beat going on (one whole beat, so it ends where the hover starts again).
+# HOVER_BREATH: the breath pass's timing (BreathPass.java) in the hover: inhale, the neck reaching forward
+# and the stream poured where body/Strike points the straightened neck, then the jaw closes; three beats.
+BITE_PASS_NECK = [-24.0, -6.0, 4.0, 6.0]       # the neck dashes out forward and down
+HOVER_STREAM_NECK = [-22.0, -6.0, 0.0, 0.0]    # the neck reaching forward out of the raised chest
+HOVER_BREATH_LENGTH = 3 * FLAP
+
+
+def _bite_neck(pose, coil, strike):
+	"""The bite's neck on top of a flying pose (cling_pose's): coiled back, then lunging out and down."""
+	for k, (c, s) in enumerate(zip([10, 12, -14, -4], [-58, -24, 30, 44])):
+		pose[NECK[k]]['r'][0] += c * coil + s * strike
+	pose['head_group']['r'][0] += 18 * coil + 4 * strike
+
+
+def glide_bite(t, L):
+	coil, strike, jaw = _bite(t)
+	base = glide_q(0.0)
+	q = dict(base)
+	# a shallow stoop into the strike, the wings held lower and swept back
+	for key, v in PASS_WING.items():
+		q[key] = base[key] + (v - base[key]) * strike
+	q['pitch'] = base['pitch'] + 3.0 * coil + (PASS_PITCH - base['pitch']) * strike
+	q['still'] = q['pitch'] - base['pitch']
+	q['lag'] = (base['lag'][0], base['lag'][1] + q['still'])
+	coiled = [NECK_FLY[0] + 8, NECK_FLY[1] + 8, NECK_FLY[2] - 6, NECK_FLY[3] - 2]
+	drawn = [n + (c - n) * coil for n, c in zip(NECK_FLY, coiled)]
+	q['neck'] = [d + (b - d) * strike for d, b in zip(drawn, BITE_PASS_NECK)]
+	q['head'] = HEAD_FLY + 12 * coil + 16 * strike
+	still = 1 - max(coil, strike)
+	q['head_yaw'] = base['head_yaw'] * still
+	q['neck_yaw'] = tuple(v * still for v in base['neck_yaw'])
+	q['roll'] = base['roll'] * still
+	q['jaw'] = -1.5 - jaw
+	q['sway'] = 0.0
+	return flight_pose(q)
+
+
+def hover_bite(t, L):
+	coil, strike, jaw = _bite(t)
+	q = hover_q((t / FLAP) % 1.0)
+	q['pitch'] -= 30 * strike - 4 * coil
+	q['jaw'] = -1.5 - jaw
+	pose = flight_pose(q)
+	_bite_neck(pose, coil, strike)
+	return pose
+
+
+def hover_breath(t, L):
+	end = PASS_WINDUP + PASS_STREAM
+	pour = ease((t - PASS_WINDUP + PASS_LUNGE) / 0.3) * (1 - ease((t - end) / PASS_RECOVER))
+	inhale = ease(t / PASS_WINDUP) * (1 - pour) * (1 - ease((t - end) / PASS_RECOVER))
+	jaw = 14 * inhale + 38 * pour
+	shake = 1.2 * S(t * 47) * pour
+	q = hover_q((t / FLAP) % 1.0)
+	# the chest swells back as it inhales, then leans into the stream
+	q['pitch'] += 4.0 * inhale - 10.0 * pour
+	coiled = [NECK_HOVER[0] + 6, NECK_HOVER[1] + 6, NECK_HOVER[2] - 4, NECK_HOVER[3] - 2]
+	drawn = [n + (c - n) * inhale for n, c in zip(NECK_HOVER, coiled)]
+	q['neck'] = [d + (r - d) * pour for d, r in zip(drawn, HOVER_STREAM_NECK)]
+	q['head'] = (HEAD_HOVER + 8 * inhale) * (1 - pour) + (shake - 2.0) * pour
+	q['head_yaw'] = shake
+	q['jaw'] = -1.5 - jaw
+	return flight_pose(q)
+
+
+# ---------------------------------------------------------------- narrow footholds
+# Where there is no room for all four limbs (nav/Foothold.java) the dragon stands on its hind feet alone.
+# UPRIGHT: sat up on its haunches, the body steep, the knees crouched, the feet right under the hips (at
+# the model's origin, the middle of the site); the tail lies behind as a prop (body/TailMotion lays it),
+# and the wings are held out half spread and drooping (a mantling bird) to keep the balance: they teeter
+# against each other, and now and then one stroke rights it. Only the body's pitch and height move, so
+# the solved feet stay exactly planted. CLING: a perch too small even for that (a pillar's top): the feet
+# grip it while the wings keep beating the hover's stroke and carry most of the weight.
+UPRIGHT_PITCH, UPRIGHT_LIFT = 55.0, 16.0
+UPRIGHT_FEET = {'lh': [-16.0, 3.0, 2.0], 'rh': [16.0, 3.0, 2.0]}
+UPRIGHT_SWAN, UPRIGHT_HEAD = [-4.0, 4.0, -28.0, -34.0], -10.0
+MANTLE = {'shoulder': 10.0, 'elbow': -25.0, 'sweep': 15.0, 'twist': 0.0, 'pleat': 12.0}
+UPRIGHT_LENGTH = 6.0
+BALANCE_AT, BALANCE_LENGTH = 3.4, 1.2   # the righting stroke: DragonVoice.UPRIGHT_WING mirrors it
+CLING_HEIGHT = -12.0    # the body lowered from the hover (px) so the legs reach down onto the perch, bent
+CLING_GAIN = 0.85       # the hover's stroke, a little shallower: the feet take some of the weight
+CLING_FEET = {'lh': [-16.0, 3.0, 4.0], 'rh': [16.0, 3.0, 4.0]}
+
+
+def spread(left, right):
+	"""Both wings from flight parameters (shoulder, elbow, sweep, twist, pleat), each side its own."""
 	p = {
-		'body': {'p': [0, -26 * fall, 0], 'r': [-3 * fall, 0, 0]},
-		'upperleg_left': {'r': [-70 * fall, 0, -10 * fall]}, 'lowerleg_left': {'r': [40 * fall, 0, 0]}, 'foot_left': {'r': [30 * fall, 0, 0]},
-		'upperleg_right': {'r': [-70 * fall, 0, 10 * fall]}, 'lowerleg_right': {'r': [40 * fall, 0, 0]}, 'foot_right': {'r': [30 * fall, 0, 0]},
-		'neck_rot1': {'r': [-14 * slump, 12 * slump, 0]},
-		'neck_rot2': {'r': [-8 * slump, 10 * slump, 0]},
-		'head_group': {'r': [6 * slump, 8 * slump, -15 * slump]},
-		'jaw_group': {'r': [-14 * slump, 0, 0]},
-		'left_wing': {'r': [0, 0, FOLD['lw'] * (1 - wings) + 5 * wings]}, 'left_wing_tip': {'r': [0, 0, FOLD['lwt'] * (1 - wings) + 3 * wings]},
-		'right_wing': {'r': [0, 0, FOLD['rw'] * (1 - wings) - 5 * wings]}, 'right_wing_tip': {'r': [0, 0, FOLD['rwt'] * (1 - wings) - 4 * wings]},
+		'left_wing': {'r': [left['twist'], left['sweep'], -left['shoulder']]}, 'left_wing_tip': {'r': [0, 0, -left['elbow']]},
+		'right_wing': {'r': [right['twist'], -right['sweep'], right['shoulder']]}, 'right_wing_tip': {'r': [0, 0, right['elbow']]},
 	}
-	p.update(fingers(walk.FAN * (1 - wings) + 6 * wings))
+	p.update(wing_fan([max(0.0, left['pleat'])] * 3, 'left'))
+	p.update(wing_fan([max(0.0, right['pleat'])] * 3, 'right'))
+	return p
+
+
+def _bump(u):
+	"""0 -> 1 -> 0 over u in [0, 1], flat at both ends."""
+	return 0.0 if u <= 0 or u >= 1 else 0.5 - 0.5 * C(PI2 * u)
+
+
+def upright_pose(key, pitch=0.0, lift=0.0, z=0.0, left=None, right=None, swan=None, head=None, **kw):
+	"""Sat up on the hind feet, offsets from the upright stance; `left`/`right`: wing offsets from MANTLE."""
+	def wing(off):
+		return {k: v + (off or {}).get(k, 0.0) for k, v in MANTLE.items()}
+	pose = standing(key).pose(body_pitch=UPRIGHT_PITCH - stand.PITCH + pitch, body_lift=UPRIGHT_LIFT - stand.LIFT + lift,
+							  body_z=z, feet=UPRIGHT_FEET, wings=spread(wing(left), wing(right)),
+							  swan=swan or UPRIGHT_SWAN, head=UPRIGHT_HEAD if head is None else head, **kw)
+	return pose
+
+
+def upright(t, L):
+	# Breathing (twice per loop), the wings teetering against each other (once), and at BALANCE_AT one
+	# stroke: both wings up and pushed down again, the body rocked back a little by it.
+	w = PI2 * t / L
+	u = (t - BALANCE_AT) / BALANCE_LENGTH
+	stroke = S(PI2 * u) * _bump(u)          # up (+), then the push down (-)
+	teeter = 7 * S(w)
+
+	def wing(side):
+		return {'shoulder': side * teeter + 45 * stroke, 'elbow': -12 * stroke, 'sweep': -8 * stroke,
+				'twist': 6 * stroke, 'pleat': 10 * max(0.0, stroke)}
+	sw = UPRIGHT_SWAN
+	return upright_pose(
+		'upright', pitch=1.5 * S(2 * w) - 2 * stroke, lift=0.8 * S(2 * w), left=wing(1), right=wing(-1),
+		swan=[sw[0] + 2 * S(w + 0.3), sw[1] + 1.5 * S(w + 0.6), sw[2] - 2 * S(w + 0.9), sw[3] - 2 * S(w + 1.2)],
+		neck_yaw=(3 * S(w), 4 * S(w + 0.4), 5 * S(w + 0.8), 6 * S(w + 1.2)), head_yaw=8 * S(w + 1.6), jaw=-1.5)
+
+
+def _bite(t):
+	"""The bite's rhythm (attack's): coil 0-0.45, strike to 0.62 (DragonAnim.BITE_SECONDS + the snap),
+	recover to 1.3; and the jaw's opening (degrees)."""
+	coil = ease(t / 0.45) * (1 - ease((t - 0.45) / 0.12))
+	strike = ease((t - 0.45) / 0.17) * (1 - ease((t - 0.75) / 0.55))
+	if t < 0.45:
+		jaw = 18 * ease(t / 0.45)
+	elif t < 0.62:
+		jaw = 18 + 24 * ease((t - 0.45) / 0.12)
+	else:
+		jaw = 42 * (1 - ease((t - 0.62) / 0.08))
+	return coil, strike, jaw
+
+
+def upright_bite(t, L):
+	# The bite sat up: the body tips forward over the planted feet as the neck uncoils, and the wings
+	# sweep back and up against the lunge (a counterweight), spread wide.
+	coil, strike, jaw = _bite(t)
+	sw = UPRIGHT_SWAN
+	wing = {'shoulder': -4 * coil + 26 * strike, 'elbow': 12 * strike, 'sweep': 4 * coil - 28 * strike,
+			'twist': 8 * strike, 'pleat': -6 * strike}
+	return upright_pose(
+		'upright_bite', pitch=6 * coil - 38 * strike, lift=2 * coil - 8 * strike, z=3 * coil - 6 * strike,
+		left=wing, right=wing,
+		swan=[sw[0] + 10 * coil - 50 * strike, sw[1] + 12 * coil - 20 * strike, sw[2] - 14 * coil + 30 * strike,
+			  sw[3] - 4 * coil + 40 * strike],
+		head=UPRIGHT_HEAD + 18 * coil + 4 * strike, jaw=-1.5 - jaw)
+
+
+_cling = {}
+
+
+def cling_pose(key, u, coil=0.0, strike=0.0, jaw=0.0):
+	"""The hover's beat at phase u with the feet planted on CLING_FEET; the bite's lunge on top."""
+	q = hover_q(u % 1.0, CLING_GAIN)
+	q['pitch'] -= 30 * strike - 4 * coil
+	q['jaw'] = -1.5 - jaw
+	pose = flight_pose(q)
+	pose['body']['p'][1] += CLING_HEIGHT
+	# the neck coils back, then lunges out and down (as the bite's), on top of the head held still
+	for k, (c, s) in enumerate(zip([10, 12, -14, -4], [-58, -24, 30, 44])):
+		pose[NECK[k]]['r'][0] += c * coil + s * strike
+	pose['head_group']['r'][0] += 18 * coil + 4 * strike
+	walk.solve_limbs(pose, CLING_FEET, _cling.setdefault(key, {}))
+	pose['_tail']['stand'] = 0.0
+	return pose
+
+
+def cling(t, L):
+	return cling_pose('cling', t / L)
+
+
+def cling_bite(t, L):
+	coil, strike, jaw = _bite(t)
+	return cling_pose('cling_bite', t / FLAP, coil, strike, jaw)
+
+
+# The death (the game: mc/DeathFlight): the dragon has flown over the altar and risen, and now wraps itself
+# up in the air as the light bursts out of it (vanilla's 10 s, DragonAnim.DEATH_SECONDS). From the hover:
+# one last stroke up (DEATH_RAISE), then the wings sweep down and forward round the body and close over the
+# chest, the arms hanging down the flanks and the folded hands meeting edge to edge in front, the fans shut
+# (each wing keeps to its own side of the body's middle all through: they never overlap); the body sits up, the
+# neck curls the head down onto the chest and the legs draw up. The tail tucks forward between the legs
+# (body/TailMotion's DEATH, procedural). Wrapped (from DEATH_WRAP), the cocoon breathes ever more weakly and
+# shudders now and then, harder toward the end; it holds its last frame.
+COCOON_PITCH = 50.0
+COCOON_WING = {'shoulder': -40.0, 'elbow': -90.0, 'sweep': -10.0, 'twist': 20.0, 'pleat': 90.0}
+COCOON_NECK, COCOON_HEAD = [-35.0, -40.0, -40.0, -30.0], -40.0
+COCOON_LEGS = (70.0, -90.0, 30.0)
+DEATH_LENGTH, DEATH_WRAP = 10.0, 2.4
+DEATH_RAISE = (0.15, 1.0)       # the last stroke up: from, to (s)
+DEATH_RAISE_SHOULDER = 32.0     # how high (deg): the tips must not cross over the back
+DEATH_SHUDDERS = ((4.2, 0.5, 3.0), (6.4, 0.6, 4.0), (7.9, 0.6, 5.5), (8.9, 0.5, 7.0), (9.4, 0.45, 8.0))  # at, length, deg
+
+
+def _wing_q(q, side):
+	"""One side's wing parameters out of flight parameters (shoulder, elbow, sweep, twist, pleats)."""
+	return {'shoulder': q['shoulder'], 'elbow': q['elbow'], 'sweep': q['sweep'], 'twist': q['twist'],
+			'pleats': list(q.get('pleats', [q['pleat']] * 3))}
+
+
+def death(t, L):
+	hq = hover_q((t / FLAP) % 1.0)
+	wrap = ease(t / DEATH_WRAP)
+	u = (t - DEATH_RAISE[0]) / (DEATH_RAISE[1] - DEATH_RAISE[0])
+	raise_ = _bump(u) * (1 - wrap)
+	pose = blend(flight_pose(hq), _cocoon(), ease((t - 0.3) / (DEATH_WRAP - 0.3)))
+	pose.pop('_tail', None)
+	# wrapped: breathing that fades, and the shudders
+	calm = ease((t - DEATH_WRAP) / 0.6)
+	w = PI2 * t / 2.5
+	breath = calm * 1.2 * S(w) * max(0.0, 1 - t / L)
+	shudder = sum(a * S(t * 55 + 1.3 * k) * _bump((t - at) / n) for k, (at, n, a) in enumerate(DEATH_SHUDDERS))
+	# the wrap only ever opens from its closed pose (breathing in, trembling): closing further, the hands would cross
+	opening = calm * 2.0 * (1 - C(w)) / 2 * max(0.0, 1 - t / L) + abs(shudder)
+	pose['body']['r'][0] += 2 * breath + 0.3 * shudder
+	for k, seg in enumerate(NECK):
+		pose[seg]['r'][0] -= 1.5 * breath
+	wings = {}
+	for side, coc in (('left', COCOON_WING), ('right', COCOON_WING)):
+		a = _wing_q(hq, side)
+		q = {key: a[key] + (coc[key] - a[key]) * wrap for key in ('shoulder', 'elbow', 'sweep', 'twist')}
+		q['pleats'] = [p + (coc['pleat'] - p) * wrap for p in a['pleats']]
+		# the last stroke: the wings thrown up high before they come down round the body
+		q['shoulder'] += DEATH_RAISE_SHOULDER * raise_
+		q['elbow'] += 25 * raise_
+		q['sweep'] += 15 * raise_
+		q['elbow'] += opening
+		wings[side] = q
+	for b in [b for b in pose if '_wing' in b and 'root_web' not in b]:
+		del pose[b]
+	l, r = wings['left'], wings['right']
+	pose.update({
+		'left_wing': {'r': [l['twist'], l['sweep'], -l['shoulder']]}, 'left_wing_tip': {'r': [0, 0, -l['elbow']]},
+		'right_wing': {'r': [r['twist'], -r['sweep'], r['shoulder']]}, 'right_wing_tip': {'r': [0, 0, r['elbow']]},
+	})
+	pose.update(wing_fan([max(0.0, v) for v in l['pleats']], 'left'))
+	pose.update(wing_fan([max(0.0, v) for v in r['pleats']], 'right'))
+	return pose
+
+
+def assert_wings_apart(frames, margin=1.0):
+	"""Every frame keeps each forearm and hand (with its webs) on its own side of the body's middle (x = 0;
+	the right wing is the left's mirror, so the left's corners suffice): the wrapped wings never overlap."""
+	rig = walk.rig
+	for i, pose in enumerate(frames):
+		mats = rig.matrices(pose)
+		x = max(p[0] for b in rig.order if b.startswith(('left_wing_tip', 'left_wing_web')) for p in rig.corners(mats, b))
+		assert x <= -margin, f'death frame {i}: the left wing reaches {x:.2f} px past the middle (the wings overlap)'
+
+
+def _cocoon():
+	"""The wrapped pose, without the wings (death() blends them by their parameters)."""
+	p = {'body': {'p': [0, FLY_HEIGHT, 0], 'r': [COCOON_PITCH, 0, 0]}}
+	for k, seg in enumerate(NECK):
+		p[seg] = {'r': [COCOON_NECK[k], 0, 0]}
+	p['head_group'] = {'r': [COCOON_HEAD, 0, 0]}
+	p['jaw_group'] = {'r': [-1.5, 0, 0]}
+	thigh, shin, foot = COCOON_LEGS
+	for side in ('left', 'right'):
+		p[f'upperleg_{side}'] = {'r': [thigh, 0, 0]}
+		p[f'lowerleg_{side}'] = {'r': [shin, 0, 0]}
+		p[f'foot_{side}'] = {'r': [foot, 0, 0]}
 	return p
 
 
@@ -540,7 +841,8 @@ def death(t, L):
 # body runs down it as a wave. On top: it drops a little on each downstroke (birds lower the tail
 # as the wings push), hangs (droop) when the body stands up or brakes, sways with the glide, and
 # blends into the standing tail (curled, laid on the ground: TailMotion.standing) on the ground.
-TAIL_ANIMS = ('fly', 'flap', 'glide', 'hover', 'takeoff', 'land')
+TAIL_ANIMS = ('fly', 'flap', 'glide', 'hover', 'takeoff', 'land', 'cling', 'cling_bite', 'glide_breath',
+			  'glide_bite', 'hover_bite', 'hover_breath')
 TAIL_DELAY = 0.32       # seconds for the body's motion to reach the tip
 _TAIL_PIVOTS = [walk.rig.bones[s]['pivot'] for s in TAIL] + [[0, 60, 194]]
 TAIL_S = [p[2] - _TAIL_PIVOTS[0][2] for p in _TAIL_PIVOTS]
@@ -610,17 +912,25 @@ ANIMATIONS = {
 	'attack': (attack, 1.3, False, 0.05),
 	'tail_sweep': (tail_sweep, 1.8, False, 0.025),
 	'breath': (breath, BREATH_WINDUP + BREATH_STREAM + BREATH_RECOVER, False, 0.025),
-	'death': (death, 2.5, 'hold_on_last_frame', 0.05),
+	'death': (death, DEATH_LENGTH, 'hold_on_last_frame', 0.05),
+	'upright': (upright, UPRIGHT_LENGTH, True, 0.05),
+	'upright_bite': (upright_bite, 1.3, False, 0.05),
+	'cling': (cling, FLAP, True, 0.04),
+	'cling_bite': (cling_bite, 1.3, False, 0.04),
+	'glide_breath': (glide_breath, PASS_WINDUP + PASS_STREAM + PASS_RECOVER, False, 0.04),
+	'glide_bite': (glide_bite, 1.3, False, 0.04),
+	'hover_bite': (hover_bite, FLAP, False, 0.04),
+	'hover_breath': (hover_breath, HOVER_BREATH_LENGTH, False, 0.04),
 }
 
 PREFIX = 'animation.ender_dragon.'
 
 # The bones the renderer turns on top of the keyframes (head leads a turn, the tail trails it, the
-# shoulders turn against the body's pitch). Every animation keys them on every frame, so a procedural
+# shoulders turn against the body's pitch, the wings' root webs keep pointing at the body). Every animation keys them on every frame, so a procedural
 # turn is always added to this frame's pose and never accumulates on a bone an animation left alone.
 # The tail is keyed straight (zero) everywhere: all of its motion is procedural (body/TailMotion.java,
 # laid on the ground and kept out of blocks by body/Tail.java).
-PROCEDURAL = NECK + ['head_group'] + TAIL + ['left_wing', 'right_wing']
+PROCEDURAL = NECK + ['head_group'] + TAIL + ['left_wing', 'right_wing', 'left_wing_root_web', 'right_wing_root_web']
 
 
 def full_pose(pose):
@@ -659,6 +969,8 @@ def build():
 					ch.setdefault('position', {})[f'{t:g}'] = {'vector': r3([-px, py, pz])}
 		if name in TAIL_ANIMS:
 			tails[name] = tail_track(frames, hints, length, loop, step)
+		if name == 'death':
+			assert_wings_apart(frames)
 		out['animations'][PREFIX + name] = {'loop': loop, 'animation_length': length, 'bones': bones}
 		print(f'{name:7s} {length:4.2f}s {len(bones)} bones')
 	os.makedirs(os.path.join(HERE, 'out'), exist_ok=True)

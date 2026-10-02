@@ -9,24 +9,22 @@ import java.util.SplittableRandom;
 
 /**
  * One of the End's ten spires, rebuilt as a spiralling obsidian tower instead of vanilla's cylinder, with
- * vanilla's flat top. Every tower winds its own way (direction, turns, proportions), in one of three styles:
+ * vanilla's flat top. Every tower winds its own way (direction, turns, proportions), in one of two styles:
  * <ul>
  *   <li>{@link Kind#CROWN}: a twisted tower, its rounded rectangular section turning as it rises, two sharp
  *       corners winding up it;</li>
- *   <li>{@link Kind#WINDOW}: a core wrapped in scroll wings, split by spiral slits crossed by shelves;</li>
- *   <li>{@link Kind#CAGE}: vanilla's guarded spikes; a square tower with a barred gallery spiralling round
- *       it, and a cage of bars round the crystal on its top.</li>
+ *   <li>{@link Kind#WINDOW}: a core wrapped in scroll wings, split by spiral slits crossed by shelves.</li>
  * </ul>
  * The crystal stays where vanilla puts it (on bedrock at {@code height}, on top of the tower, the crystal
  * at {@code height + 1}, centered), so the End fight, the respawn ritual and the crystals' bounding boxes
  * work unchanged. The shape is a pure function of the spike (no world seed), so the respawn ritual
- * rebuilds exactly the same tower over the old one. Every block is blast-proof (obsidian, bedrock) except
- * the bars, as in vanilla.
+ * rebuilds exactly the same tower over the old one. Every block is blast-proof (obsidian, bedrock). No
+ * spike is caged, the guarded ones included.
  */
 public final class Monolith {
-	public enum Kind { WINDOW, CROWN, CAGE }
+	public enum Kind { WINDOW, CROWN }
 
-	public enum Block { AIR, OBSIDIAN, BEDROCK, IRON_BARS }
+	public enum Block { AIR, OBSIDIAN, BEDROCK }
 
 	/** The island's surface: the y of the top End stone block in a column, or {@link #NONE} over the void. */
 	public interface Ground {
@@ -46,8 +44,6 @@ public final class Monolith {
 	private static final double FLARE = 1.0;
 	/** The width of the winged tower's slits. */
 	private static final double SLIT = 3.0;
-	/** The depth of the terraced tower's gallery, and the height of the cage on its top (roof included). */
-	private static final int GALLERY = 2, CAGE = 4;
 
 	public final int centerX, centerZ, radius, height, minY;
 	public final Kind kind;
@@ -64,20 +60,19 @@ public final class Monolith {
 	/** The tower's "radius" at the top and at the foot. */
 	private final double topRadius, footRadius;
 
-	private Monolith(int centerX, int centerZ, int radius, int height, boolean guarded, int minY, Ground ground) {
+	private Monolith(int centerX, int centerZ, int radius, int height, int minY, Ground ground) {
 		this.centerX = centerX;
 		this.centerZ = centerZ;
 		this.radius = radius;
 		this.height = height;
 		this.minY = minY;
-		this.kind = kind(radius, height, guarded);
+		this.kind = kind(radius, height);
 		SplittableRandom random = new SplittableRandom(seed(centerX, centerZ, height));
 		turn = random.nextBoolean() ? 1 : -1;
 		start = random.nextDouble() * 2 * Math.PI;
 		turns = switch (kind) {
 			case CROWN -> 0.35 + random.nextDouble() * 0.3;
 			case WINDOW -> 0.4 + random.nextDouble() * 0.35;
-			case CAGE -> 1.0 + random.nextDouble() * 0.6;
 		};
 		aspect = 1.35 + random.nextDouble() * 0.4;
 		wings = radius >= 5 ? 3 + random.nextInt(2) : 2 + random.nextInt(2);
@@ -87,16 +82,15 @@ public final class Monolith {
 	}
 
 	/** Builds the tower of a vanilla End spike; {@code minY} is the world's bottom (the tower goes down to it). */
-	public static Monolith build(int centerX, int centerZ, int radius, int height, boolean guarded, int minY, Ground ground) {
-		Monolith m = new Monolith(centerX, centerZ, radius, height, guarded, minY, ground);
+	public static Monolith build(int centerX, int centerZ, int radius, int height, int minY, Ground ground) {
+		Monolith m = new Monolith(centerX, centerZ, radius, height, minY, ground);
 		int n = (int) Math.ceil(m.extent()) + 1;
-		for (int y = minY; y <= m.top(); y++)
+		for (int y = minY; y < m.height; y++)
 			for (int dx = -n; dx <= n; dx++)
 				for (int dz = -n; dz <= n; dz++) {
 					Block b = switch (m.kind) {
 						case CROWN -> m.twisted(dx, y, dz);
 						case WINDOW -> m.winged(dx, y, dz);
-						case CAGE -> m.terraced(dx, y, dz);
 					};
 					if (b != null) m.set(dx, y, dz, b);
 				}
@@ -106,11 +100,10 @@ public final class Monolith {
 	}
 
 	/**
-	 * Which top a spike gets: the guarded ones (vanilla's two caged spikes) keep a cage; of the others the
-	 * thicker ones alternate between a window and a crown, by height so every End has the same mix.
+	 * Which style a spike gets: the thicker ones alternate between a window and a crown, by height so every
+	 * End has the same mix; the thin ones are crowns.
 	 */
-	public static Kind kind(int radius, int height, boolean guarded) {
-		if (guarded) return Kind.CAGE;
+	public static Kind kind(int radius, int height) {
 		int rank = Math.floorDiv(height - 76, 3);
 		return radius >= 3 && Math.floorMod(rank, 2) == 1 ? Kind.WINDOW : Kind.CROWN;
 	}
@@ -142,7 +135,6 @@ public final class Monolith {
 		return switch (kind) {
 			case CROWN -> r * Math.sqrt(aspect + 1 / aspect);
 			case WINDOW -> r;
-			case CAGE -> r * Math.sqrt(2);
 		};
 	}
 
@@ -164,11 +156,6 @@ public final class Monolith {
 	/** The spiral's angle at y. */
 	private double spiral(int y) {
 		return start + turn * turns * 2 * Math.PI * rise(y);
-	}
-
-	/** The highest y anything is built at: the top is flat, as vanilla's, only a cage stands on it. */
-	private int top() {
-		return kind == Kind.CAGE ? height + CAGE : height - 1;
 	}
 
 	// ---- the twisted tower (crown) ------------------------------------------------------------------
@@ -206,39 +193,6 @@ public final class Monolith {
 		if (rho > outer) return null;
 		if (rho <= base * 0.5 || into >= gap || rho < 1.2) return Block.OBSIDIAN;   // the core, a wing
 		return Math.floorMod(y - groundY, 3) == 0 && rho <= base * 0.8 ? Block.OBSIDIAN : null;   // a shelf
-	}
-
-	// ---- the terraced tower (cage) ------------------------------------------------------------------
-
-	/**
-	 * A square tower (corners cut) with a gallery cut into its faces, spiralling up, caged in bars; on its
-	 * flat top a cage of bars round the crystal, as wide as the tower.
-	 */
-	private Block terraced(int dx, int y, int dz) {
-		int ax = Math.abs(dx), az = Math.abs(dz), m = Math.max(ax, az);
-		if (y >= height) {
-			int a = (int) Math.floor(profile(height - 1));
-			if (!square(ax, az, a)) return null;
-			if (y == height + CAGE) return Block.IRON_BARS;                     // the roof
-			if (ax >= a - 1 && az >= a - 1) return Block.OBSIDIAN;              // the corner posts
-			return m < a ? Block.AIR : Block.IRON_BARS;
-		}
-		int a = (int) Math.floor(profile(y));
-		if (!square(ax, az, a)) return null;
-		if (m > a - GALLERY && y > groundY + 2 && y < height - 2 && inGallery(dx, dz, y)) return m == a ? Block.IRON_BARS : Block.AIR;
-		return Block.OBSIDIAN;
-	}
-
-	/** A square of half-size a with its corners cut. */
-	private static boolean square(int ax, int az, int a) {
-		return ax <= a && az <= a && ax + az <= 2 * a - 1;
-	}
-
-	/** Whether a column at y is in the gallery: a band a quarter turn wide behind the spiral's angle. */
-	private boolean inGallery(int dx, int dz, int y) {
-		double d = turn * (Math.atan2(dz, dx) - spiral(y));
-		d = Math.floorMod((long) Math.floor(d / (2 * Math.PI) * 1e6), 1_000_000L) / 1e6;   // 0..1 of a turn
-		return d > 0.75;
 	}
 
 	/**

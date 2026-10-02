@@ -2,7 +2,10 @@ package crazylimits.dragonfall.mc;
 
 import crazylimits.dragonfall.body.Grip;
 import crazylimits.dragonfall.limb.BodyFrame;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityDimensions;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.player.Player;
@@ -11,18 +14,28 @@ import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * What the dragon holds in its talons or jaws ({@link Grip}), both sides. The prey rides the dragon:
- * every tick, on both sides, it is put where the hold is ({@link #holdPoint}), so it cannot move (and is
- * drawn standing, not seated), but it can still use items: an ender pearl takes it out of the hold, as
- * does anything that dismounts it, the dragon dying, or the attack letting go. Shift does not
- * ({@code PlayerMixin}). The hold and the prey are synced in {@link DragonData#GRIP}.
+ * What the dragon holds in its talons or jaws ({@link Grip}), both sides. The prey does not ride the
+ * dragon (no mount, no dismount key, no vehicle health bar): it is <i>carried</i>, ticked by the dragon
+ * right after the dragon's own tick, as a passenger would be ({@link #carry}; the level skips it,
+ * {@code ServerLevelMixin}/{@code ClientLevelMixin}), and then put where the hold is ({@link #holdPoint}),
+ * so it cannot move but can still use items. Each side places it itself (the server ignores a held
+ * player's own moves, {@code ServerGamePacketListenerImplMixin}). An ender pearl (anything that moves it
+ * out of the hold) frees it, as do its death, the dragon's, or the attack letting go.
+ * The hold and the prey are synced in {@link DragonData#GRIP}; the prey knows its carrier ({@link Carried}).
  */
 public final class PreyHold {
-	/** Size of what can be held: a player, a zombie, a skeleton; not a ravager or a horse. */
-	static final double MAX_WIDTH = 1.0, MAX_HEIGHT = 2.2;
+	/** Moved further than this (blocks) from where the hold put it, the prey got away (an ender pearl, /tp). */
+	private static final double ESCAPE = 1.0;
 
 	private final EnderDragon dragon;
 	private final DragonBrain brain;
+	/** What is carried now, and where it was last put. */
+	@Nullable
+	private Entity carried;
+	@Nullable
+	private Vec3 placed;
+	/** Client: the hold the local player got out of (teleported away), not taken up again until the server's hold changes. */
+	private int lost;
 
 	PreyHold(EnderDragon dragon, DragonBrain brain) {
 		this.dragon = dragon;
@@ -46,14 +59,32 @@ public final class PreyHold {
 		return hold == Grip.Hold.TALON || hold == Grip.Hold.JAW;
 	}
 
-	/** Whether {@code entity} is the prey held, riding the dragon. */
+	/** Whether {@code entity} is the prey held, carried by the dragon. */
 	public boolean holds(Entity entity) {
-		return holding() && entity.getVehicle() == dragon && entity.getId() == Grip.entity(dragon.getEntityData().get(DragonData.GRIP));
+		return entity == carried && holding() && entity.getId() == Grip.entity(dragon.getEntityData().get(DragonData.GRIP));
 	}
 
-	/** Whether {@code entity} could be held at all: alive, not too big, not riding or carrying something else. */
+	/** The dragon carrying {@code entity} now, null for none. */
+	@Nullable
+	public static EnderDragon carrier(Entity entity) {
+		EnderDragon dragon = ((Carried) entity).dragonfall$carrier();
+		if (dragon == null) return null;
+		if (dragon.isRemoved() || dragon.level() != entity.level() || !DragonfallDragon.brain(dragon).prey.holds(entity)) {
+			((Carried) entity).dragonfall$setCarrier(null);
+			return null;
+		}
+		return dragon;
+	}
+
+	/**
+	 * Whether {@code entity} could be held at all: alive, not too big ({@link Grip#fits}), not riding, carrying or
+	 * held by something else. Its size is its kind's full standing size times its scale (a baby's is half), not its
+	 * hitbox now: a warden digging or emerging is only a block tall, a crouching mob lower.
+	 */
 	public static boolean holdable(LivingEntity entity) {
-		if (!entity.isAlive() || entity.getBbWidth() > MAX_WIDTH || entity.getBbHeight() > MAX_HEIGHT || entity.isVehicle()) return false;
+		EntityDimensions size = entity.getType().getDimensions().scale(entity.getAgeScale() * entity.getScale());
+		if (!entity.isAlive() || !Grip.fits(size.width(), size.height()) || entity.isVehicle()) return false;
+		if (carrier(entity) != null) return false;
 		return !(entity instanceof Player p && (p.isCreative() || p.isSpectator()));
 	}
 
@@ -70,10 +101,21 @@ public final class PreyHold {
 		return talonPoint(prey);
 	}
 
-	/** Where the talons would put {@code prey}'s feet right now, whatever is held (the snatch's aim). */
+	/**
+	 * Where the talons would put {@code prey}'s feet right now, whatever is held (the snatch's aim): its back
+	 * against the gripping foot's sole, which is held level ({@link #padOffset}), its middle half its width
+	 * (it lies flat) below that.
+	 */
 	public Vec3 talonPoint(Entity prey) {
 		double[] ankle = frame().toWorld(Grip.TALON_ANKLE, new double[3]);
-		return new Vec3(ankle[0], ankle[1] - Grip.TALON_BELOW - prey.getBbHeight() / 2.0, ankle[2]);
+		double[] pad = padOffset(brain.body.yaw(1.0F));
+		return new Vec3(ankle[0] + pad[0], ankle[1] + pad[1] - prey.getBbWidth() / 2.0 - prey.getBbHeight() / 2.0, ankle[2] + pad[2]);
+	}
+
+	/** {@link Grip#talonPad} in the world (blocks) for a dragon of body yaw {@code yaw}: the foot is held level, only turned with it. */
+	public static double[] padOffset(double yaw) {
+		// pitch and roll 0, position 0: the frame only turns the point
+		return new BodyFrame().set(0.0, 0.0, 0.0, yaw, 0.0, 0.0).toWorld(Grip.talonPad(), new double[3]);
 	}
 
 	/**
@@ -87,6 +129,21 @@ public final class PreyHold {
 		Vec3 head = brain.partCenter(0), neck = brain.partCenter(1);
 		double dx = head.x - neck.x, dz = head.z - neck.z;
 		return Math.toDegrees(Math.atan2(-dx, dz)) + 90.0;
+	}
+
+	/**
+	 * Where a held prey's eyes are as it lies (world), between ticks: from its middle toward its head along
+	 * {@link #lyingYaw}, its eye height less half its height. The first-person camera goes there
+	 * ({@code CameraMixin}), not inside the dragon where its standing eyes would be. Null when not held.
+	 */
+	@Nullable
+	public Vec3 lyingEyes(Entity prey, float partialTick) {
+		double yaw = lyingYaw(prey, partialTick);
+		if (Double.isNaN(yaw)) return null;
+		double out = prey.getEyeHeight() - prey.getBbHeight() / 2.0, r = Math.toRadians(yaw);
+		return new Vec3(Mth.lerp(partialTick, prey.xo, prey.getX()) - Math.sin(r) * out,
+				Mth.lerp(partialTick, prey.yo, prey.getY()) + prey.getBbHeight() / 2.0,
+				Mth.lerp(partialTick, prey.zo, prey.getZ()) + Math.cos(r) * out);
 	}
 
 	/** The model as placed this tick (as the server's hitboxes and the client's model are). */
@@ -106,8 +163,9 @@ public final class PreyHold {
 	public boolean seize(LivingEntity prey, Grip.Hold hold) {
 		if (!holdable(prey)) return false;
 		if (prey.isPassenger()) prey.stopRiding();
-		if (!prey.startRiding(dragon, true)) return false;
 		set(hold, prey);
+		take(prey);
+		place(prey);
 		prey.resetFallDistance();
 		return true;
 	}
@@ -117,25 +175,81 @@ public final class PreyHold {
 	 * dropped prey keeps the carry's momentum).
 	 */
 	public void release(@Nullable Vec3 velocity) {
-		Entity prey = prey();
+		Entity prey = carried;
 		boolean held = holding();
 		Vec3 v = velocity != null ? velocity : dragon.getDeltaMovement();
-		// dismounted while still held, so it is left where the hold put it (getDismountLocationForPassenger)
-		if (prey != null && prey.getVehicle() == dragon) prey.stopRiding();
 		set(Grip.Hold.NONE, null);
+		take(null);
 		if (held && prey != null && prey.isAlive()) {
+			// the player's client placed it by its own view of the dragon: it starts falling from the server's
+			if (prey instanceof ServerPlayer player) player.connection.teleport(prey.getX(), prey.getY(), prey.getZ(), prey.getYRot(), prey.getXRot());
 			prey.setDeltaMovement(v);
 			prey.hurtMarked = true;
 		}
 	}
 
-	/** Every tick: a prey that got away (ender pearl, death, any dismount) is no longer held. */
+	/** Every tick (server): a prey that got away (ender pearl, death) is no longer held. */
 	void tick() {
 		Grip.Hold hold = hold();
 		if (hold == Grip.Hold.NONE) return;
 		Entity prey = prey();
 		boolean gone = prey == null || !prey.isAlive();
-		if (gone || hold != Grip.Hold.REACH && prey.getVehicle() != dragon) set(Grip.Hold.NONE, null);
+		if (gone || hold != Grip.Hold.REACH && carried != prey) {
+			set(Grip.Hold.NONE, null);
+			take(null);
+		}
+	}
+
+	/**
+	 * Right after the dragon's own tick in the level's entity loop, both sides: the held prey's tick (the
+	 * level skipped it), then it is put in the hold, as a vehicle ticks and places its passengers. A prey
+	 * found away from where it was put (teleported: an ender pearl) has got out.
+	 */
+	public void carry() {
+		if (dragon.level().isClientSide) follow();
+		Entity prey = carried;
+		if (prey == null) return;
+		if (prey.isRemoved() || prey.level() != dragon.level() || prey.isPassenger() || !holds(prey)) {
+			take(null);
+			return;
+		}
+		if (placed != null && prey.position().distanceToSqr(placed) > ESCAPE * ESCAPE) {
+			escaped();
+			return;
+		}
+		prey.setOldPosAndRot();
+		prey.tickCount++;
+		prey.tick();
+		if (!prey.isRemoved() && holds(prey)) place(prey);
+	}
+
+	/** Client: carries what the server says is held, unless the local player already got out of it. */
+	private void follow() {
+		int bits = dragon.getEntityData().get(DragonData.GRIP);
+		if (lost != 0 && bits != lost) lost = 0;
+		Entity prey = holding() && bits != lost ? prey() : null;
+		if (prey != carried) take(prey);
+	}
+
+	private void escaped() {
+		if (dragon.level().isClientSide) lost = dragon.getEntityData().get(DragonData.GRIP);
+		else set(Grip.Hold.NONE, null);
+		take(null);
+	}
+
+	private void take(@Nullable Entity prey) {
+		if (carried != null && ((Carried) carried).dragonfall$carrier() == dragon) ((Carried) carried).dragonfall$setCarrier(null);
+		carried = prey;
+		placed = null;
+		if (prey != null) ((Carried) prey).dragonfall$setCarrier(dragon);
+	}
+
+	private void place(Entity prey) {
+		Vec3 at = holdPoint(prey);
+		prey.setPos(at);
+		prey.setDeltaMovement(Vec3.ZERO);
+		prey.resetFallDistance();
+		placed = at;
 	}
 
 	private void set(Grip.Hold hold, @Nullable Entity prey) {

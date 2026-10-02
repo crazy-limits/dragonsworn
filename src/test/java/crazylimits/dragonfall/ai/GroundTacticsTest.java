@@ -2,6 +2,7 @@ package crazylimits.dragonfall.ai;
 
 import crazylimits.dragonfall.ai.GroundTactics.Action;
 import crazylimits.dragonfall.ai.GroundTactics.Decision;
+import crazylimits.dragonfall.nav.Foothold;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -78,5 +79,25 @@ class GroundTacticsTest {
 		assertEquals(GroundTactics.Zone.FRONT, GroundTactics.zone(-30));
 		assertEquals(GroundTactics.Zone.SIDE, GroundTactics.zone(-90));
 		assertEquals(GroundTactics.Zone.BEHIND, GroundTactics.zone(150));
+	}
+
+	@Test
+	void satUpItOnlyBitesAndTurns() {
+		for (Foothold foothold : new Foothold[]{Foothold.UPRIGHT, Foothold.CLING}) {
+			// beside it, near the tail: no tail strike up there, it turns to face it instead
+			Decision side = GroundTactics.decide(foothold, 7, 110, true, true, true, false, false, 0.1);
+			assertEquals(Action.BITE, side.action(), "the jaws reach it: " + foothold);
+			Decision tail = GroundTactics.decide(foothold, 7, 110, false, true, true, false, false, 0.1);
+			assertEquals(Action.NONE, tail.action());
+			assertTrue(tail.turn());
+			// in front and out of reach: no walking off the perch, no roar
+			Decision far = GroundTactics.decide(foothold, 12, 20, false, false, true, true, false, 0.5);
+			assertEquals(Action.NONE, far.action());
+			assertFalse(far.walk());
+			assertTrue(far.turn());
+			// hurt from behind: no tail either
+			assertEquals(Action.NONE, GroundTactics.decide(foothold, 6, 170, false, true, true, false, true, 0.5).action());
+		}
+		assertEquals(Action.ROAR, GroundTactics.decide(Foothold.STAND, 12, 0, false, false, true, true, false, 0.5).action());
 	}
 }

@@ -1,6 +1,7 @@
 package crazylimits.dragonfall.anim;
 
 import crazylimits.dragonfall.flight.FlightModel;
+import crazylimits.dragonfall.nav.Foothold;
 import org.junit.jupiter.api.Test;
 
 import static crazylimits.dragonfall.anim.DragonAnimSelector.*;
@@ -85,5 +86,30 @@ class DragonAnimSelectorTest {
 		assertEquals(DragonAnim.FLAP, clock.anim());
 		for (int i = 0; i < Math.ceil(DragonAnim.PUSH_SECONDS * 20) + 1; i++) clock.tick(choice, push, 1);
 		assertEquals(DragonAnim.GLIDE, clock.anim());
+	}
+
+	@Test
+	void aNarrowFootholdSitsUpOrClingsAndNeverWalks() {
+		assertEquals(DragonAnim.UPRIGHT, select(Kind.GROUND, Foothold.UPRIGHT, null, 0, GLIDING, 0.2).anim());
+		assertEquals(DragonAnim.CLING, select(Kind.GROUND, Foothold.CLING, null, 0, GLIDING, 0.2).anim());
+		assertEquals(DragonAnim.UPRIGHT_BITE, select(Kind.GROUND, Foothold.UPRIGHT, DragonAnim.UPRIGHT_BITE, 3, GLIDING, 0).anim());
+		// only the ground cares how it stood
+		assertEquals(DragonAnim.GLIDE, select(Kind.AIR, Foothold.CLING, null, 0, GLIDING, 1).anim());
+		assertEquals(DragonAnim.IDLE, select(Kind.PERCH_SCANNING, Foothold.UPRIGHT, null, 0, GLIDING, 0).anim());
+	}
+
+	@Test
+	void oneShotsSettleBackIntoTheirStance() {
+		assertEquals(DragonAnim.UPRIGHT, DragonAnim.UPRIGHT_BITE.then());
+		assertEquals(DragonAnim.CLING, DragonAnim.CLING_BITE.then());
+		assertEquals(DragonAnim.GLIDE, DragonAnim.GLIDE_BITE.then());
+		assertEquals(DragonAnim.HOVER, DragonAnim.HOVER_BITE.then());
+		assertEquals(DragonAnim.HOVER, DragonAnim.HOVER_BREATH.then());
+		assertEquals(DragonAnim.IDLE, DragonAnim.ATTACK.then());
+		assertEquals(DragonAnim.HOVER, DragonAnim.TAKEOFF.then());
+		for (DragonAnim anim : DragonAnim.values()) {
+			assertEquals(anim == DragonAnim.ATTACK || anim == DragonAnim.UPRIGHT_BITE || anim == DragonAnim.CLING_BITE
+					|| anim == DragonAnim.GLIDE_BITE || anim == DragonAnim.HOVER_BITE, anim.bites(), anim.name());
+		}
 	}
 }

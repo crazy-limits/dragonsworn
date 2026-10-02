@@ -3,16 +3,19 @@ package crazylimits.dragonfall.fabric;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import crazylimits.dragonfall.anim.DragonCommand;
 import crazylimits.dragonfall.mc.breath.BreathParticles;
+import crazylimits.dragonfall.mc.breath.DragonFire;
 import crazylimits.dragonfall.mc.breath.client.VoidFlameParticle;
 import crazylimits.dragonfall.mc.client.ArenaTour;
 import crazylimits.dragonfall.mc.client.DragonRenderer;
 import crazylimits.dragonfall.mc.client.Showcase;
 import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.blockrenderlayer.v1.BlockRenderLayerMap;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.particle.v1.ParticleFactoryRegistry;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
+import net.minecraft.client.renderer.RenderType;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.EntityType;
 
@@ -23,6 +26,8 @@ public final class DragonfallFabricClient implements ClientModInitializer {
 		EntityRendererRegistry.register(EntityType.ENDER_DRAGON, DragonRenderer::new);
 		ParticleFactoryRegistry.getInstance().register(BreathParticles.VOID_BREATH, VoidFlameParticle.Breath::new);
 		ParticleFactoryRegistry.getInstance().register(BreathParticles.VOID_FLAME, VoidFlameParticle.Cloud::new);
+		// NeoForge reads the cutout from the block models' render_type
+		BlockRenderLayerMap.INSTANCE.putBlock(DragonFire.BLOCK, RenderType.cutout());
 		if (Showcase.ENABLED) ClientTickEvents.END_CLIENT_TICK.register(Showcase::tick);
 		if (ArenaTour.ENABLED) ClientTickEvents.END_CLIENT_TICK.register(ArenaTour::tick);
 

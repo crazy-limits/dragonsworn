@@ -139,4 +139,81 @@ class NavTest {
 		assertTrue(spot[2] >= 5, "lands south of the mountain: " + spot[2]);
 		assertEquals(64, spot[1]);
 	}
+
+	@Test
+	void aLedgeTooSmallForAllFourIsAnUprightFoothold() {
+		// a 3 by 3 platform 10 blocks up a void (the flat world is far below: y < 64 only)
+		BlockGrid ledge = new BlockGrid() {
+			@Override
+			public boolean blocked(int x, int y, int z) {
+				return Math.abs(x) <= 1 && Math.abs(z) <= 1 && y >= 60 && y < 74 || y < 40;
+			}
+
+			@Override
+			public int ground(int x, int z) {
+				return Math.abs(x) <= 1 && Math.abs(z) <= 1 ? 74 : 40;
+			}
+		};
+		LandingSite site = new LandingSite(ledge);
+		assertEquals(BlockGrid.NO_GROUND, site.fits(0, 0), "no room for all four");
+		assertEquals(74, site.fits(0, 0, Foothold.UPRIGHT));
+		assertEquals(74, site.fits(0, 0, Foothold.CLING));
+		assertEquals(BlockGrid.NO_GROUND, site.fits(1, 1, Foothold.UPRIGHT), "the corner: its feet over the edge");
+	}
+
+	@Test
+	void aPillarsTopIsOnlyToClingTo() {
+		BlockGrid pillar = new BlockGrid() {
+			@Override
+			public boolean blocked(int x, int y, int z) {
+				return x == 0 && z == 0 && y < 74 || y < 40;
+			}
+
+			@Override
+			public int ground(int x, int z) {
+				return x == 0 && z == 0 ? 74 : 40;
+			}
+		};
+		LandingSite site = new LandingSite(pillar);
+		assertEquals(BlockGrid.NO_GROUND, site.fits(0, 0, Foothold.UPRIGHT));
+		assertEquals(74, site.fits(0, 0, Foothold.CLING));
+		// a wall beside it leaves no room for the wings
+		BlockGrid walled = new BlockGrid() {
+			@Override
+			public boolean blocked(int x, int y, int z) {
+				return x == 0 && z == 0 && y < 74 || x == 5 && y < 90 || y < 40;
+			}
+
+			@Override
+			public int ground(int x, int z) {
+				return x == 0 && z == 0 ? 74 : x == 5 ? 90 : 40;
+			}
+		};
+		assertEquals(BlockGrid.NO_GROUND, new LandingSite(walled).fits(0, 0, Foothold.CLING));
+	}
+
+	@Test
+	void aNarrowFootholdIsFoundBesideThePreyAtItsHeight() {
+		// the prey on its own pillar at (0, 0), another pillar 5 blocks east, one far too low 5 blocks west
+		BlockGrid pillars = new BlockGrid() {
+			@Override
+			public boolean blocked(int x, int y, int z) {
+				return top(x, z) > 0 && y < top(x, z) || y < 40;
+			}
+
+			@Override
+			public int ground(int x, int z) {
+				return top(x, z) > 0 ? top(x, z) : 40;
+			}
+
+			int top(int x, int z) {
+				if (z != 0) return 0;
+				return x == 0 ? 74 : x == 5 ? 75 : x == -5 ? 50 : 0;
+			}
+		};
+		int[] spot = new LandingSite(pillars).near(0.5, 74, 0.5, 4, 7.5, 5.5, -40, 0, Foothold.CLING);
+		assertNotNull(spot);
+		assertArrayEquals(new int[]{5, 75, 0}, spot);
+		assertNull(new LandingSite(pillars).near(0.5, 74, 0.5, 4, 7.5, 5.5, -40, 0, Foothold.UPRIGHT));
+	}
 }

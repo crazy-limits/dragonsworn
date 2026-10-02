@@ -1,5 +1,7 @@
 package crazylimits.dragonfall.ai;
 
+import crazylimits.dragonfall.nav.Foothold;
+
 /**
  * What a landed dragon does next against its target. One blow at a time: the bite and the tail strike
  * share one recovery ({@code attackReady}), so the head and the tail never strike together.
@@ -16,6 +18,9 @@ package crazylimits.dragonfall.ai;
  * Whether a blow reaches is the IK's answer ({@code body/Strike}): the jaws and the tail's tip cannot
  * reach everywhere (under the chin, close behind the hips), and those blind spots are left to the turn.
  * Further off in front: the <b>roar</b> now and then, else walk in.
+ *
+ * <p>Sat up on a narrow foothold ({@link Foothold#narrow}) it fights with the head alone: it bites what
+ * is in reach and turns to face the rest, but never lashes its tail, roars or walks off its perch.
  */
 public final class GroundTactics {
 	public enum Action { NONE, BITE, TAIL_STRIKE, ROAR }
@@ -49,6 +54,14 @@ public final class GroundTactics {
 		double b = Math.toRadians(bearing);
 		double right = Math.sin(b) * distance, forward = Math.cos(b) * distance;
 		return Math.hypot(right, forward - HEAD_FORWARD) <= Math.hypot(right, forward - TAIL_FORWARD);
+	}
+
+	/** As below, from a foothold: a narrow one only bites and turns. */
+	public static Decision decide(Foothold foothold, double distance, double bearing, boolean biteReaches, boolean tailReaches,
+			boolean attackReady, boolean roarReady, boolean provoked, double dice) {
+		if (!foothold.narrow()) return decide(distance, bearing, biteReaches, tailReaches, attackReady, roarReady, provoked, dice);
+		Decision d = decide(distance, bearing, biteReaches, false, attackReady, false, provoked, dice);
+		return d.walk() ? new Decision(d.action(), false, d.turn()) : d;
 	}
 
 	/**

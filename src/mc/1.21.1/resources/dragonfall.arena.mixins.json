@@ -5,6 +5,11 @@
 	"compatibilityLevel": "JAVA_${java}",
 	"injectors": { "defaultRequire": 1 },
 	"mixins": [
+		"EndCrystalMixin",
+		"EndPlatformFeatureMixin",
 		"SpikeFeatureMixin"
+	],
+	"client": [
+		"client.EnderDragonRendererMixin"
 	]
 }

@@ -18,13 +18,13 @@ class MonolithTest {
 	/** A rolling island surface around y 60. */
 	private static final Monolith.Ground ISLAND = (x, z) -> 60 + (int) Math.round(2 * Math.sin(x * 0.3) + 1.5 * Math.cos(z * 0.23));
 
-	/** The ten spikes as vanilla lays them out (radius and height by rank, ranks 1 and 2 caged). */
+	/** The ten spikes as vanilla lays them out (radius and height by rank). */
 	private static List<Monolith> vanilla() {
 		List<Monolith> all = new ArrayList<>();
 		for (int i = 0; i < 10; i++) {
 			int x = (int) Math.floor(42.0 * Math.cos(2.0 * (-Math.PI + Math.PI / 10 * i)));
 			int z = (int) Math.floor(42.0 * Math.sin(2.0 * (-Math.PI + Math.PI / 10 * i)));
-			all.add(Monolith.build(x, z, 2 + i / 3, 76 + i * 3, i == 1 || i == 2, 0, ISLAND));
+			all.add(Monolith.build(x, z, 2 + i / 3, 76 + i * 3, 0, ISLAND));
 		}
 		return all;
 	}
@@ -38,8 +38,7 @@ class MonolithTest {
 		Map<Kind, Integer> count = new EnumMap<>(Kind.class);
 		for (Monolith m : vanilla()) count.merge(m.kind, 1, Integer::sum);
 		assertEquals(4, count.get(Kind.WINDOW));
-		assertEquals(4, count.get(Kind.CROWN));
-		assertEquals(2, count.get(Kind.CAGE));
+		assertEquals(6, count.get(Kind.CROWN));
 	}
 
 	@Test
@@ -89,7 +88,7 @@ class MonolithTest {
 	}
 
 	@Test
-	void theCrystalStandsOnAFlatTopCagedOnlyOnTheGuardedSpikes() {
+	void theCrystalStandsOnAnOpenFlatTop() {
 		for (Monolith m : vanilla()) {
 			int x = m.centerX, z = m.centerZ, y = m.crystalY();
 			for (int dx = -1; dx <= 1; dx++)
@@ -102,21 +101,16 @@ class MonolithTest {
 			}
 			boolean sky = true;
 			for (int dy = 1; dy < 30; dy++) sky &= !solid(m.at(x, y + dy, z));
-			if (m.kind == Kind.CAGE) {
-				assertEquals(0, open, "the cage closes all round");
-				assertFalse(sky, "the cage has a roof");
-			} else {
-				assertEquals(72, open, m.kind + ": nothing round the crystal");
-				assertTrue(sky, m.kind + ": nothing over the crystal");
-			}
-			m.forEach((bx, by, bz, b) -> assertTrue(by < m.height || b == Block.BEDROCK || m.kind == Kind.CAGE,
+			assertEquals(72, open, m.kind + ": nothing round the crystal");
+			assertTrue(sky, m.kind + ": nothing over the crystal");
+			m.forEach((bx, by, bz, b) -> assertTrue(by < m.height || b == Block.BEDROCK,
 				m.kind + ": nothing on the flat top but the crystal's bedrock"));
 		}
 	}
 
 	@Test
 	void isAPureFunctionOfTheSpike() {
-		Monolith a = Monolith.build(42, 0, 4, 97, false, 0, ISLAND), b = Monolith.build(42, 0, 4, 97, false, 0, ISLAND);
+		Monolith a = Monolith.build(42, 0, 4, 97, 0, ISLAND), b = Monolith.build(42, 0, 4, 97, 0, ISLAND);
 		assertEquals(a.size(), b.size());
 		a.forEach((x, y, z, block) -> assertEquals(block, b.at(x, y, z)));
 	}
@@ -128,7 +122,7 @@ class MonolithTest {
 			Set<List<Integer>> probed = new HashSet<>();
 			int x0 = (int) Math.floor(42.0 * Math.cos(2.0 * (-Math.PI + Math.PI / 10 * i)));
 			int z0 = (int) Math.floor(42.0 * Math.sin(2.0 * (-Math.PI + Math.PI / 10 * i)));
-			Monolith m = Monolith.build(x0, z0, 2 + i / 3, 76 + i * 3, i == 1 || i == 2, 0, (x, z) -> {
+			Monolith m = Monolith.build(x0, z0, 2 + i / 3, 76 + i * 3, 0, (x, z) -> {
 				probed.add(List.of(x, z));
 				return ISLAND.top(x, z);
 			});
@@ -137,7 +131,7 @@ class MonolithTest {
 		}
 	}
 
-	/** Whether a horizontal ray from the crystal leaves the monolith's reach without hitting a block or bars. */
+	/** Whether a horizontal ray from the crystal leaves the monolith's reach without hitting a block. */
 	private static boolean clearRay(Monolith m, double x, double y, double z, double dx, double dz) {
 		for (double t = 0; t < Monolith.REACH + 2; t += 0.1)
 			if (solid(m.at((int) Math.floor(x + dx * t), (int) Math.floor(y), (int) Math.floor(z + dz * t)))) return false;

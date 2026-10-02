@@ -22,6 +22,10 @@ public final class DragonData {
 	public static final EntityDataAccessor<Vector3f> STRIKE;
 	/** What the talons or jaws hold or reach for, and the prey's id ({@code body/Grip#encode}); 0: nothing. */
 	public static final EntityDataAccessor<Integer> GRIP;
+	/** Counts the fireballs the server starts charging: each new value is one (the heat glow plays fast). */
+	public static final EntityDataAccessor<Integer> FIREBALL;
+	/** How it stands on the ground ({@code nav/Foothold}'s ordinal): on all fours, sat up or clinging. */
+	public static final EntityDataAccessor<Integer> FOOTHOLD;
 	public static final Vector3f NO_STRIKE = new Vector3f(Float.NaN, Float.NaN, Float.NaN);
 
 	static {
@@ -33,6 +37,8 @@ public final class DragonData {
 		VOICE = SynchedEntityData.defineId(EnderDragon.class, EntityDataSerializers.INT);
 		STRIKE = SynchedEntityData.defineId(EnderDragon.class, EntityDataSerializers.VECTOR3);
 		GRIP = SynchedEntityData.defineId(EnderDragon.class, EntityDataSerializers.INT);
+		FIREBALL = SynchedEntityData.defineId(EnderDragon.class, EntityDataSerializers.INT);
+		FOOTHOLD = SynchedEntityData.defineId(EnderDragon.class, EntityDataSerializers.INT);
 		if (FLIGHT.id() <= vanilla.id()) throw new IllegalStateException("Dragonfall dragon data defined too early");
 	}
 

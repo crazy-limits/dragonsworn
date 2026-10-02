@@ -16,12 +16,18 @@ The showcase creates a flat world, summons NoAI dragons, plays every animation, 
 (leaf cage + stone pillar, ground assault on a husk, takeoff, hitbox shots, a running landing) and the breath; it writes
 screenshots to `run/<target>/screenshots/df-*.png`, a report to `run/<target>/showcase-report.txt`, and quits.
 `-Pdragonfall.showcase=landing` runs only the live AI's ground assault + takeoff and the running landing (~2 min).
+`-Pdragonfall.showcase=stance` runs only the wild fight's ground -> air break -> ground cycle (~1.5 min).
+`-Pdragonfall.showcase=pass` runs only the breath pass over a husk (~20 s).
+`-Pdragonfall.showcase=death` runs only a wild dragon's death (brought down in the air: the rise, then the cocoon; ~25 s).
+`-Pdragonfall.showcase=narrow` runs only the narrow footholds (a 3x3 platform, a lone pillar beside a husk's pillar).
+`-Pdragonfall.showcase=air` runs only the air attacks (a husk on a lone 16-block pillar, one hanging in the air: fly-by
+bite, hover bite, hover breath each, then the wild AI's own choice; ~6 min).
 Targets 1.21.11 and 26.2 are declared (GeckoLib 5) but their `src/mc/<version>` bridge is not written yet.
 
 ## Layout
 - `src/main/java` -- game-free core (Stonecutter-processed), tested in `src/test`: `anim` (what plays),
   `flight` (wingbeat-driven flight model), `body` (procedural bank/neck/tail, wings turned against the body pitch, + hitbox placement from the
-  generated pose track), `nav` (air/ground A*, landing sites, runways), `ai` (ground tactics, free roaming),
+  generated pose track), `nav` (air/ground A*, landing sites, runways), `ai` (ground tactics, free roaming, combat stance),
   `limb` (foot IK on uneven ground, body tilt over terrain, head look-at; applied by `mc/client/LimbAnimator`).
 - `src/mc/<version>/java` -- Minecraft bridge per MC version: `mc` (DragonBrain: AI director, movement,
   collision, parts; phases in `mc/phase`; mixins), `mc/client` (GeckoLib renderer, model, showcase).
@@ -29,10 +35,26 @@ Targets 1.21.11 and 26.2 are declared (GeckoLib 5) but their `src/mc/<version>` 
 - `src/gecko4/resources` (1.21.1) / `src/gecko5/resources` (1.21.2+) -- model + animations; textures in `src/mc/shared/resources`.
 - `tools/` -- the asset pipeline. **Never hand-edit the generated model/animation JSON.**
 
-## Asset pipeline (`python3 tools/build_assets.py`, needs Pillow)
+## Asset pipeline (`python3 tools/build_assets.py`, needs Pillow + numpy)
 - `build_wings.py` -- geometry from `tools/source/` (the Ender Dragon Reborn CEM model, converted): fan-wing
   wedge slices, 4-segment neck and 9-segment tail (`chain.py`, per-face UV; the neck split was verified
   pixel-exact in Blockbench). Poses may still name `neck_rot*`/`tail_rot*`; `chain.expand` spreads them.
+  Wing parts: `*_wing` (shoulder: `_arm` + `_membrane`), `*_wing_tip` (elbow, the `_sail` membrane), `tip1`
+  forearm, fingers `tip2/3/5/6` at 0/30/60/90 deg round the wrist apex, `tip7` (no cube) the sail's crease at
+  120 deg; slices `web0-5` fill the finger gaps, `web6/7` the sail gap (tip6-tip7, cut out of the sail);
+  `*_wing_root_web`: the inner membrane folds down at x = 19 (just outside the flank) into a 24 px strip tilted 30 deg in under the body, its
+  own texture (the membrane's art mirrored across the fold); the renderer turns it about the fold so it keeps
+  pointing where it points at rest (`body/WingRoot`, within 40 deg of that). Every cube carries a `name`. Only the left
+  wing is built: every `right_wing*` bone is its exact mirror (pivot -x, rotation (x, -y, -z)), so right-side
+  poses are the left's with Y and Z negated (also the web pleats), and the right wears the left's art.
+  Arm, forearm and fingers are raised 0.1 px each over the one before (no z-fight where they overlap at the
+  wrist). Every hind toe is its own bone hinged at its knuckle (`foot_*_toe1..3`, the toe + the claw under its
+  tip) and each hind foot has a back toe (`foot_*_back_toe`: the middle toe + claw again, turned 180 degrees);
+  no animation keys them: `limb/Toes` (core, tested) turns them in `LimbAnimator.toes` (see Grabs).
+- `pack_uv.py` -- last step: turns every face into per-face UV, points every right-wing face at the left face
+  it mirrors, shares identical patches (also flipped/turned: negative `uv_size`, `uv_rotation`) and packs
+  them (skin, glowmask, heat frames together) into the smallest power-of-two texture; it asserts that every
+  face samples exactly the texels it did before.
 - `anims.py` -- every animation as a pose function. Ground poses are solved by IK (`walk.py`, `stand.py`,
   `ik.py` on the FK in `rig.py`), so planted feet do not slide (residuals < 0.02 px).
 - `flight.py` -- the wingbeat (see Flight below). `anims.py` builds every flying pose from it through `flight_pose`.
@@ -42,14 +64,40 @@ Targets 1.21.11 and 26.2 are declared (GeckoLib 5) but their `src/mc/<version>` 
   almost all of it the standing IK, so check flight poses that way before rebuilding.
 - Every animation keys every neck/tail segment, `head_group` and both shoulders: the renderer adds procedural turns on top.
   The tail is keyed straight (zero) everywhere: its whole motion is procedural (see Tail below).
-- Wing rule (no gaps, no crossing): shoulders rotate freely, elbows only about Z, the hand only through `fan.py`.
+- Wing rule (no gaps, no crossing): shoulders rotate freely, elbows only about Z, the hand only through `fan.py`
+  (4 gaps; the sail gap pleats at `fan.SAIL` x its neighbour's, `tip7` never moves), plus the wrist twist
+  (`fan.wrist_twist`, keyed into `tip2`): the hand turned about the `tip7` crease, the one line it shares with the
+  sail, so that seam folds and never opens.
+- Standing (`stand.py`): chest up, the arm arched (elbow above the shoulder, forearm back down to the wrist), the
+  hand half spread (`stand.FAN`) and laid on the ground along its leading finger (`tip2`) out to the tip, the rest
+  of the hand fanned up from it to the forearm (`walk.solve_limbs(hand_laid=True)`: shoulder, elbow and wrist twist
+  put the claw on its mark, the wrist on the ground, tip2's tip level with it, the other fingers above). The hand
+  cannot lie flat with the elbow up: its plane holds the crease, only 20 deg off the forearm.
 - Editor convention: +X pitches a bone's front up; files store X and Y negated.
-- `particles.py` -- void flame sprites: Ice and Fire's fire-breath particle recolored to Dragon's Breath, 4 frames
-  cooling white -> violet with age (embers, cloud flames); and the stream's own `void_breath_*` (10 frames, drawn):
-  a cloud-shaped ball of purple fire that billows into dark smoke with the last purple flames dying in it.
+- `particles.py` -- void flame sprites, drawn (no source image), pixel art from smooth noise at 4x: a puff of
+  billows that burns as a ball of purple fire (white heart, violet rim), a ring of smoke closes in on it (glowing
+  violet beside the fire), then it is only smoke clouds (shaded per billow, darker underneath, as vanilla's big
+  smoke) that thin out. The puff grows inside the sprite (a small ball in the middle to the whole sprite): the
+  particle's quad keeps one size, so texels never get bigger. `void_breath_*` (48x48, 16 frames, the stream; pure
+  smoke from frame 9) and `void_flame_*` (24x24, 12 frames, the breath clouds' flames and the mouth's embers; pure
+  smoke from frame 7). `VoidFlameParticle`'s `smokeFrom` (where the world's light takes over and the puff rises)
+  matches those frames.
 - `heat.py` -- the breath's heat-glow frames (see Breath attack).
-- `egg.py` -- the dragon egg's block texture (overrides `minecraft:block/dragon_egg`): overlapping scales in the
-  dragon texture's palette, cracked by a glowing rune-magenta vein. 16x16; vanilla's egg model maps it upside down.
+- `dragon_fire.py` -- the dragon fire block's textures: vanilla's soul fire (read from Loom's client jar) tinted
+  violet (red and green swapped, dimmed); vanilla's animation `.mcmeta` copied as is.
+- `crystal_beam.py` -- the End crystal beam's texture (overrides `minecraft:entity/end_crystal/end_crystal_beam`,
+  the dragon's healing beam and the crystals' own beams): 32x512 (vanilla x2), dim 1-px sparkle and a double helix
+  of Standard Galactic Alphabet runes (the font's `particle/sga_*` glyphs, drawn 2x tall: a texel is ~0.145 blocks
+  round the tube and 0.0625 along it). `ArenaTour` photographs it (`df-arena-beam*.png`). The texture flows from the
+  crystal toward the dragon (vanilla's runs the other way): `mc/arena/mixin/client/EnderDragonRendererMixin` redraws
+  vanilla's tube with the scroll's sign flipped.
+- `egg.py` -- the dragon egg (overrides `minecraft:block/dragon_egg`): the sniffer egg's model (one box, a texture per
+  face) at 14 x 16 x 14, scales in the dragon texture's palette (no glow), rows of them from tip to tip, small at the
+  top and growing toward the bottom, spiralling into both tips; each texel shows its nearest scale seed in 3D, so they
+  run on across the faces' edges. Three hatch stages (`not_cracked`, `slightly_cracked`, `very_cracked`: dark
+  cracks, then open ones with lit edges) on a `hatch` 0..2 property (`mc/mixin/DragonEggBlockMixin`, vanilla's
+  `HATCH`) and blockstate. Nothing raises it yet (hatching comes later). The item is a flat sprite like the
+  sniffer egg's (`textures/item/dragon_egg`; `items/dragon_egg.json` for 1.21.4+). `egg.py <png>` previews it all.
 
 ## Tail
 Fully procedural. `body/TailMotion` (core, tested) is what the keyframes used to do per animation (ported from
@@ -64,6 +112,17 @@ capsule out of `BlockGrid.blocked` blocks (ring search for the smallest clear ex
 `body/TailChain` is the exact FK, hung from the body bone (`PoseTrack` frame or the drawn GeckoLib bone).
 Hitboxes (`PartSolver.tail`), the renderer (`LimbAnimator.State.tail`, solved last in `DragonModel`) and the
 strike's IK all use it. Showcase stage `tailCage` checks the drawn tail never overlaps a block.
+
+## Hitboxes follow the drawn model
+`body/PartSolver` places every part where the model draws it (both sides, `DragonBrain.placeParts`): the pose the
+model *shows* (`AnimClock.shownSeconds`: GeckoLib plays an animation `BLEND_TICKS` late, after blending into it from
+whatever pose showed when the choice changed: `PartSolver` blends from the frame it last solved, as GeckoLib from its
+bone snapshot), then the same bends the renderer adds. The neck is exact FK (`PartSolver.bendNeck`): each bone's
+keyed pitch/yaw are recovered from the frame's pivots (no neck bone keys roll or position) and the bends go into
+Ry/Rx as GeckoLib adds them to the bone's rotation; the strike's IK and the breath's straightening
+(`PartSolver.neckAim`) use it too. The head-look (`limb/HeadLook`) ticks on both sides in `DragonBrain.look`
+(measured from the head posed by the last solve), and the renderer reads it with the partial tick. Showcase stage
+`hitboxes` (`-Pdragonfall.showcase=hitboxes`) compares the drawn head/neck anchors with the hitboxes as the head turns.
 
 ## Flight
 `tools/flight.py` is the wingbeat, after big birds (research notes: downstroke 55 % of the beat, joints breaking
@@ -97,7 +156,19 @@ burns along `BreathAttack`'s cone, the client spawns flames from the model's mou
 the dragon heats up (`mc/client/HeatGlowLayer`): its chest glows first, the glow climbs the throat to the jaw and
 mouth, then the fire comes; it flickers while pouring and cools after. A texture animation: `tools/heat.py` bakes
 8 emissive frames (`textures/entity/heat/`) from the model's UV map (chest, neck underside, jaw get ignition times
-by model z); the layer draws the two frames around `BreathAttack.heat`, weighted. Rerun it if the UVs change. The
+by model z); the layer draws the two frames around `BreathAttack.heat`, weighted. It bakes on `build_wings.py`'s
+layout, before `pack_uv.py` repacks it with the skin. Every fireball (roam pass/barrage, the arena's strafe via
+`DragonStrafePlayerPhaseMixin`) goes through `DragonBrain.chargeFireball`: the same glow plays `FIREBALL_SPEEDUP`
+(3) x faster (synced as a count, `DragonData.FIREBALL`) and the fireball flies from the head when it reaches the jaw.
+Through that windup the head turns to the target (look attention full, `BreathAttack.fireballAiming`, both sides); it
+fires only once the head points within `FIREBALL_CONE` of it (waits up to `FIREBALL_AIM_TICKS`, else drops the
+shot: never backwards), from in front of the mouth; projectiles never hit their owner's own parts (`ProjectileMixin`).
+**Dragon fire** (`mc/breath/DragonFire`, block `dragonfall:dragon_fire`): every fire attack leaves it where it lands
+(`DragonFire.spread`): the stream and the breath pass where they splash (`BreathStreamPhase.burn`), the fireball a few
+flames right where it bursts, the perched cloud breath under its cloud. Soul fire tinted violet, `DAMAGE` 3 a touch
+(fire: 1); it does not spread or burn blocks, stands on any solid top and burns out after 5-10 s; the dragon is
+immune. Created inside the loaders' block registration; cutout via `BlockRenderLayerMap` (Fabric) or the models'
+`render_type` (NeoForge). Showcase `breath` checks the fire and its damage against vanilla fire's; `pass` the pass's. The
 dragon-fireball and perched-breath clouds use the `dragonfall:void_flame` particle. Mouth constants in
 `BreathAttack` come from the `breath` pose in `anims.py`: re-derive them if that pose changes. The neck lunges out
 `BREATH_LUNGE` before the fire, because the model plays the animation `BLEND_TICKS` late. Pouring, the neck
@@ -105,6 +176,14 @@ runs out straight from the chest with the head low at the chest's height; the po
 the game's aim off). The neck follows a moving target alone; the body turns only once the target leaves the neck's
 `NECK_ARC` (`BreathAttack.bodyTurns`). Showcase `-Pdragonfall.showcase=breath` runs the breath stages only,
 including a husk walking across the stream (head line vs husk, body must not turn).
+**Breath pass** (`anim/BreathPass` core, tested; `mc/phase/BreathPassPhase`, wild attacks and the arena's holding
+pattern): run-up, back in `BreathPass.HEIGHT` over the prey, and once lined up `START_DISTANCE` short of it the
+action `GLIDE_BREATH` (`anims.glide_breath`: the glide, a short inhale, then the straight neck swung ~50 deg down,
+jaw open) on a forced glide; the aim is a direction from the neck's base inside a cone ahead and below
+(`PITCH_MIN..MAX`, `YAW_ARC`) that swings after the prey at `STREAM_TURN`, so the flames rake the ground along the
+flight path through it. Synced as `DragonData.STRIKE` (the ground point), the neck straightened onto it by
+`body/Strike` as the perched breath's; the client times flames, heat and sounds off the animation clock
+(`BreathPassPhase.breathTicks`), the flames carrying the dragon's speed. Showcase `-Pdragonfall.showcase=pass`.
 
 ## Ground combat
 `ai/GroundTactics` (core, tested) picks one blow at a time (bite and tail share one recovery): in front the bite,
@@ -113,10 +192,79 @@ target just hurt it from there (then the tail). `body/Strike` (core, tested) aim
 keyframes: the neck + head (or the 9 tail segments) are bent so that on the blow's frame the jaws (or the tail's
 tip) are exactly on the aim; the same bends go into the hitboxes (`PartSolver`) and the renderer (`DragonModel`),
 the aim is synced in `DragonData.STRIKE`. The aim follows the target until `REACTION_TICKS` before the blow, then
-only what is at the jaws/tip when it lands is hit (a dodge is a miss). Whether a blow reaches at all is the IK's
+only what is at the jaws/tip when it lands is hit (a dodge is a miss). Through a tail strike the head keeps
+watching the target (`LimbAnimator.look`, gaze from between the eyes on `jaw_upper`); the tail drops its
+balancing counter-swing then, so the strike's aim stays exact. Whether a blow reaches at all is the IK's
 answer, so the dragon has real blind spots; `ai/HitTally` makes it take off when hit too often at once. The
 stream breath uses the same aim: the neck is straightened toward a point that chases the target at
 `BreathAttack.AIM_SPEED`, and the flames go from the model's mouth to it.
+
+## Wild dragons are lazy
+Outside the End fight (`DragonBrain.Context.WILD`) a dragon lives on foot: `ai/Roaming` gives long ground spells
+(walks and rests) and only short flights (a few short, low legs) to come down somewhere else. A target is fought on
+the ground: in the air with a target and `CombatStance.grounded()`, `wildTick` lands beside it (`tryGroundAssault`,
+retried every 40 ticks; air attacks meanwhile), and a wild `GroundFightPhase` with a target never takes off on its
+timer. `ai/CombatStance` (core, tested): losing `GROUND_LIMIT` of its health on the ground (or `HitTally`) starts a
+break in the air (`BREAK_MIN..MAX` ticks of air attacks: pass, barrage, charge, snatch); the break's end or
+`AIR_LIMIT` more damage up there sends it back down to fight on foot; `CALM_TICKS` without a target resets it.
+The arena's dragon keeps vanilla's fight, except that it never
+lands on the exit portal: where vanilla's would (`LANDING_APPROACH`, remapped in `DragonBrain.remap`), it perches beside the
+player nearest it on the island (`perchByPlayer`: `GroundApproachPhase.perch`, then vanilla's sitting phases there; its
+takeoffs are all `LIFTOFF`), or flies on when nobody stands where it can land. Showcase stage `stance` checks the cycle (hits are fed to the brain as the husk's).
+
+## Narrow footholds
+`nav/Foothold`: where all four limbs do not fit (`LandingSite.fits(x, z, foothold)`), a ground assault
+(`DragonBrain.tryGroundAssault`) comes down within a bite of its prey (`LandingSite.near`, every column, at the prey's
+height) on a smaller one: `UPRIGHT` (ground under the 3x3 round its feet: sat up on its hind feet, the tail laid
+behind, the wings held out half spread for balance, teetering, a righting stroke at `BALANCE_SECONDS`) or `CLING`
+(only the center column, a pillar's top: feet planted, the wings beating the hover's stroke). Both need the body sat
+up clear (`UPRIGHT_HEIGHT`, `BODY_RADIUS`) and air for the wings (`WING_RADIUS`), and are always hovered down onto.
+The foothold is synced (`DragonData.FOOTHOLD`, `DragonBrain.foothold()`) and picks the stance animation
+(`DragonAnimSelector`) and the bite (`UPRIGHT_BITE`, `CLING_BITE`: `ATTACK`'s timing, aimed by `body/Strike`). Up
+there `GroundTactics.decide(foothold, ...)` only bites and turns: no walking, tail or roar; out of the jaws' reach
+for `NARROW_PATIENCE` it takes off (`LiftoffPhase` springs straight into the hover, no crouch on all fours); clinging
+lasts `CLING_MAX`. One-shots settle back into their stance (`DragonAnim.then`). Poses: `anims.upright_pose`
+(`stand.Stand` with only the hind feet solved: body pitch and lift only, so the feet stay planted), `cling_pose`.
+
+## Death
+Brought down by a player (anywhere: `EnderDragonMixin` drops vanilla's die-on-the-spot when sitting), the dragon
+takes vanilla's `DYING` phase, health held at 1 and unhurtable, but `DragonDeathPhaseMixin` flies it by
+`ai/DeathFlight` (core, tested): a cry, then to the End fight's altar (`EndPodiumFeature` + heightmap) `HEIGHT` over it,
+hovering in from `HOVER_RADIUS`, and straight up `RISE` more (a wild dragon: only the rise, from where it is); then
+`DragonBrain.deathTick` sets its health to 0 and vanilla's 10 s of dying (light rays, floating up) plays `DEATH`:
+from the hover one last stroke up (`DEATH_RAISE_SHOULDER`), then the wings close round the body into a cocoon,
+the folded hands meeting edge to edge in front, the head curled onto the chest, the legs drawn up, the tail
+tucked forward between them (`TailMotion.TUCK`); it breathes ever more weakly and shudders, the wrap only ever
+opening from its closed pose. The wings never overlap: `anims.assert_wings_apart` fails the asset build if a
+forearm or hand crosses the body's middle in any frame. Dead, `aiStep` returns early, so `tickEnd` hooks every
+return (else the clock and tail freeze). Showcase stage `death`.
+
+## Fighting from the air
+Where the dragon cannot come down by its prey it fights it in the air. `ai/AirTactics` (core, tested) gives the
+repertoire by `Reach`: `GROUND` (room to land: snatch, breath pass, fireball pass, charge, barrage), `WALL` (on solid
+ground but no landing site nor foothold: a wall's top, a lone pillar, a player pillaring up a spire to its crystal;
+`DragonBrain.walled` remembers a failed `tryGroundAssault` for `WALLED_TICKS`) and `AIR` (`DragonBrain.airborne`:
+elytra, flying, or `AIRBORNE_GAP` blocks of air under it); the brain tries `choices` in order until one starts
+(the last, the barrage, always does; the End fight uses vanilla's strafe for it). Wild: `wildTick`; the End fight:
+`arenaTick` (a player in the air, or one it cannot land by). Against WALL/AIR it attacks every 80-160 ticks.
+**Fly-by bite** (`anim/FlybyBite` core, `mc/phase/FlybyBitePhase`, animation `GLIDE_BITE`): run-up, then a level
+glide on the line that puts the bite's resting jaws (`Strike.rest`: the blow frame's head part before the IK) on the
+prey's middle, the body `CLEARANCE` over and `PULL` behind it (the neck's sweet spot for a low bite, measured);
+it settles to that height from `LEVEL_OFF` (no stoop at the end), homes in from `HOME_IN`, starts the bite
+`HIT_TICKS` short and holds the speed that arrives exactly then. Prey in the air is led by its velocity. Damage and
+knockback (along the flight) grow with speed. **Hover attacks** (`anim/HoverAttack`, `mc/phase/HoverAttackPhase`,
+`HOVER_BITE` one beat long, `HOVER_BREATH` three beats with the breath pass's timing so `BreathPassPhase.breathTicks`,
+`BreathRender` and the heat glow serve both): it picks a side round the prey where the hovering body is clear and
+sees it, hovers at the bite's spot (`biteSpot`) or `BREATH_DISTANCE` off and `BREATH_RISE` over, faces the prey
+(`DragonfallPhase.hoverLook`) and starts each attack on a beat boundary (`onBeat`, `DragonBrain.beatPhase`): up to
+`BITES` bites, or one breath whose aim chases the prey inside a cone that reaches a little above level.
+
+## Soft hitboxes
+The parts push what stands in them like mobs push each other (`mc/PartCollision`, after `placeParts`): each tick
+anything overlapping a part gets vanilla's mob push (`body/BodyPush`, `Entity.push`'s formula) away from the part's
+middle, so it slides out; only it moves, the dragon stays put. Nothing is solid (one cannot stand on the dragon).
+Each side pushes what it simulates: the server its mobs (NoAI mobs never move, as in vanilla), a client its own
+player. The prey a dragon carries is left in its grip. Showcase stage `collision`.
 
 ## Collision and paths
 Vanilla's dragon has no physics; `DragonBrain` gives it some. The hull (head, necks, chest, hips, tail root parts)
@@ -138,14 +286,24 @@ standing arm is straight, a singular pose). The front limb is held by its folded
 `walk.py` plants it), and only while the hand is down (its gap to the ground, not one point's height).
 
 ## Grabs (talons and jaws)
-`body/Grip` (core, tested): the holds, their synced encoding, the jaw shake (`DragonBody` adds it to the neck
-bends, so hitboxes and model agree). `mc/PreyHold`: the prey *rides* the dragon (`EnderDragonMixin.positionRider`
-puts its middle in the grip every tick, both sides), so it cannot move but can use items; an ender pearl, death or
-any dismount frees it, shift does not (`PlayerMixin`). `client/LivingEntityRendererMixin` draws held prey lying
-flat about its middle (along the dragon in the talons, across the jaws). The snatch (`phase/SnatchPhase`, wild
-attacks and the arena's holding pattern): run-up, a dive down a glide slope that homes in, the right foot reaching
-(`LimbAnimator.talon`, IK), catch, a hard climb, drop from 26-40 blocks. The seize (`GroundFightPhase`): a bite that
-may keep its prey, shaken and chewed, then flung; anyone else hitting the head or neck makes it let go
+`body/Grip` (core, tested): the holds, their synced encoding, what fits (`Grip.fits`: width <= 1, width^2 x height
+<= 1.5 on the kind's full standing size, so humanoids, endermen, cows and sheep, never a warden, digging or not), the jaw shake (`DragonBody` adds it to the neck
+bends, so hitboxes and model agree). `mc/PreyHold`: the prey is *carried*, not mounted (no dismount key, no vehicle
+health bar): the level skips its tick (`ServerLevelMixin`/`client/ClientLevelMixin`), the dragon ticks it right after
+its own and puts its middle in the grip (both sides; the server ignores a held player's moves and does not kick it for
+flying, `ServerGamePacketListenerImplMixin`); the entity knows its carrier (`Carried`, `EntityMixin`). It cannot move
+but can use items; moved out of the hold (an ender pearl), dying or released, it is free. `client/LivingEntityRendererMixin`
+draws held prey lying flat about its middle (along the dragon in the talons, across the jaws); in first person the
+camera sits at its lying head (`client/CameraMixin`, `PreyHold.lyingEyes`). The snatch (`phase/SnatchPhase`, wild
+attacks and the arena's holding pattern): run-up, a dive down a glide slope that homes in with both hind legs thrown
+forward under the chest, toes spread (`Grip.REACH_ANKLE`, an eagle's), the right foot reaching out for the prey over
+the last `Grip.REACH_NEAR` blocks (`LimbAnimator.talon`, IK), catch, a hard climb, drop from 26-40 blocks. The gripping foot is held level and turned across the prey
+(`Grip.TALON_YAW`), the prey's back against its sole (`Grip.talonPad`, `PreyHold.talonPoint`); its toes close until
+each meets the prey and then stay frozen until it lets go. Elsewhere the toes (`limb/Toes`) are straight on the
+ground (the user wants the dragon standing on its feet, not on its claws), hang half curled and stir in the air, and
+open wide for a landing or a swoop, on a slightly springy lag. Toe bones are set from their rest pose every frame
+(GeckoLib does not reset unkeyed bones every frame: adding to them spins them). The seize (`GroundFightPhase`): a bite that
+may keep its prey (only one that lands: dodged, nothing is held), shaken and chewed, then flung; anyone else hitting the head or neck makes it let go
 (`DragonBrain.hurtBy`). Showcase stage `grabs` (`-Pdragonfall.showcase=grabs` runs only it).
 
 ## Sound
@@ -162,18 +320,22 @@ sound are silenced (`DragonVoiceMixin`).
 `arena/Monolith` (core, tested) replaces vanilla's obsidian cylinders with spiral towers (references: Mode Gakuen
 Spiral Towers, BIG's The Spiral, twisting towers), all with vanilla's flat top and obsidian only (the user rejected
 crystal-like shapes, pointed tops and crying obsidian). Every tower winds its own way (seeded direction, turns,
-proportions, wing count), in one of three styles: `CROWN` = twisted rounded rectangle, two sharp corners winding up
-it; `WINDOW` = core wrapped in scroll wings split by spiral slits crossed by shelves; `CAGE` (vanilla's two guarded
-spikes) = square tower with a barred gallery spiralling round it and a bar cage round the crystal on its top. The
+proportions, wing count), in one of two styles: `CROWN` = twisted rounded rectangle, two sharp corners winding up
+it; `WINDOW` = core wrapped in scroll wings split by spiral slits crossed by shelves. No spike is caged, not even
+vanilla's two guarded ones (the user removed the caged style). The
 crystal stays exactly where vanilla puts it (bedrock at `height`, crystal at `height + 1`), the shape is a pure
 function of the spike (respawn rebuilds it identically; the ground is probed outside the tower's footprint for that
-reason), nothing goes further than `REACH` (a feature's write radius), and every block but the bars is blast-proof.
+reason), nothing goes further than `REACH` (a feature's write radius), and every block is blast-proof.
 `mc/arena/mixin/SpikeFeatureMixin` (`dragonfall.arena.mixins.json`) swaps `placeSpike` for `mc/arena/Monoliths.place`,
-so worldgen and the respawn ritual both use it. `mc/client/ArenaTour` is its in-game test.
+so worldgen and the respawn ritual both use it. An End crystal on bedrock (the spires', the exit portal's) burns
+`DragonFire` under itself instead of common fire (`EndCrystalMixin` -> `DragonFire.crystalFire`); dragon fire on
+bedrock never burns out. `mc/client/ArenaTour` is its in-game test.
+The entrance platform (where the portal drops you) is a sphere, `arena/EntrancePlatform` (core, tested): radius 5
+round vanilla's arrival spot, its bottom quarter obsidian (the floor's top stays vanilla's), the rest air;
+`EndPlatformFeatureMixin` swaps vanilla's `createEndPlatform` for it (worldgen and every portal arrival).
 
 ## Licensing
 Model and texture derive from the "Ender Dragon Reborn" pack by Parrie43 (All Rights Reserved). Personal use
 until permission is granted.
-The void flame particle sprites (`textures/particle/void_flame_*.png`, built by `tools/particles.py`) are
-recolors of Ice and Fire's `dragon_flame.png` (AlexModGuy/Ice_and_Fire, LGPL-3.0); credit it if published.
-The dragon sounds (`sounds/entity/ender_dragon/*.ogg`) are cut from Minecraft's own (Mojang).
+The dragon sounds (`sounds/entity/ender_dragon/*.ogg`) are cut from Minecraft's own (Mojang); the dragon fire
+textures are Minecraft's soul fire, recolored.

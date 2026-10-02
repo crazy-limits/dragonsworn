@@ -4,6 +4,7 @@ import crazylimits.dragonfall.Dragonfall;
 import crazylimits.dragonfall.mc.DragonSounds;
 import crazylimits.dragonfall.mc.DragonfallCommon;
 import crazylimits.dragonfall.mc.breath.BreathParticles;
+import crazylimits.dragonfall.mc.breath.DragonFire;
 import net.minecraft.core.registries.Registries;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
@@ -20,5 +21,8 @@ public final class DragonfallNeoForge {
 		// the server plays some (the landing) by id
 		modBus.addListener(RegisterEvent.class, event -> event.register(Registries.SOUND_EVENT,
 				helper -> DragonSounds.ALL.forEach(helper::register)));
+		// blocks are created while their registry is open
+		modBus.addListener(RegisterEvent.class, event -> event.register(Registries.BLOCK,
+				helper -> DragonFire.register(helper::register)));
 	}
 }

@@ -146,15 +146,24 @@ public class BreathStreamPhase extends AbstractDragonSittingPhase {
 
 	/** Where the stream stops this tick: the block it splashes on, or the end of its reach. */
 	public HitResult stream() {
-		Vec3 mouth = mouth();
-		return dragon.level().clip(new ClipContext(mouth, mouth.add(direction().scale(BreathAttack.RANGE)),
-				ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, dragon));
+		return stream(dragon, mouth(), direction(), BreathAttack.RANGE);
 	}
 
-	/** Hurts everything in the stream, and everything near where it splashes against a block. */
+	/** Where a stream from {@code mouth} along {@code dir} stops: the block it splashes on, or after {@code range}. */
+	public static HitResult stream(EnderDragon dragon, Vec3 mouth, Vec3 dir, double range) {
+		return dragon.level().clip(new ClipContext(mouth, mouth.add(dir.scale(range)), ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, dragon));
+	}
+
 	private void burn() {
-		Vec3 mouth = mouth(), dir = direction();
-		HitResult hit = stream();
+		burn(dragon, mouth(), direction(), BreathAttack.RANGE, BreathAttack.DAMAGE);
+	}
+
+	/**
+	 * Hurts everything in a stream from {@code mouth} along {@code dir}, and everything near where it splashes
+	 * against a block; the splash leaves dragon fire on the ground ({@link DragonFire}).
+	 */
+	public static void burn(EnderDragon dragon, Vec3 mouth, Vec3 dir, double range, float damage) {
+		HitResult hit = stream(dragon, mouth, dir, range);
 		Vec3 end = hit.getLocation();
 		double length = end.distanceTo(mouth);
 		double[] d = {dir.x, dir.y, dir.z};
@@ -168,9 +177,15 @@ public class BreathStreamPhase extends AbstractDragonSittingPhase {
 			double radius = victim.getBbWidth() / 2.0;
 			boolean inStream = BreathAttack.inStream(origin, d, length, new double[] {c.x, c.y, c.z}, radius);
 			boolean inSplash = splash && victim.getBoundingBox().inflate(BreathAttack.SPLASH_RADIUS).contains(end);
-			if (inStream || inSplash) victim.hurt(dragon.damageSources().dragonBreath(), BreathAttack.DAMAGE);
+			if (inStream || inSplash) victim.hurt(dragon.damageSources().dragonBreath(), damage);
 		}
+		// where it splashes, the ground catches dragon fire
+		if (splash) DragonFire.spread(dragon.level(), end, FIRE_RADIUS, FIRE_CHANCE);
 	}
+
+	/** The splash sets this far round it alight, each column with this chance (per burn). */
+	private static final double FIRE_RADIUS = 1.5;
+	private static final float FIRE_CHANCE = 0.35F;
 
 	@Override
 	public void doClientTick() {

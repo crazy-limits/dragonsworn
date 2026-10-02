@@ -37,6 +37,15 @@ class BreathAttackTest {
 	}
 
 	@Test
+	void fireballHeatIsTheInhaleThreeTimesFasterAndFiresAtTheJaw() {
+		for (double t = 0; t <= WINDUP_TICKS; t += 0.5) assertEquals(heat(t), fireballHeat(t / 3.0), EPS);
+		assertTrue(fireballHeat(FIREBALL_WINDUP_TICKS - 1) < 1.0);
+		assertEquals(1.0, fireballHeat(FIREBALL_WINDUP_TICKS), EPS);
+		assertEquals(1.0, fireballHeatBrightness(FIREBALL_WINDUP_TICKS), EPS);
+		assertEquals(0.0, fireballHeatBrightness(FIREBALL_WINDUP_TICKS + FIREBALL_COOL_TICKS), EPS);
+	}
+
+	@Test
 	void facingMatchesTheVanillaHead() {
 		// Vanilla puts the head part at (sin yaw, -cos yaw) * 6.5: yaw 0 faces north (-z), 90 faces east (+x).
 		assertArrayEquals(new double[] {0, 0, -1}, facing(0), EPS);

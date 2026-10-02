@@ -148,14 +148,23 @@ class TailTest {
 	}
 
 	@Test
+	void theDyingTailTucksBetweenTheLegsAndStaysThere() {
+		TailMotion.Pose start = motion(DragonAnim.DEATH, 0), wrapped = motion(DragonAnim.DEATH, DragonAnim.DEATH_WRAP_SECONDS);
+		assertEquals(0.0, start.x[0], 1e-9);
+		assertArrayEquals(TailMotion.TUCK, wrapped.x, 1e-9);
+		assertArrayEquals(TailMotion.TUCK, motion(DragonAnim.DEATH, DragonAnim.DEATH_SECONDS + 5).x, 1e-9, "held to the end");
+		double curl = 0;
+		for (double x : TailMotion.TUCK) curl += x;
+		assertTrue(curl > 150, "it curls round forward, under the body (sat up 50 degrees)");
+		assertEquals(0.0, wrapped.rest, "not laid on the ground");
+	}
+
+	@Test
 	void theMotionIsTheOldKeyframes() {
 		// values the keyframes had (tail_1, tail_3, tail_6, tail_9), read from the animation file they replace
 		TailMotion.Pose walk = motion(DragonAnim.WALK, 0);
 		assertArrayEquals(new double[]{-1.5, 0.67, 0.66}, new double[]{walk.x[0], walk.x[2], walk.x[5]}, 0.01);
 		assertArrayEquals(new double[]{1.36, 2.52, 3.0}, new double[]{walk.y[0], walk.y[2], walk.y[5]}, 0.01);
-		TailMotion.Pose death = motion(DragonAnim.DEATH, 2.4);
-		assertArrayEquals(new double[]{2.0, 1.33, 0.5}, new double[]{death.x[0], death.x[2], death.x[5]}, 0.01);
-		assertEquals(-4.0, death.y[0], 0.01);
 		TailMotion.Pose idle = motion(DragonAnim.IDLE, 1);
 		assertArrayEquals(new double[]{2.5, 1.93, 0.91}, new double[]{idle.y[0], idle.y[2], idle.y[5]}, 0.01);
 		assertArrayEquals(new double[]{0, 2.0, 2.25}, new double[]{idle.x[0], idle.x[2], idle.x[5]}, 0.01, "the curl, before the lay");

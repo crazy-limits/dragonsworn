@@ -19,7 +19,7 @@ Every residual converges to ~0, so a planted foot is still to within a hundredth
 """
 import math
 
-from fan import fingers
+from fan import fingers, wrist_twist
 from ik import solve
 from rig import apply, default_rig
 
@@ -103,16 +103,25 @@ HAND = {s: rig.subtree(f'{s}_wing_tip2') for s in ('left', 'right')}
 HAND_REST = {s: [(b, q) for b in HAND[s] for i, c in enumerate(rig.bones[b]['cubes'])
 				 if not (b == f'{s}_wing_tip6' and i == CLAW_CUBE) for q in _box(c)] for s in ('left', 'right')}
 CLAW_CLEAR = 0.5        # px every other part of the hand keeps above the claw's sole
+# A laid hand (`hand_laid`) lies on the ground along its leading finger, from the wrist (the claw and the
+# finger's root) to its tip: the bottom corners at each end of tip2 (cube 0; its outer end is -x on the left)
+FINGER_ROOTS, FINGER_ENDS = ({s: [(f'{s}_wing_tip2', [c['max' if (s == 'left') == root else 'min'][0], c['min'][1], z])
+								  for c in [rig.bones[f'{s}_wing_tip2']['cubes'][0]]
+								  for z in (c['min'][2], c['max'][2])] for s in ('left', 'right')} for root in (True, False))
 APEX = {s: rig.bones[f'{s}_wing_tip3']['pivot'] for s in ('left', 'right')}
 ANKLE = {s: rig.bones[f'foot_{s}']['pivot'] for s in ('left', 'right')}
 
 
-def solve_limbs(pose, targets, sol, arm_ref=None, shoulder_pitch=None):
+def solve_limbs(pose, targets, sol, arm_ref=None, shoulder_pitch=None, hand_laid=False):
 	"""Solves every limb named in `targets` (lh, rh, lf, rf -> root-frame target) into `pose`.
 
 	Hind limbs: the ankle reaches its target and the foot counter-rotates so the sole stays level.
 	Front limbs (the wings): the wrist claw stands on the target (its middle at x/z, its sole at y) with
-	the rest of the folded hand above it. `sol` carries each limb's last solution to seed the next frame."""
+	the rest of the folded hand above it. With `hand_laid` the hand lies on the ground along its leading
+	finger instead (the claw's middle still on the target's x/z, the wrist's lowest point at its y, the
+	finger's tip level with it, the rest of the hand above), the hand free to turn by the wrist twist
+	(`fan.wrist_twist`, a fifth unknown; `arm_ref` then has five values, the twist pulled toward its own).
+	`sol` carries each limb's last solution to seed the next frame."""
 	arm_ref = arm_ref or ARM_REF
 	shoulder_pitch = SHOULDER_PITCH if shoulder_pitch is None else shoulder_pitch
 	for limb in ('lh', 'rh'):
@@ -145,35 +154,51 @@ def solve_limbs(pose, targets, sol, arm_ref=None, shoulder_pitch=None):
 		sgn = 1 if side == 'left' else -1
 		target = targets[limb]
 
-		def res(x, side=side, sgn=sgn, target=target):
-			p = dict(pose)
+		def arm(p, x, side=side, sgn=sgn):
 			p[f'{side}_wing'] = {'r': [x[0], sgn * x[1], sgn * x[2]]}
 			p[f'{side}_wing_tip'] = {'r': [0, 0, sgn * x[3]]}
+			if hand_laid:
+				p[f'{side}_wing_tip2'] = pose[f'{side}_wing_tip2']   # the fan, untwisted
+				wrist_twist(p, x[4], side)
+
+		def res(x, side=side, target=target):
+			p = dict(pose)
+			arm(p, x)
 			m = rig.matrices(p)
 			claw = [apply(m[f'{side}_wing_tip6'], q) for q in CLAW_BOX[side]]
-			sole = softmin([q[1] for q in claw])
-			hand = softmin([apply(m[b], q)[1] for b, q in HAND_REST[side]])
 			# The arm has one more degree of freedom than the claw needs. Soft pulls toward a reference
 			# stance make the solution unique, so it moves smoothly from frame to frame.
-			return [sum(q[0] for q in claw) / 8 - target[0], sole - target[1], sum(q[2] for q in claw) / 8 - target[2],
-					2.0 * min(0.0, hand - sole - CLAW_CLEAR),
-					0.05 * (x[0] - shoulder_pitch), 0.01 * (x[1] - arm_ref[1]), 0.01 * (x[2] - arm_ref[2])]
+			if hand_laid:
+				# laid: the wrist on the ground, the leading finger along it to its tip, the rest of the hand
+				# fanned up above it (toward the forearm, which arches back up to the body)
+				wrist = softmin([q[1] for q in claw] + [apply(m[b], q)[1] for b, q in FINGER_ROOTS[side]])
+				tip = softmin([apply(m[b], q)[1] for b, q in FINGER_ENDS[side]])
+				rest = softmin([apply(m[b], q)[1] for b, q in HAND_REST[side] if b != f'{side}_wing_tip2'])
+				fit = [wrist - target[1], tip - wrist, 2.0 * min(0.0, rest - wrist - CLAW_CLEAR)]
+			else:
+				sole = softmin([q[1] for q in claw])
+				hand = softmin([apply(m[b], q)[1] for b, q in HAND_REST[side]])
+				fit = [sole - target[1], 2.0 * min(0.0, hand - sole - CLAW_CLEAR)]
+			return [sum(q[0] for q in claw) / 8 - target[0], sum(q[2] for q in claw) / 8 - target[2]] + fit + \
+				[0.05 * (x[0] - shoulder_pitch), 0.01 * (x[1] - arm_ref[1]), 0.01 * (x[2] - arm_ref[2])] + \
+				([0.02 * (x[4] - arm_ref[4])] if hand_laid else [])
 
 		# Seeded from the last frame, and from the reference stance if that misses (a fast lunge can
 		# throw the arm into another basin): of the solutions that stand on the mark, the one nearest the
 		# last frame wins, so the arm never jumps branches.
+		hard = 5 if hand_laid else 4
+
 		def miss(x):   # the claw's distance from its mark, squared (the soft pulls left out)
-			return sum(v * v for v in res(x)[:4])
+			return sum(v * v for v in res(x)[:hard])
 
 		last = sol.get(limb, arm_ref)
 		found = [solve(res, last, iterations=200)[0]]
 		if miss(found[0]) > 1e-4 and limb in sol:
 			found.append(solve(res, arm_ref, iterations=200)[0])
 		reach = [f for f in found if miss(f) <= 1e-4]
-		x = min(reach, key=lambda f: sum((f[i] - last[i]) ** 2 for i in range(4))) if reach else min(found, key=miss)
+		x = min(reach, key=lambda f: sum((f[i] - last[i]) ** 2 for i in range(len(f)))) if reach else min(found, key=miss)
 		sol[limb] = x
-		pose[f'{side}_wing'] = {'r': [x[0], sgn * x[1], sgn * x[2]]}
-		pose[f'{side}_wing_tip'] = {'r': [0, 0, sgn * x[3]]}
+		arm(pose, x)
 	return pose
 
 
@@ -190,7 +215,7 @@ def solve_frame(t, prev=None):
 	pose['neck_rot1'] = {'r': [-BODY_PITCH * 0.6 + 2 * math.cos(2 * w + 0.5), -3 * math.sin(w), 0]}
 	pose['neck_rot2'] = {'r': [-1.5 * math.cos(2 * w + 1.0), -2.5 * math.sin(w + 0.4), 0]}
 	pose['head_group'] = {'r': [-BODY_PITCH * 0.4 - 1.5 * math.cos(2 * w + 1.5), 3 * math.sin(w + 0.8), 0]}
-	pose['jaw_group'] = {'r': [-1 - math.sin(2 * w), 0, 0]}
+	pose['jaw_group'] = {'r': [-1.5, 0, 0]}
 	return pose, sol
 
 

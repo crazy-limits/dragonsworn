@@ -16,11 +16,14 @@ public final class AnimClock {
 	private DragonAnim from;
 	private double fromSeconds;
 	private int ticks;
+	/** How many times the choice has changed: each change starts a new blend. */
+	private int changes;
 
 	/** Advance one tick (1/20 s) with this choice. */
 	public void tick(DragonAnimSelector.Choice choice, FlightModel.Plan flight, double horizontalSpeed) {
 		if (!choice.equals(current)) {
 			from = current == null ? null : anim();
+			changes++;
 			fromSeconds = seconds();
 			current = choice;
 			seconds = 0.0;
@@ -53,6 +56,11 @@ public final class AnimClock {
 		return seconds;
 	}
 
+	/** Counts the choice's changes: a different value is a new blend (from whatever showed then). */
+	public int changes() {
+		return changes;
+	}
+
 	/** The animation that showed before the choice changed (the model blends from it), or null. */
 	public DragonAnim from() {
 		return from;
@@ -61,6 +69,19 @@ public final class AnimClock {
 	/** Seconds into {@link #from()} when the choice changed. */
 	public double fromSeconds() {
 		return fromSeconds;
+	}
+
+	/**
+	 * Seconds into {@link #anim()} the model shows at {@code partialTick}: GeckoLib blends into a new
+	 * animation over {@link DragonAnim#BLEND_TICKS} from its first frame, and only then plays it.
+	 */
+	public double shownSeconds(float partialTick) {
+		return Math.max(0.0, seconds() + (partialTick - DragonAnim.BLEND_TICKS) / 20.0);
+	}
+
+	/** Seconds into {@link #from()} the model showed when the choice changed: the pose it blends from. */
+	public double fromShownSeconds() {
+		return Math.max(0.0, fromSeconds + (1.0 - DragonAnim.BLEND_TICKS) / 20.0);
 	}
 
 	/**

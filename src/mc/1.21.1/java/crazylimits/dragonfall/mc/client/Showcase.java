@@ -1,5 +1,7 @@
 package crazylimits.dragonfall.mc.client;
 
+import crazylimits.dragonfall.ai.CombatStance;
+import crazylimits.dragonfall.ai.DeathFlight;
 import crazylimits.dragonfall.anim.DragonAnim;
 import crazylimits.dragonfall.anim.DragonDebug;
 import crazylimits.dragonfall.body.PoseTrack;
@@ -7,15 +9,24 @@ import crazylimits.dragonfall.body.Tail;
 import crazylimits.dragonfall.mc.DragonBrain;
 import crazylimits.dragonfall.mc.DragonPhases;
 import crazylimits.dragonfall.mc.DragonfallDragon;
+import crazylimits.dragonfall.mc.PreyHold;
 import crazylimits.dragonfall.mc.LevelGrid;
 import crazylimits.dragonfall.mc.breath.BreathParticles;
+import crazylimits.dragonfall.mc.breath.DragonFire;
 import crazylimits.dragonfall.mc.breath.BreathStreamPhase;
+import crazylimits.dragonfall.mc.phase.BreathPassPhase;
+import crazylimits.dragonfall.mc.phase.FlybyBitePhase;
+import crazylimits.dragonfall.mc.phase.HoverAttackPhase;
+import crazylimits.dragonfall.mc.phase.RoamPhase;
 import crazylimits.dragonfall.mc.phase.GroundApproachPhase;
 import crazylimits.dragonfall.mc.phase.GroundFightPhase;
 import crazylimits.dragonfall.mc.phase.SnatchPhase;
 import crazylimits.dragonfall.body.Grip;
 import crazylimits.dragonfall.anim.BreathAttack;
+import crazylimits.dragonfall.anim.BreathPass;
+import crazylimits.dragonfall.flight.FlightModel;
 import crazylimits.dragonfall.nav.BlockGrid;
+import crazylimits.dragonfall.nav.Foothold;
 import crazylimits.dragonfall.nav.LandingSite;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
@@ -40,6 +51,7 @@ import net.minecraft.world.level.WorldDataConfiguration;
 import net.minecraft.world.level.levelgen.WorldOptions;
 import net.minecraft.world.level.levelgen.presets.WorldPresets;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -53,6 +65,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 /**
@@ -153,6 +166,16 @@ public final class Showcase {
 			grabs(x, y, z);
 			return;
 		}
+		if (ONLY.equals("air")) {
+			STEPS.add(new Step(1, mc -> mc.options.hideGui = true));
+			air(x, y, z + 150);
+			return;
+		}
+		if (ONLY.equals("pass")) {
+			STEPS.add(new Step(1, mc -> mc.options.hideGui = true));
+			breathPass(x, y, z);
+			return;
+		}
 		if (ONLY.equals("walls")) {
 			STEPS.add(new Step(1, mc -> mc.options.hideGui = true));
 			walls(x, y, z + 150);
@@ -162,6 +185,32 @@ public final class Showcase {
 			STEPS.add(new Step(1, mc -> mc.options.hideGui = true));
 			breath(x, y, z);
 			breathMoving(x, y, z + 60);
+			return;
+		}
+		if (ONLY.equals("collision")) {
+			STEPS.add(new Step(1, mc -> mc.options.hideGui = true));
+			collision(x, y, z + 150);
+			return;
+		}
+		if (ONLY.equals("hitboxes")) {
+			STEPS.add(new Step(1, mc -> mc.options.hideGui = true));
+			hitboxes(x, y, z + 150);
+			return;
+		}
+		if (ONLY.equals("narrow")) {
+			STEPS.add(new Step(1, mc -> mc.options.hideGui = true));
+			narrow(x, y, z + 150, Foothold.UPRIGHT);
+			narrow(x + 150, y, z + 150, Foothold.CLING);
+			return;
+		}
+		if (ONLY.equals("stance")) {
+			STEPS.add(new Step(1, mc -> mc.options.hideGui = true));
+			stance(x, y, z + 150);
+			return;
+		}
+		if (ONLY.equals("death")) {
+			STEPS.add(new Step(1, mc -> mc.options.hideGui = true));
+			death(x, y, z + 150);
 			return;
 		}
 		// the AI's ground assault and takeoff, and the running landing
@@ -235,7 +284,225 @@ public final class Showcase {
 		walls(x + 300, y, z + 150);
 		breath(x, y, z);
 		breathMoving(x, y, z + 60);
+		breathPass(x + 150, y, z);
 		grabs(x, y, z - 150);
+		stance(x + 300, y, z + 450);
+		hitboxes(x + 300, y, z + 600);
+		collision(x + 450, y, z + 600);
+		narrow(x + 450, y, z + 150, Foothold.UPRIGHT);
+		narrow(x + 450, y, z + 300, Foothold.CLING);
+	}
+
+	/**
+	 * A narrow foothold: a husk on top of a lone 1-block pillar, 12 blocks up, and beside it (6 blocks east)
+	 * the only place to come down: a 3 by 3 platform ({@link Foothold#UPRIGHT}) or another lone pillar
+	 * ({@link Foothold#CLING}). The dragon must land there with that foothold, stay on it (no walking), and
+	 * bite the husk with that foothold's bite, never its tail.
+	 */
+	private static void narrow(int sx, int y, int sz, Foothold foothold) {
+		String name = foothold.name().toLowerCase(Locale.ROOT);
+		int top = y + 12, half = foothold == Foothold.UPRIGHT ? 1 : 0, px = sx + 6;
+		command(String.format(Locale.ROOT, "fill %d %d %d %d %d %d minecraft:stone", sx, y, sz, sx, top - 1, sz), 2);
+		command(String.format(Locale.ROOT, "fill %d %d %d %d %d %d minecraft:stone", px - half, y, sz - half, px + half, top - 1, sz + half), 2);
+		command(view(sx - 30, top + 12, sz - 10, sx + 3, top, sz), 40);
+		command(String.format(Locale.ROOT, "summon minecraft:husk %d %d %d {NoAI:1b,PersistenceRequired:1b,Tags:[\"df_prey\"]}", sx, top, sz), 5);
+		command(String.format(Locale.ROOT, "summon minecraft:ender_dragon %d %d %d {Tags:[\"df_ai\"]}", sx - 25, top + 15, sz), 20);
+		server(level -> {
+			EnderDragon dragon = aiDragon(level);
+			List<? extends Husk> prey = level.getEntities(EntityType.HUSK, e -> e.getTags().contains("df_prey"));
+			check(dragon != null && !prey.isEmpty() && DragonfallDragon.brain(dragon).tryGroundAssault(prey.get(0)),
+					name + ": somewhere to come down beside the husk");
+			check(dragon != null && dragon.getPhaseManager().getCurrentPhase() instanceof GroundApproachPhase approach
+					&& approach.foothold() == foothold, name + ": it comes down " + name);
+		});
+		boolean[] seen = new boolean[4];   // landed with it, bit with its bite, struck with the tail or roared, walked off
+		double[] at = {Double.NaN, 0.0};
+		for (int i = 0; i < 70; i++) {
+			if (i == 30 || i == 50) {
+				shoot(view(px - 14, top + 6, sz - 12, px, top + 4, sz), "narrow-" + name + "-" + i, 2);
+			} else {
+				track(String.format(Locale.ROOT, "narrow-%s-%02d", name, i), 6, 26, 6);
+			}
+			server(level -> {
+				EnderDragon dragon = aiDragon(level);
+				if (dragon == null) return;
+				DragonBrain brain = DragonfallDragon.brain(dragon);
+				if (!brain.onGround()) return;
+				seen[0] |= brain.foothold() == foothold;
+				DragonAnim action = brain.action();
+				seen[1] |= action == (foothold == Foothold.UPRIGHT ? DragonAnim.UPRIGHT_BITE : DragonAnim.CLING_BITE);
+				seen[2] |= action == DragonAnim.TAIL_SWEEP || action == DragonAnim.ROAR || action == DragonAnim.ATTACK;
+				if (Double.isNaN(at[0])) {
+					at[0] = dragon.getX();
+					at[1] = dragon.getZ();
+				}
+				seen[3] |= Math.hypot(dragon.getX() - at[0], dragon.getZ() - at[1]) > 1.0;
+			});
+		}
+		server(level -> {
+			List<? extends Husk> prey = level.getEntities(EntityType.HUSK, e -> e.getTags().contains("df_prey"));
+			check(seen[0], name + ": it landed on the foothold " + name);
+			check(seen[1], name + ": it bit with the " + name + " bite");
+			check(!seen[2], name + ": no tail strike, roar or four-legged bite up there");
+			check(!seen[3], name + ": it stayed on its foothold");
+			check(prey.isEmpty() || prey.get(0).getHealth() < prey.get(0).getMaxHealth(), name + ": the bite hurt the husk");
+		});
+		command("kill @e[tag=df_ai]", 2);
+		command("kill @e[tag=df_prey]", 2);
+	}
+
+	/** Server and client turn the head alike (the server's hitboxes are the ones that are hit). */
+	private static void lookAgrees() {
+		double[] clientLook = new double[2];
+		STEPS.add(new Step(1, mc -> {
+			EnderDragon dragon = clientAiDragon(mc);
+			if (dragon == null) return;
+			clientLook[0] = DragonfallDragon.brain(dragon).look.yaw(1.0);
+			clientLook[1] = DragonfallDragon.brain(dragon).look.pitch(1.0);
+		}));
+		server(level -> {
+			EnderDragon dragon = aiDragon(level);
+			double yaw = dragon == null ? Double.NaN : DragonfallDragon.brain(dragon).look.yaw(1.0);
+			double pitch = dragon == null ? Double.NaN : DragonfallDragon.brain(dragon).look.pitch(1.0);
+			REPORT.add(String.format(Locale.ROOT, "INFO hitboxes: head look yaw %.1f / %.1f, pitch %.1f / %.1f (server / client)",
+					yaw, clientLook[0], pitch, clientLook[1]));
+			check(Math.abs(yaw - clientLook[0]) < 4.0 && Math.abs(pitch - clientLook[1]) < 4.0, "server and client turn the head alike");
+		});
+	}
+
+	/**
+	 * The head and neck hitboxes stay on the model while its head turns to what it watches: a resting
+	 * dragon on the ground follows the camera (the nearest player) round, and every tick the anchors as
+	 * drawn are compared with the hitboxes' centres. Server and client must agree on the look too.
+	 */
+	/**
+	 * The hitboxes are soft, as mobs push each other: a husk (moved by the server) and the player (moved
+	 * by its client) put inside the resting dragon's chest slide out of every hitbox over a second or
+	 * two, not at once, and the dragon is not moved by them.
+	 */
+	private static void collision(int cx, int y, int cz) {
+		command(view(cx - 14, y + 6, cz - 14, cx, y + 3, cz), 20);
+		command(String.format(Locale.ROOT, "summon minecraft:ender_dragon %d %d %d {Tags:[\"df_ai\"],Rotation:[0f,0f]}", cx, y, cz), 6);
+		server(level -> {
+			EnderDragon dragon = aiDragon(level);
+			check(dragon != null, "a dragon rests on the ground for the collision test");
+			if (dragon != null) GroundFightPhase.start(dragon, null);
+		});
+		STEPS.add(new Step(40, mc -> {}));
+		double[] dragonAt = new double[3];
+		double[] early = {Double.NaN};
+		server(level -> {
+			EnderDragon dragon = aiDragon(level);
+			Husk husk = EntityType.HUSK.create(level);
+			if (dragon == null || husk == null) return;
+			dragonAt[0] = dragon.getX();
+			dragonAt[2] = dragon.getZ();
+			AABB chest = dragon.getSubEntities()[2].getBoundingBox();
+			// with AI: a NoAI mob never moves, so nothing pushes it (as with vanilla's mobs)
+			husk.moveTo(chest.getCenter().x + 0.3, chest.minY, chest.getCenter().z + 0.2, 0.0F, 0.0F);
+			husk.setSilent(true);
+			husk.addTag("df_target");
+			level.addFreshEntity(husk);
+			REPORT.add(String.format(Locale.ROOT, "INFO collision: husk put %.2f blocks into the chest", inside(husk, dragon)));
+		});
+		STEPS.add(new Step(2, mc -> {}));
+		server(level -> {
+			EnderDragon dragon = aiDragon(level);
+			var husks = level.getEntities(EntityType.HUSK, e -> e.getTags().contains("df_target"));
+			if (dragon != null && !husks.isEmpty()) early[0] = inside(husks.get(0), dragon);
+		});
+		STEPS.add(new Step(40, mc -> {}));
+		server(level -> {
+			EnderDragon dragon = aiDragon(level);
+			var husks = level.getEntities(EntityType.HUSK, e -> e.getTags().contains("df_target"));
+			double depth = dragon == null || husks.isEmpty() ? Double.NaN : inside(husks.get(0), dragon);
+			check(early[0] > 0.05, String.format(Locale.ROOT, "the push is soft: a few ticks in, the husk is still %.2f inside", early[0]));
+			check(depth < 0.01, String.format(Locale.ROOT, "two seconds on, the husk has been pushed out of every hitbox (%.3f in)", depth));
+			double moved = dragon == null ? Double.NaN : Math.hypot(dragon.getX() - dragonAt[0], dragon.getZ() - dragonAt[2]);
+			check(moved < 0.01, String.format(Locale.ROOT, "the dragon stays put (moved %.3f)", moved));
+		});
+		command("kill @e[tag=df_target]", 2);
+		// the player: its own client pushes it (tp'd into the chest; flying, so only the push moves it)
+		STEPS.add(new Step(2, mc -> {
+			EnderDragon dragon = clientAiDragon(mc);
+			if (dragon == null) return;
+			AABB chest = dragon.getSubEntities()[2].getBoundingBox();
+			mc.player.connection.sendCommand(String.format(Locale.ROOT, "tp @s %.2f %.2f %.2f", chest.getCenter().x - 0.3, chest.minY + 0.2, chest.getCenter().z + 0.2));
+		}));
+		STEPS.add(new Step(60, mc -> {}));
+		STEPS.add(new Step(1, mc -> {
+			EnderDragon dragon = clientAiDragon(mc);
+			double depth = dragon == null ? Double.NaN : inside(mc.player, dragon);
+			check(depth < 0.01, String.format(Locale.ROOT, "the player put inside the chest is pushed out of every hitbox (%.3f in)", depth));
+		}));
+		shoot(view(cx - 10, y + 6, cz - 10, cx, y + 3, cz), "collision", 1);
+		command("kill @e[tag=df_ai]", 2);
+	}
+
+	/** How deep {@code entity} is in the dragon's hitboxes: the deepest overlap (its thinnest axis), 0 when outside. */
+	private static double inside(net.minecraft.world.entity.Entity entity, EnderDragon dragon) {
+		AABB e = entity.getBoundingBox();
+		double worst = 0.0;
+		for (var part : dragon.getSubEntities()) {
+			AABB p = part.getBoundingBox();
+			double dx = Math.min(e.maxX, p.maxX) - Math.max(e.minX, p.minX);
+			double dy = Math.min(e.maxY, p.maxY) - Math.max(e.minY, p.minY);
+			double dz = Math.min(e.maxZ, p.maxZ) - Math.max(e.minZ, p.minZ);
+			worst = Math.max(worst, Math.max(0.0, Math.min(dx, Math.min(dy, dz))));
+		}
+		return worst;
+	}
+
+	private static void hitboxes(int hx, int y, int hz) {
+		command(view(hx - 14, y + 6, hz - 14, hx, y + 3, hz), 40);
+		// yaw 0: the dragon faces north (-z); +x is its right
+		command(String.format(Locale.ROOT, "summon minecraft:ender_dragon %d %d %d {Tags:[\"df_ai\"],Rotation:[0f,0f]}", hx, y, hz), 6);
+		server(level -> {
+			EnderDragon dragon = aiDragon(level);
+			check(dragon != null, "a dragon rests on the ground for the hitbox test");
+			if (dragon != null) GroundFightPhase.start(dragon, null);
+		});
+		double[][] views = {{-12, 4, -14}, {-17, 3, -2}, {16, 2, -5}, {4, 14, -17}, {11, 1, -12}, {-6, 9, -20}};
+		double[] worst = new double[3], sum = new double[3], most = {0.0};
+		int[] samples = {0};
+		for (int v = 0; v < views.length; v++) {
+			double[] at = views[v];
+			STEPS.add(new Step(1, mc -> {
+				EnderDragon dragon = clientAiDragon(mc);
+				double cx = dragon == null ? hx : dragon.getX(), cz = dragon == null ? hz : dragon.getZ();
+				mc.player.connection.sendCommand(view(cx + at[0], y + at[1], cz + at[2], cx, y + 4, cz));
+			}));
+			for (int t = 0; t < 30; t++) {
+				boolean shot = t == 29;
+				int view = v;
+				STEPS.add(new Step(1, mc -> {
+					EnderDragon dragon = clientAiDragon(mc);
+					double[] off = dragon == null ? null : LimbAnimator.hitboxOffsets(dragon);
+					if (off == null) return;
+					for (int k = 0; k < off.length; k++) {
+						worst[k] = Math.max(worst[k], off[k]);
+						sum[k] += off[k];
+					}
+					samples[0]++;
+					most[0] = Math.max(most[0], Math.abs(DragonfallDragon.brain(dragon).look.yaw(1.0)));
+					if (shot) Screenshot.grab(mc.gameDirectory, String.format(Locale.ROOT, "df-hitbox-look-%d.png", view),
+							mc.getMainRenderTarget(), message -> LOG.info("{}", message.getString()));
+				}));
+			}
+			// settled on the second view (the dragon still): server and client turn the head alike
+			if (v == 1) lookAgrees();
+		}
+		STEPS.add(new Step(1, mc -> {
+			int n = Math.max(1, samples[0]);
+			REPORT.add(String.format(Locale.ROOT, "INFO hitboxes: drawn anchor to hitbox centre over %d frames, mean / worst (blocks):"
+					+ " head %.3f / %.3f, neck %.3f / %.3f, mid neck %.3f / %.3f; the look turned the head up to %.0f degrees",
+					samples[0], sum[0] / n, worst[0], sum[1] / n, worst[1], sum[2] / n, worst[2], most[0]));
+			check(samples[0] > 100, "the head was measured (" + samples[0] + " frames)");
+			check(most[0] > 25.0, String.format(Locale.ROOT, "the head turned to watch (%.0f degrees)", most[0]));
+			check(sum[0] / n < 0.2 && worst[0] < 0.5, "the head's hitbox stays on the drawn head as it turns");
+			check(sum[1] / n < 0.2 && worst[1] < 0.5 && sum[2] / n < 0.2 && worst[2] < 0.5, "the neck's hitboxes stay on the drawn neck");
+		}));
+		command("kill @e[tag=df_ai]", 2);
 	}
 
 	/**
@@ -454,6 +721,300 @@ public final class Showcase {
 	}
 
 	/**
+	 * The breath pass, live: a wild dragon is sent at a husk on open ground. It must come in over it,
+	 * glide through the breath (no beats), keep its height, point its straight neck down at where the
+	 * flames land, and burn the husk.
+	 */
+	private static void breathPass(int px, int y, int pz) {
+		STEPS.add(new Step(1, mc -> mc.options.hideGui = true));
+		command(view(px - 30, y + 14, pz + 20, px, y + 6, pz), 40);
+		command(String.format(Locale.ROOT, "summon minecraft:husk %d %d %d {NoAI:1b,PersistenceRequired:1b,Tags:[\"df_prey\"],"
+				+ "attributes:[{id:\"minecraft:generic.max_health\",base:200.0}],Health:200f}", px, y, pz), 2);
+		command(String.format(Locale.ROOT, "summon minecraft:ender_dragon %d %d %d {Tags:[\"df_ai\"],Rotation:[180f,0f]}", px, y + 18, pz + 80), 60);
+		server(level -> {
+			EnderDragon dragon = aiDragon(level);
+			check(dragon != null && !prey(level).isEmpty() && BreathPassPhase.start(dragon, prey(level).get(0)), "the dragon goes for a breath pass at the husk");
+		});
+		boolean[] breathed = new boolean[1], beat = new boolean[1];
+		float[] health = {200.0F};
+		double[] low = {Double.MAX_VALUE}, worst = new double[1];
+		int[] measured = new int[1];
+		for (int i = 0; i < 280; i++) {
+			int step = i;
+			STEPS.add(new Step(1, mc -> {
+				mc.getSingleplayerServer().executeBlocking(() -> {
+					ServerLevel level = mc.getSingleplayerServer().overworld();
+					EnderDragon dragon = aiDragon(level);
+					if (dragon == null || prey(level).isEmpty()) return;
+					DragonBrain brain = DragonfallDragon.brain(dragon);
+					if (brain.action() != DragonAnim.GLIDE_BREATH) return;
+					breathed[0] = true;
+					health[0] = Math.min(health[0], prey(level).get(0).getHealth());
+					double ticks = BreathPassPhase.breathTicks(dragon, 0.0F);
+					if (BreathPass.streaming((int) Math.round(ticks))) {
+						low[0] = Math.min(low[0], dragon.getY() - y);
+						beat[0] |= brain.flightPlan().mode() != FlightModel.Mode.GLIDE;
+					}
+				});
+				EnderDragon dragon = clientAiDragon(mc);
+				if (dragon == null) return;
+				// the camera beside the flight path, a little behind the dragon and below it
+				double yaw = Math.toRadians(dragon.getYRot());
+				double cx = dragon.getX() - Math.cos(yaw) * 26 + Math.sin(yaw) * 10, cz = dragon.getZ() - Math.sin(yaw) * 26 - Math.cos(yaw) * 10;
+				mc.player.connection.sendCommand(view(cx, y + 6, cz, dragon.getX() - Math.sin(yaw) * 6, dragon.getY() - 2, dragon.getZ() + Math.cos(yaw) * 6));
+				double ticks = BreathPassPhase.breathTicks(dragon, 0.0F);
+				if (Double.isNaN(ticks)) return;
+				if (step % 4 == 0) {
+					Screenshot.grab(mc.gameDirectory, String.format(Locale.ROOT, "df-pass-%03d.png", step), mc.getMainRenderTarget(),
+							message -> LOG.info("{}", message.getString()));
+				}
+				var aim = BreathPassPhase.aimPoint(dragon);
+				// the neck's line once it has swung down straight (the pose's lunge and the model's blend)
+				if (aim == null || ticks < BreathPass.WINDUP_TICKS + 8 || ticks >= BreathPass.WINDUP_TICKS + BreathPass.STREAM_TICKS - 6) return;
+				var head = dragon.getSubEntities()[0].getBoundingBox().getCenter();
+				var neck = dragon.getSubEntities()[8].getBoundingBox().getCenter();
+				var line = head.subtract(neck).normalize();
+				var to = aim.subtract(head).normalize();
+				worst[0] = Math.max(worst[0], Math.toDegrees(Math.acos(Mth.clamp(line.dot(to), -1.0, 1.0))));
+				measured[0]++;
+			}));
+		}
+		STEPS.add(new Step(1, mc -> {
+			REPORT.add(String.format(Locale.ROOT, "INFO breath pass: lowest %.1f blocks over the ground while pouring; the neck's line is off the aim by up to %.1f deg (%d ticks)",
+					low[0], worst[0], measured[0]));
+			check(breathed[0], "it glided in and breathed");
+			check(!beat[0], "it glides through the stream (no wingbeats)");
+			check(low[0] > 6.0 && low[0] < 16.0, String.format(Locale.ROOT, "it keeps to the pass's height (%.1f)", low[0]));
+			check(measured[0] > 20 && worst[0] < 15.0, "the straight neck points down at where the flames land");
+			check(health[0] < 200.0F, String.format(Locale.ROOT, "the flames burned the husk (%.0f health left)", health[0]));
+		}));
+		server(level -> {
+			int fire = dragonFire(level, px, y, pz, 16);
+			check(fire > 0, "the breath pass leaves dragon fire on the ground (" + fire + " blocks)");
+		});
+		command("kill @e[tag=df_ai]", 2);
+		command("kill @e[tag=df_prey]", 2);
+	}
+
+	/**
+	 * The death of a wild dragon (no altar): brought down by a player in the air, it is not dead yet but takes
+	 * its last flight ({@code ai/DeathFlight}): straight up {@link DeathFlight#RISE}, and only then dies, the
+	 * cocoon closing round it (photographed as vanilla's light bursts out and it floats up).
+	 */
+	private static void death(int x, int y, int z) {
+		command(view(x - 34, y + 22, z, x, y + 22, z), 20);
+		command(String.format(Locale.ROOT, "summon minecraft:ender_dragon %d %d %d {Tags:[\"df_ai\"],Rotation:[90f,0f]}", x, y + 18, z), 80);
+		double[] start = {Double.NaN}, died = {Double.NaN};
+		server(level -> {
+			EnderDragon dragon = aiDragon(level);
+			check(dragon != null, "death: a wild dragon in the air");
+			if (dragon == null) return;
+			start[0] = dragon.getY();
+			dragon.hurt(dragon.damageSources().playerAttack(level.players().get(0)), 10000.0F);
+			check(dragon.getPhaseManager().getCurrentPhase().getPhase() == EnderDragonPhase.DYING && !dragon.isDeadOrDying(),
+					"brought down, it takes its last flight before it dies");
+		});
+		serverUntil(500, level -> {
+			List<? extends EnderDragon> found = level.getEntities(EntityType.ENDER_DRAGON, e -> e.getTags().contains("df_ai"));
+			if (found.isEmpty() || !found.get(0).isDeadOrDying()) return false;
+			died[0] = found.get(0).getY();
+			return true;
+		});
+		STEPS.add(new Step(1, mc -> {
+			REPORT.add(String.format(Locale.ROOT, "INFO death: rose %.1f blocks before it died", died[0] - start[0]));
+			check(!Double.isNaN(died[0]), "the last flight ends in death");
+			check(died[0] - start[0] > DeathFlight.RISE - 3.0, String.format(Locale.ROOT, "it rose before it died (%.1f blocks)", died[0] - start[0]));
+		}));
+		boolean[] cocoon = {false};
+		int[] at = {6, 30, 55, 90, 130, 175};
+		int last = 0;
+		for (int i = 0; i < at.length; i++) {
+			int shot = i;
+			STEPS.add(new Step(Math.max(3, at[i] - last - 3), mc -> {
+				EnderDragon dragon = null;
+				for (var entity : mc.level.entitiesForRendering()) if (entity instanceof EnderDragon d && d.isDeadOrDying()) dragon = d;
+				if (dragon == null) return;
+				cocoon[0] |= DragonfallDragon.brain(dragon).clock.anim() == DragonAnim.DEATH;
+				double yaw = Math.toRadians(DragonfallDragon.brain(dragon).body.yaw(1.0F)), d = shot % 2 == 0 ? 24 : 18;
+				// alternately from its left side and from in front, a little below
+				double cx = shot % 2 == 0 ? dragon.getX() - Math.cos(yaw) * d : dragon.getX() + Math.sin(yaw) * d;
+				double cz = shot % 2 == 0 ? dragon.getZ() - Math.sin(yaw) * d : dragon.getZ() - Math.cos(yaw) * d;
+				mc.player.connection.sendCommand(view(cx, dragon.getY() + 1, cz, dragon.getX(), dragon.getY() + 3, dragon.getZ()));
+			}));
+			STEPS.add(new Step(2, mc -> Screenshot.grab(mc.gameDirectory, String.format(Locale.ROOT, "df-death-%d.png", shot),
+					mc.getMainRenderTarget(), message -> LOG.info("{}", message.getString()))));
+			last = at[i];
+		}
+		STEPS.add(new Step(40, mc -> check(cocoon[0], "dead, it plays the cocoon")));
+	}
+
+	/**
+	 * Attacks from the air, where the dragon cannot land by its prey: a husk on a lone 16-block pillar (a
+	 * player pillaring up to a crystal) and one hanging in the air (a player on elytra). Each gets the
+	 * fly-by bite (it must hurt the husk, and on the pillar knock it off), the hover bite and the hover
+	 * breath. Then the wild AI must pick such an attack by itself at each of them, and never try to land.
+	 */
+	private static void air(int x, int y, int z) {
+		int top = y + 16, fx = x + 90, fy = y + 30;
+		command(view(x - 34, y + 20, z - 10, x, top, z), 40);
+		command(String.format(Locale.ROOT, "fill %d %d %d %d %d %d minecraft:stone", x, y, z, x, top - 1, z), 2);
+		// with its AI (a knock must move it), slowed to a standstill so it stays on its pillar
+		command(String.format(Locale.ROOT, "summon minecraft:husk %d %d %d {PersistenceRequired:1b,Tags:[\"df_prey\"],"
+				+ "attributes:[{id:\"minecraft:generic.max_health\",base:500.0}],Health:500f,"
+				+ "active_effects:[{id:\"minecraft:slowness\",amplifier:10b,duration:-1,show_particles:0b}]}", x, top, z), 2);
+		command(String.format(Locale.ROOT, "summon minecraft:husk %d %d %d {NoAI:1b,NoGravity:1b,PersistenceRequired:1b,Tags:[\"df_flier\"],"
+				+ "attributes:[{id:\"minecraft:generic.max_health\",base:500.0}],Health:500f}", fx, fy, z), 2);
+		command(String.format(Locale.ROOT, "summon minecraft:ender_dragon %d %d %d {Tags:[\"df_ai\"],Rotation:[180f,0f]}", x, y + 24, z + 70), 60);
+		server(level -> {
+			EnderDragon dragon = aiDragon(level);
+			check(dragon != null && !prey(level).isEmpty() && !flier(level).isEmpty(), "air: a dragon, a husk on a pillar and a husk in the air");
+			if (dragon == null || prey(level).isEmpty() || flier(level).isEmpty()) return;
+			DragonBrain brain = DragonfallDragon.brain(dragon);
+			check(!brain.airborne(prey(level).get(0)) && brain.airborne(flier(level).get(0)), "air: the husk on the pillar stands, the other is in the air");
+			int[] site = new LandingSite(brain.grid()).find(x + 0.5, z + 0.5, 8, 17, 12, dragon.getX(), dragon.getZ());
+			check(site == null || Math.abs(site[1] - top) > 5, "air: nowhere to land by the husk on the pillar");
+		});
+		Vec3[] pillar = {new Vec3(x + 0.5, top, z + 0.5)}, hanging = {new Vec3(fx + 0.5, fy, z + 0.5)};
+		airAttack("flyby-pillar", Showcase::prey, pillar, (dragon, husk) -> FlybyBitePhase.start(dragon, husk), DragonAnim.GLIDE_BITE, true);
+		airAttack("hoverbite-pillar", Showcase::prey, pillar, (dragon, husk) -> HoverAttackPhase.start(dragon, husk, HoverAttackPhase.Mode.BITE), DragonAnim.HOVER_BITE, false);
+		airAttack("hoverbreath-pillar", Showcase::prey, pillar, (dragon, husk) -> HoverAttackPhase.start(dragon, husk, HoverAttackPhase.Mode.BREATH), DragonAnim.HOVER_BREATH, false);
+		airAttack("flyby-air", Showcase::flier, hanging, (dragon, husk) -> FlybyBitePhase.start(dragon, husk), DragonAnim.GLIDE_BITE, false);
+		airAttack("hoverbite-air", Showcase::flier, hanging, (dragon, husk) -> HoverAttackPhase.start(dragon, husk, HoverAttackPhase.Mode.BITE), DragonAnim.HOVER_BITE, false);
+		airAttack("hoverbreath-air", Showcase::flier, hanging, (dragon, husk) -> HoverAttackPhase.start(dragon, husk, HoverAttackPhase.Mode.BREATH), DragonAnim.HOVER_BREATH, false);
+		airChoice("pillar", Showcase::prey, pillar, Set.of(DragonPhases.FLYBY_BITE, DragonPhases.HOVER_ATTACK, DragonPhases.BREATH_PASS, DragonPhases.SNATCH));
+		airChoice("air", Showcase::flier, hanging, Set.of(DragonPhases.FLYBY_BITE, DragonPhases.HOVER_ATTACK));
+		command("kill @e[tag=df_ai]", 2);
+		command("kill @e[tag=df_prey]", 2);
+		command("kill @e[tag=df_flier]", 2);
+	}
+
+	private static List<? extends Husk> flier(ServerLevel level) {
+		return level.getEntities(EntityType.HUSK, e -> e.getTags().contains("df_flier"));
+	}
+
+	/** Puts the husk back where it belongs, healed and still, and the dragon in the air 70 blocks off, roaming. */
+	private static Husk reset(ServerLevel level, java.util.function.Function<ServerLevel, List<? extends Husk>> husks, Vec3 at, boolean dragonToo) {
+		EnderDragon dragon = aiDragon(level);
+		List<? extends Husk> found = husks.apply(level);
+		if (dragon == null || found.isEmpty()) return null;
+		Husk husk = found.get(0);
+		husk.teleportTo(at.x, at.y, at.z);
+		husk.setDeltaMovement(Vec3.ZERO);
+		husk.setHealth(husk.getMaxHealth());
+		husk.clearFire();
+		if (dragonToo) {
+			// a fresh roam (setting the phase it is in already would keep whatever it was hunting)
+			dragon.getPhaseManager().setPhase(EnderDragonPhase.HOVERING);
+			dragon.getPhaseManager().setPhase(DragonPhases.ROAM);
+			dragon.teleportTo(at.x - 10, at.y + 10, at.z + 70);
+			dragon.setDeltaMovement(new Vec3(0.0, 0.0, -0.8));
+		}
+		return husk;
+	}
+
+	/**
+	 * One attack, started by hand at the husk: it must play its animation and hurt the husk (and, when
+	 * {@code knock}, knock it off its pillar). Frames are grabbed from beside the husk while it plays.
+	 */
+	private static void airAttack(String name, java.util.function.Function<ServerLevel, List<? extends Husk>> husks, Vec3[] at,
+			java.util.function.BiPredicate<EnderDragon, Husk> start, DragonAnim anim, boolean knock) {
+		float[] health = new float[2];
+		boolean[] started = new boolean[1], played = new boolean[1];
+		double[] moved = new double[1];
+		String[] phase = {""};
+		server(level -> {
+			Husk husk = reset(level, husks, at[0], true);
+			EnderDragon dragon = aiDragon(level);
+			started[0] = husk != null && start.test(dragon, husk);
+			if (husk != null) health[0] = health[1] = husk.getHealth();
+			if (dragon != null) phase[0] = dragon.getPhaseManager().getCurrentPhase().getPhase().toString();
+		});
+		int max = 700, end = STEPS.size() + max;
+		int[] frames = new int[1];
+		for (int i = 0; i < max; i++) {
+			STEPS.add(new Step(1, mc -> {
+				mc.getSingleplayerServer().executeBlocking(() -> {
+					ServerLevel level = mc.getSingleplayerServer().overworld();
+					EnderDragon dragon = aiDragon(level);
+					List<? extends Husk> found = husks.apply(level);
+					if (dragon == null || found.isEmpty()) {
+						index = end;
+						return;
+					}
+					Husk husk = found.get(0);
+					DragonBrain brain = DragonfallDragon.brain(dragon);
+					played[0] |= brain.action() == anim;
+					health[1] = Math.min(health[1], husk.getHealth());
+					moved[0] = Math.max(moved[0], Math.hypot(husk.getX() - at[0].x, husk.getZ() - at[0].z));
+					// over once the attack's phase is
+					if (!dragon.getPhaseManager().getCurrentPhase().getPhase().toString().equals(phase[0])) index = end;
+				});
+				EnderDragon dragon = clientAiDragon(mc);
+				if (dragon == null) return;
+				// beside the husk, the dragon in view behind it
+				Vec3 h = at[0];
+				Vec3 away = new Vec3(dragon.getX() - h.x, 0.0, dragon.getZ() - h.z);
+				Vec3 side = away.lengthSqr() > 1e-4 ? new Vec3(-away.z, 0.0, away.x).normalize() : new Vec3(1.0, 0.0, 0.0);
+				mc.player.connection.sendCommand(view(h.x + side.x * 22 - away.normalize().x * 6, h.y + 6, h.z + side.z * 22 - away.normalize().z * 6,
+						(h.x + dragon.getX()) / 2, (h.y + dragon.getY()) / 2 + 1, (h.z + dragon.getZ()) / 2));
+				if (DragonfallDragon.brain(dragon).action() == anim && frames[0] < 30 && dragon.tickCount % 3 == 0) {
+					Screenshot.grab(mc.gameDirectory, String.format(Locale.ROOT, "df-%s-%02d.png", name, frames[0]++), mc.getMainRenderTarget(),
+							message -> LOG.info("{}", message.getString()));
+				}
+			}));
+		}
+		server(level -> {
+			check(started[0], name + ": the attack starts");
+			check(played[0], name + ": it plays " + anim.name().toLowerCase(Locale.ROOT));
+			check(health[1] < health[0], String.format(Locale.ROOT, "%s: the husk is hurt (%.0f of %.0f health lost)", name, health[0] - health[1], health[0]));
+			if (knock) check(moved[0] > 1.5, String.format(Locale.ROOT, "%s: the hit knocks it off its pillar (%.1f blocks)", name, moved[0]));
+		});
+	}
+
+	/**
+	 * The wild AI's own choice: the husk hurts the dragon (so it is the target) and the dragon must attack
+	 * it with one of {@code allowed} (or its fireball barrage), without ever trying to land.
+	 */
+	private static void airChoice(String name, java.util.function.Function<ServerLevel, List<? extends Husk>> husks, Vec3[] at, Set<EnderDragonPhase<?>> allowed) {
+		Set<String> seen = new LinkedHashSet<>();
+		boolean[] landing = new boolean[1], chose = new boolean[1];
+		server(level -> {
+			Husk husk = reset(level, husks, at[0], true);
+			EnderDragon dragon = aiDragon(level);
+			if (husk == null || dragon == null) return;
+			// still on its pillar for the choice (nothing shoves a mob without AI off it)
+			husk.setNoAi(true);
+			DragonfallDragon.brain(dragon).hurtBy(level.damageSources().mobAttack(husk), 2);
+		});
+		serverUntil(900, level -> {
+			EnderDragon dragon = aiDragon(level);
+			if (dragon == null) return true;
+			var phase = dragon.getPhaseManager().getCurrentPhase();
+			seen.add(phase.getPhase().toString().replaceAll(" .*", ""));
+			boolean lands = phase.getPhase() == DragonPhases.GROUND_APPROACH || DragonfallDragon.brain(dragon).onGround();
+			if (lands && !landing[0] && !husks.apply(level).isEmpty()) {
+				Husk husk = husks.apply(level).get(0);
+				REPORT.add(String.format(Locale.ROOT, "INFO air choice at the %s husk: it lands, the husk at %.1f %.1f %.1f (placed at %.1f %.1f %.1f)",
+						name, husk.getX(), husk.getY(), husk.getZ(), at[0].x, at[0].y, at[0].z));
+			}
+			landing[0] |= lands;
+			chose[0] = allowed.contains(phase.getPhase()) || phase instanceof RoamPhase roam && !roam.idle();
+			if (chose[0] && !husks.apply(level).isEmpty()) {
+				Husk husk = husks.apply(level).get(0);
+				REPORT.add(String.format(Locale.ROOT, "INFO air choice at the %s husk: %s%s, %.0f blocks off, target airborne %b",
+						name, phase.getPhase(), phase instanceof RoamPhase roam ? " " + roam.hunt() : "", husk.distanceTo(dragon),
+						DragonfallDragon.brain(dragon).airborne(husk)));
+			}
+			return chose[0];
+		});
+		server(level -> {
+			REPORT.add("INFO air choice at the " + name + " husk: phases " + seen);
+			check(chose[0], "air: the wild dragon attacks the " + name + " husk from the air by itself");
+			check(!landing[0], "air: and never tries to land by it");
+		});
+	}
+
+	/**
 	 * The two holds, live. The snatch: a wild dragon is sent at a husk on open ground; it must dive, take
 	 * it in its talons, carry it up and drop it from high up. The seize: a dragon on the ground takes a
 	 * husk in its jaws and shakes and chews it; someone else hitting its head makes it drop it, and a
@@ -471,7 +1032,9 @@ public final class Showcase {
 		boolean[] reached = new boolean[1], held = new boolean[1];
 		double[] peak = {Double.NEGATIVE_INFINITY};
 		for (int i = 0; i < 70; i++) {
+			if (i < 12) closeUp(19, String.format(Locale.ROOT, "snatch-reach-%02d", i), 1, 10.0);    // the legs thrown forward
 			if (i >= 12 && i % 3 == 0) closeUp(0, String.format(Locale.ROOT, "snatch-close-%02d", i), 1, 9.0);
+			if (i >= 10) talonView(String.format(Locale.ROOT, "snatch-talon-%02d", i));
 			track(String.format(Locale.ROOT, "snatch-%02d", i), 5, 18, 2);
 			server(level -> {
 				EnderDragon dragon = aiDragon(level);
@@ -487,7 +1050,7 @@ public final class Showcase {
 			check(reached[0], "it reached down for the husk as it dived");
 			check(held[0], "it took the husk in its talons");
 			check(peak[0] > 20.0, String.format(Locale.ROOT, "it carried the husk up (%.1f blocks)", peak[0]));
-			check(dragon != null && !prey(level).isEmpty() && !prey(level).get(0).isPassenger()
+			check(dragon != null && !prey(level).isEmpty() && PreyHold.carrier(prey(level).get(0)) == null
 					&& DragonfallDragon.brain(dragon).prey.hold() == Grip.Hold.NONE, "and dropped it");
 		});
 		command("kill @e[tag=df_ai]", 2);
@@ -497,7 +1060,7 @@ public final class Showcase {
 		int sx = gx + 100;
 		command(view(sx - 20, y + 8, gz, sx, y + 3, gz), 40);
 		command(String.format(Locale.ROOT, "summon minecraft:husk %d %d %d {NoAI:1b,PersistenceRequired:1b,Tags:[\"df_prey\"],"
-				+ "attributes:[{id:\"minecraft:generic.max_health\",base:200.0}],Health:200f}", sx, y, gz - 8), 2);
+				+ "attributes:[{id:\"minecraft:generic.max_health\",base:200.0}],Health:200f}", sx, y, gz + 8), 2);
 		command(String.format(Locale.ROOT, "summon minecraft:husk %d %d %d {NoAI:1b,Invulnerable:1b,PersistenceRequired:1b,Tags:[\"df_helper\"]}", sx - 6, y, gz - 6), 2);
 		command(String.format(Locale.ROOT, "summon minecraft:ender_dragon %d %d %d {Tags:[\"df_ai\"],Rotation:[180f,0f]}", sx, y, gz), 6);
 		server(level -> {
@@ -505,20 +1068,57 @@ public final class Showcase {
 			if (dragon != null && !prey(level).isEmpty()) GroundFightPhase.start(dragon, prey(level).get(0));
 		});
 		STEPS.add(new Step(70, mc -> {}));      // its roar on landing
+		// a seize is a bite first: the husk steps out of the jaws' way once the aim is committed, and nothing is held
+		int[] after = {-1};
+		boolean[] dodgeHeld = new boolean[1];
 		float[] health = new float[1];
 		server(level -> {
+			if (fight(level) != null) fight(level).seizeNext();
+		});
+		serverUntil(160, level -> {
+			GroundFightPhase fight = fight(level);
+			if (fight == null || prey(level).isEmpty()) return true;
+			if (after[0] < 0 && fight.seizeCommitted()) {
+				Husk husk = prey(level).get(0);
+				health[0] = husk.getHealth();
+				husk.teleportTo(husk.getX() + 9.0, husk.getY(), husk.getZ());
+				after[0] = 0;
+			}
+			if (after[0] >= 0) dodgeHeld[0] |= DragonfallDragon.brain(aiDragon(level)).prey.hold() != Grip.Hold.NONE;
+			// the jaws close REACTION_TICKS after the commit: a few more and it is decided
+			return after[0] >= 0 && ++after[0] > 15;
+		});
+		server(level -> {
+			check(after[0] > 15, "the dragon goes for a seize");
+			check(!dodgeHeld[0] && !prey(level).isEmpty() && PreyHold.carrier(prey(level).get(0)) == null,
+					"dodged, its jaws close on nothing: the husk is not taken");
+			check(!prey(level).isEmpty() && prey(level).get(0).getHealth() == health[0], "nor hurt by it");
+			// back in front of it, and the next bite is a seize again
 			EnderDragon dragon = aiDragon(level);
-			boolean ok = dragon != null && !prey(level).isEmpty()
-					&& dragon.getPhaseManager().getCurrentPhase() instanceof GroundFightPhase fight && fight.seize(prey(level).get(0));
-			check(ok, "a dragon on the ground takes the husk in its jaws");
-			if (!prey(level).isEmpty()) health[0] = prey(level).get(0).getHealth();
+			if (dragon == null || prey(level).isEmpty() || fight(level) == null) return;
+			// the dragon's head points along (sin yaw, -cos yaw), against vanilla's look vector
+			double yaw = Math.toRadians(dragon.getYRot());
+			prey(level).get(0).teleportTo(dragon.getX() + Math.sin(yaw) * 8.0, y, dragon.getZ() - Math.cos(yaw) * 8.0);
+			fight(level).seizeNext();
+		});
+		serverUntil(140, level -> {
+			EnderDragon dragon = aiDragon(level);
+			if (dragon == null || prey(level).isEmpty() || DragonfallDragon.brain(dragon).prey.hold() != Grip.Hold.JAW) return false;
+			health[0] = prey(level).get(0).getHealth();
+			return true;
+		});
+		server(level -> {
+			EnderDragon dragon = aiDragon(level);
+			check(dragon != null && DragonfallDragon.brain(dragon).prey.hold() == Grip.Hold.JAW,
+					"a bite that lands takes the husk in its jaws");
 		});
 		for (int i = 0; i < 10; i++) closeUp(0, String.format(Locale.ROOT, "seize-%02d", i), 3, 7.0);
+		for (int i = 0; i < 3; i++) feetView(String.format(Locale.ROOT, "seize-feet-%d", i));
 		STEPS.add(new Step(20, mc -> {}));
 		server(level -> {
 			EnderDragon dragon = aiDragon(level);
 			List<? extends Husk> prey = prey(level);
-			check(dragon != null && DragonfallDragon.brain(dragon).prey.hold() == Grip.Hold.JAW && !prey.isEmpty() && prey.get(0).getVehicle() == dragon,
+			check(dragon != null && DragonfallDragon.brain(dragon).prey.hold() == Grip.Hold.JAW && !prey.isEmpty() && PreyHold.carrier(prey.get(0)) == dragon,
 					"it holds the husk in its jaws");
 			check(!prey.isEmpty() && prey.get(0).getY() > y + 2.0, String.format(Locale.ROOT, "the husk hangs from its jaws (%.1f up)",
 					prey.isEmpty() ? 0.0 : prey.get(0).getY() - y));
@@ -530,21 +1130,25 @@ public final class Showcase {
 		STEPS.add(new Step(3, mc -> {}));
 		server(level -> {
 			EnderDragon dragon = aiDragon(level);
-			check(dragon != null && DragonfallDragon.brain(dragon).prey.hold() == Grip.Hold.NONE && !prey(level).isEmpty() && !prey(level).get(0).isPassenger(),
+			check(dragon != null && DragonfallDragon.brain(dragon).prey.hold() == Grip.Hold.NONE && !prey(level).isEmpty() && PreyHold.carrier(prey(level).get(0)) == null,
 					"a blow at its head makes it drop the husk");
 		});
 		// a hold left alone ends with the prey flung off
 		STEPS.add(new Step(40, mc -> {}));
 		server(level -> {
 			EnderDragon dragon = aiDragon(level);
-			if (dragon == null || prey(level).isEmpty() || !(dragon.getPhaseManager().getCurrentPhase() instanceof GroundFightPhase fight)) return;
-			fight.seize(prey(level).get(0));
+			if (dragon == null || prey(level).isEmpty() || fight(level) == null) return;
+			// the dragon's head points along (sin yaw, -cos yaw), against vanilla's look vector
+			double yaw = Math.toRadians(dragon.getYRot());
+			prey(level).get(0).teleportTo(dragon.getX() + Math.sin(yaw) * 8.0, y, dragon.getZ() - Math.cos(yaw) * 8.0);
+			fight(level).seizeNext();
 		});
+		serverUntil(140, level -> aiDragon(level) != null && DragonfallDragon.brain(aiDragon(level)).prey.hold() == Grip.Hold.JAW);
 		for (int i = 0; i < 6; i++) closeUp(0, String.format(Locale.ROOT, "seize-shake-%02d", i), 20, 7.0);
 		server(level -> {
 			EnderDragon dragon = aiDragon(level);
 			List<? extends Husk> prey = prey(level);
-			check(dragon != null && DragonfallDragon.brain(dragon).prey.hold() == Grip.Hold.NONE && !prey.isEmpty() && !prey.get(0).isPassenger(),
+			check(dragon != null && DragonfallDragon.brain(dragon).prey.hold() == Grip.Hold.NONE && !prey.isEmpty() && PreyHold.carrier(prey.get(0)) == null,
 					"left alone, the hold ends: the husk is flung off");
 		});
 		command("kill @e[tag=df_ai]", 2);
@@ -554,13 +1158,13 @@ public final class Showcase {
 
 	/**
 	 * A close look at what the AI dragon holds: the camera {@code distance} blocks off to the dragon's
-	 * left of its held prey (or of part {@code part} when it holds nothing), level with it.
+	 * left of its held prey (or of part {@code part} when it holds nothing, or is still reaching), level with it.
 	 */
 	private static void closeUp(int part, String name, int ticks, double distance) {
 		STEPS.add(new Step(Math.max(ticks, 3), mc -> {
 			EnderDragon dragon = clientAiDragon(mc);
 			if (dragon == null) return;
-			var held = DragonfallDragon.brain(dragon).prey.prey();
+			var held = DragonfallDragon.brain(dragon).prey.holding() ? DragonfallDragon.brain(dragon).prey.prey() : null;
 			var at = held != null ? held.position().add(0.0, held.getBbHeight() / 2.0, 0.0) : dragon.getSubEntities()[part].position();
 			double yaw = Math.toRadians(DragonfallDragon.brain(dragon).body.yaw(1.0F));
 			double cx = at.x - Math.cos(yaw) * distance + Math.sin(yaw) * 2.0, cz = at.z - Math.sin(yaw) * distance - Math.cos(yaw) * 2.0;
@@ -568,6 +1172,45 @@ public final class Showcase {
 		}));
 		STEPS.add(new Step(2, mc -> Screenshot.grab(mc.gameDirectory, "df-" + name + ".png", mc.getMainRenderTarget(),
 				message -> LOG.info("{}", message.getString()))));
+	}
+
+	/** The prey in the talons, from below and to the dragon's right, a little ahead: the gripping foot and its toes. */
+	private static void talonView(String name) {
+		boolean[] holding = new boolean[1];
+		STEPS.add(new Step(3, mc -> {
+			EnderDragon dragon = clientAiDragon(mc);
+			holding[0] = dragon != null && DragonfallDragon.brain(dragon).prey.holding();
+			if (!holding[0]) return;
+			var held = DragonfallDragon.brain(dragon).prey.prey();
+			var at = held.position().add(0.0, held.getBbHeight() / 2.0, 0.0);
+			// the dragon's head points along (sin yaw, -cos yaw); its right is (cos yaw, sin yaw)
+			double yaw = Math.toRadians(DragonfallDragon.brain(dragon).body.yaw(1.0F));
+			double cx = at.x + Math.cos(yaw) * 7.0 + Math.sin(yaw) * 1.0, cz = at.z + Math.sin(yaw) * 7.0 - Math.cos(yaw) * 1.0;
+			mc.player.connection.sendCommand(view(cx, at.y - 4.0, cz, at.x, at.y, at.z));
+		}));
+		STEPS.add(new Step(2, mc -> {
+			if (holding[0]) Screenshot.grab(mc.gameDirectory, "df-" + name + ".png", mc.getMainRenderTarget(), message -> LOG.info("{}", message.getString()));
+		}));
+	}
+
+	/** The hind feet on the ground, at their height, from the dragon's right: the toes. */
+	private static void feetView(String name) {
+		STEPS.add(new Step(3, mc -> {
+			EnderDragon dragon = clientAiDragon(mc);
+			if (dragon == null) return;
+			double yaw = Math.toRadians(DragonfallDragon.brain(dragon).body.yaw(1.0F));
+			// the hips are about two blocks behind the dragon's position
+			double hx = dragon.getX() - Math.sin(yaw) * 1.5, hz = dragon.getZ() + Math.cos(yaw) * 1.5;
+			mc.player.connection.sendCommand(view(hx + Math.cos(yaw) * 5.0, dragon.getY() + 0.8, hz + Math.sin(yaw) * 5.0, hx, dragon.getY() + 0.3, hz));
+		}));
+		STEPS.add(new Step(2, mc -> Screenshot.grab(mc.gameDirectory, "df-" + name + ".png", mc.getMainRenderTarget(),
+				message -> LOG.info("{}", message.getString()))));
+	}
+
+	/** The AI dragon's ground fight, or null when it is not fighting on the ground. */
+	private static GroundFightPhase fight(ServerLevel level) {
+		EnderDragon dragon = aiDragon(level);
+		return dragon != null && dragon.getPhaseManager().getCurrentPhase() instanceof GroundFightPhase fight ? fight : null;
 	}
 
 	private static List<? extends Husk> prey(ServerLevel level) {
@@ -768,6 +1411,93 @@ public final class Showcase {
 	}
 
 	/**
+	 * The lazy fight: a wild dragon lands to fight a husk on foot. Hurt too much there, it takes a break in
+	 * the air (the hits are given to its brain as the husk's: vanilla lets only players hurt a dragon);
+	 * hurt again up there, it lands beside the husk once more and fights on, on the ground.
+	 */
+	private static void stance(int sx, int y, int sz) {
+		command(view(sx - 40, y + 20, sz, sx, y + 12, sz), 40);
+		command(String.format(Locale.ROOT, "summon minecraft:ender_dragon %d %d %d {Tags:[\"df_ai\"]}", sx, y + 20, sz), 20);
+		// invulnerable: a snatch's drop must not end the test; with its AI, so a drop falls to the ground
+		command(String.format(Locale.ROOT, "summon minecraft:husk %d %d %d {Invulnerable:1b,PersistenceRequired:1b,Tags:[\"df_prey\"]}", sx - 30, y, sz + 10), 5);
+		server(level -> {
+			EnderDragon dragon = aiDragon(level);
+			List<? extends Husk> prey = level.getEntities(EntityType.HUSK, e -> e.getTags().contains("df_prey"));
+			check(dragon != null && !prey.isEmpty() && DragonfallDragon.brain(dragon).tryGroundAssault(prey.get(0)),
+					"stance: there is room to land beside the husk");
+		});
+		boolean[] landed = new boolean[3], lifted = new boolean[1];
+		for (int i = 0; i < 30; i++) {
+			track(String.format(Locale.ROOT, "stance-land-%02d", i), 10, 30);
+			server(level -> {
+				EnderDragon dragon = aiDragon(level);
+				landed[0] |= dragon != null && DragonfallDragon.brain(dragon).onGround();
+			});
+		}
+		// the husk hurts it, a fifth of its health and more: up for a break
+		STEPS.add(new Step(80, mc -> {}));
+		server(level -> stanceHit(level, CombatStance.GROUND_LIMIT + 0.01));
+		// watched for less than the shortest break (CombatStance.BREAK_MIN)
+		for (int i = 0; i < 12; i++) {
+			track(String.format(Locale.ROOT, "stance-up-%02d", i), 10, 34);
+			server(level -> {
+				EnderDragon dragon = aiDragon(level);
+				lifted[0] |= dragon != null && dragon.getPhaseManager().getCurrentPhase().getPhase() == DragonPhases.LIFTOFF;
+			});
+		}
+		Set<String> breakPhases = new LinkedHashSet<>();
+		for (int i = 0; i < 5; i++) {
+			track(String.format(Locale.ROOT, "stance-air-%02d", i), 20, 34);
+			server(level -> {
+				EnderDragon dragon = aiDragon(level);
+				if (dragon == null) return;
+				breakPhases.add(dragon.getPhaseManager().getCurrentPhase().getPhase().toString().replaceAll(" .*", ""));
+				landed[1] |= DragonfallDragon.brain(dragon).onGround();
+			});
+		}
+		server(level -> {
+			EnderDragon dragon = aiDragon(level);
+			check(landed[0], "stance: it landed to fight the husk on foot");
+			check(lifted[0], "stance: hurt too much on the ground, it took off");
+			REPORT.add("INFO stance: phases on the break: " + breakPhases);
+			check(!landed[1] && dragon != null && !DragonfallDragon.brain(dragon).stance.grounded(), "stance: it stayed in the air for its break");
+		});
+		// hurt in the air: back down to fight on foot
+		server(level -> stanceHit(level, CombatStance.AIR_LIMIT + 0.01));
+		for (int i = 0; i < 50; i++) {
+			track(String.format(Locale.ROOT, "stance-down-%02d", i), 10, 34);
+			server(level -> {
+				EnderDragon dragon = aiDragon(level);
+				landed[2] |= dragon != null && DragonfallDragon.brain(dragon).onGround();
+			});
+		}
+		server(level -> {
+			EnderDragon dragon = aiDragon(level);
+			List<? extends Husk> prey = level.getEntities(EntityType.HUSK, e -> e.getTags().contains("df_prey"));
+			if (dragon != null && !prey.isEmpty()) {
+				Husk husk = prey.get(0);
+				REPORT.add(String.format(Locale.ROOT, "INFO stance: at the end %s, %s; husk %.0f %.0f %.0f on ground %b, %.0f blocks off",
+						dragon.getPhaseManager().getCurrentPhase().getPhase(), DragonfallDragon.brain(dragon).stance.stance(),
+						husk.getX(), husk.getY(), husk.getZ(), husk.onGround(), husk.distanceTo(dragon)));
+			}
+			check(landed[2], "stance: hurt in the air, it landed again to fight on the ground");
+		});
+		command("kill @e[tag=df_ai]", 2);
+		command("kill @e[tag=df_prey]", 2);
+	}
+
+	/** The husk hurts the AI dragon, {@code fraction} of its health, as far as its brain knows. */
+	private static void stanceHit(ServerLevel level, double fraction) {
+		EnderDragon dragon = aiDragon(level);
+		List<? extends Husk> prey = level.getEntities(EntityType.HUSK, e -> e.getTags().contains("df_prey"));
+		if (dragon == null || prey.isEmpty()) return;
+		var source = level.damageSources().mobAttack(prey.get(0));
+		DragonBrain brain = DragonfallDragon.brain(dragon);
+		brain.hurtBy(source, 2);
+		brain.hit(source, (float) (fraction * dragon.getMaxHealth()));
+	}
+
+	/**
 	 * Free roaming: a summoned dragon with nobody to hunt (the camera is in creative) is left alone. It
 	 * must wander off from where it appeared, come down somewhere on its own, and walk about there.
 	 */
@@ -943,7 +1673,10 @@ public final class Showcase {
 			boolean sideSafe = husks.stream().filter(h -> h.getX() <= bx - 4).allMatch(h -> h.getHealth() >= h.getMaxHealth());
 			check(burned == 3, "the stream breath burns the three husks in its line (" + burned + "/3)");
 			check(sideSafe, "the husk beside the stream is untouched");
+			int fire = dragonFire(level, bx, y, bz - 14, 8);
+			check(fire > 0, "the stream leaves dragon fire where it splashes (" + fire + " blocks)");
 		});
+		shoot(view(bx - 10, y + 5, bz - 4, bx, y, bz - 14), "breath-dragon-fire", 2);
 		command("kill @e[tag=df_breath]", 2);
 		command("kill @e[tag=df_target]", 2);
 		command(String.format(Locale.ROOT, "summon minecraft:dragon_fireball %d %d %d {Motion:[0.0,-0.5,0.0]}", bx, y + 8, bz), 40);
@@ -952,12 +1685,53 @@ public final class Showcase {
 			var clouds = level.getEntities(EntityType.AREA_EFFECT_CLOUD, e -> true);
 			check(!clouds.isEmpty() && clouds.stream().allMatch(c -> ((AreaEffectCloud) c).getParticle() == BreathParticles.VOID_FLAME),
 					"the dragon fireball's cloud burns with void flame (" + clouds.size() + " clouds)");
+			int fire = dragonFire(level, bx, y, bz, 3), outer = fire - dragonFire(level, bx, y, bz, 1);
+			check(fire > 0 && fire <= 6 && outer == 0,
+					"the fireball leaves a little dragon fire, only right where it bursts (" + fire + " blocks, " + outer + " out of the middle)");
 		});
+		// dragon fire burns three times what fire does: a husk standing in it loses three times what one in
+		// vanilla fire beside it does (no armor, which takes a flat bit off each; with AI: a NoAI mob never moves, so it never touches the blocks it stands in)
+		int fx = bx + 30;
+		command(String.format(Locale.ROOT, "setblock %d %d %d dragonfall:dragon_fire", fx, y, bz), 1);
+		command(String.format(Locale.ROOT, "setblock %d %d %d minecraft:fire", fx + 6, y, bz), 1);
+		command(String.format(Locale.ROOT, "summon minecraft:husk %.1f %d %.1f {Silent:1b,PersistenceRequired:1b,Tags:[\"df_target\"],attributes:[{id:\"minecraft:generic.armor\",base:0.0}]}", fx + 0.5, y, bz + 0.5), 1);
+		command(String.format(Locale.ROOT, "summon minecraft:husk %.1f %d %.1f {Silent:1b,PersistenceRequired:1b,Tags:[\"df_target\"],attributes:[{id:\"minecraft:generic.armor\",base:0.0}]}", fx + 6.5, y, bz + 0.5), 4);
+		server(level -> {
+			float[] lost = new float[2];
+			for (var husk : level.getEntities(EntityType.HUSK, e -> e.getTags().contains("df_target"))) {
+				lost[husk.getX() < fx + 3 ? 0 : 1] = husk.getMaxHealth() - husk.getHealth();
+			}
+			REPORT.add(String.format(Locale.ROOT, "INFO first touch: dragon fire took %.2f health, vanilla fire %.2f", lost[0], lost[1]));
+			check(lost[1] > 0.0F && Math.abs(lost[0] / lost[1] - 3.0F) < 0.05F,
+					String.format(Locale.ROOT, "dragon fire hurts three times what fire does (%.2f vs %.2f)", lost[0], lost[1]));
+		});
+		shoot(view(fx - 4, y + 2, bz - 4, fx, y, bz), "dragon-fire", 2);
+		command("kill @e[tag=df_target]", 2);
+	}
+
+	/** How many dragon fire blocks are within {@code r} (a box) of a point, a few blocks up and down. */
+	private static int dragonFire(ServerLevel level, int x, int y, int z, int r) {
+		int n = 0;
+		for (BlockPos pos : BlockPos.betweenClosed(x - r, y - 3, z - r, x + r, y + 4, z + r)) {
+			if (level.getBlockState(pos).is(DragonFire.BLOCK)) n++;
+		}
+		return n;
 	}
 
 	/** Runs on the integrated server's thread and waits for it (so checks happen in script order). */
 	private static void server(Consumer<ServerLevel> action) {
 		STEPS.add(new Step(1, mc -> mc.getSingleplayerServer().executeBlocking(() -> action.accept(mc.getSingleplayerServer().overworld()))));
+	}
+
+	/**
+	 * Runs {@code poll} on the server every tick until it returns true, for at most {@code max} ticks: the
+	 * rest of the wait is skipped.
+	 */
+	private static void serverUntil(int max, Predicate<ServerLevel> poll) {
+		int end = STEPS.size() + max;
+		for (int i = 0; i < max; i++) server(level -> {
+			if (poll.test(level)) index = end;
+		});
 	}
 
 	private static EnderDragon aiDragon(ServerLevel level) {

@@ -1,8 +1,12 @@
 package crazylimits.dragonfall.mc;
 
+import crazylimits.dragonfall.ai.AirTactics;
+import crazylimits.dragonfall.ai.CombatStance;
+import crazylimits.dragonfall.ai.DeathFlight;
 import crazylimits.dragonfall.ai.HitTally;
 import crazylimits.dragonfall.ai.Roaming;
 import crazylimits.dragonfall.anim.AnimClock;
+import crazylimits.dragonfall.anim.BreathAttack;
 import crazylimits.dragonfall.anim.DragonAnim;
 import crazylimits.dragonfall.anim.DragonAnimSelector;
 import crazylimits.dragonfall.anim.DragonAnimSelector.Kind;
@@ -13,16 +17,22 @@ import crazylimits.dragonfall.body.PartSolver;
 import crazylimits.dragonfall.body.PoseTrack;
 import crazylimits.dragonfall.body.Strike;
 import crazylimits.dragonfall.body.Tail;
+import crazylimits.dragonfall.body.TailChain;
 import crazylimits.dragonfall.body.TailMotion;
 import crazylimits.dragonfall.flight.FlightModel;
 import crazylimits.dragonfall.limb.GroundFit;
+import crazylimits.dragonfall.limb.HeadLook;
 import crazylimits.dragonfall.mc.breath.BreathStreamPhase;
+import crazylimits.dragonfall.mc.phase.BreathPassPhase;
 import crazylimits.dragonfall.mc.phase.DragonfallPhase;
+import crazylimits.dragonfall.mc.phase.FlybyBitePhase;
 import crazylimits.dragonfall.mc.phase.GroundApproachPhase;
+import crazylimits.dragonfall.mc.phase.HoverAttackPhase;
 import crazylimits.dragonfall.mc.phase.RoamPhase;
 import crazylimits.dragonfall.mc.phase.SnatchPhase;
 import crazylimits.dragonfall.nav.AirPlanner;
 import crazylimits.dragonfall.nav.BlockGrid;
+import crazylimits.dragonfall.nav.Foothold;
 import crazylimits.dragonfall.nav.LandingSite;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
@@ -38,9 +48,12 @@ import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.boss.enderdragon.phases.DragonPhaseInstance;
 import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.projectile.DragonFireball;
 import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.level.levelgen.feature.EndPodiumFeature;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Vector3f;
@@ -54,13 +67,14 @@ import java.util.concurrent.ThreadLocalRandom;
  *
  * <h2>Two kinds of dragon</h2>
  * <ul>
- *   <li><b>Arena</b>: the End fight's dragon. Vanilla's fight stays (pillar circuit, strafes, the perch
- *       on the exit portal), and now and then it lands next to a player on the island and fights on
+ *   <li><b>Arena</b>: the End fight's dragon. Vanilla's fight stays (pillar circuit, strafes), but it
+ *       never lands on the exit portal: where vanilla's would, it perches next to a player on the island
+ *       instead (scans, roars, breathes, takes off). Now and then it also lands next to one to fight on
  *       the ground; more often once the crystals are gone.</li>
  *   <li><b>Wild</b>: any other dragon (summoned with a command, anywhere). Nothing ties it to one place:
  *       it roams ({@link Roaming}), flying a while, landing somewhere along its way, walking about there
- *       and taking off again. It hunts players who come near (fireball passes, hovering barrages,
- *       charges, ground assaults).</li>
+ *       and taking off again. It hunts players who come near (fireball passes, breath passes, hovering
+ *       barrages, charges, snatches, ground assaults).</li>
  * </ul>
  *
  * <h2>Flying</h2>
@@ -95,6 +109,16 @@ public final class DragonBrain {
 	private static final int MAX_BREAKS_PER_TICK = 64;
 	private static final TargetingConditions HUNT = TargetingConditions.forCombat().range(48.0);
 	private static final TargetingConditions ARENA_TARGET = TargetingConditions.forCombat().range(150.0);
+	/** Arena: how far from the fight's origin a player counts as on the island (blocks). */
+	private static final double ISLAND = 100.0;
+	/**
+	 * A narrow foothold beside its prey: this far from it at least, at most and preferably (blocks). It
+	 * cannot walk in from there, so within the bite's reach (the jaws strike ~6 blocks ahead).
+	 */
+	private static final double[] NARROW_RANGE = {4.0, 6.5, 5.0};
+	/** A target with this many blocks of air under it is in the air; one found with nowhere to land by stays so this long (ticks). */
+	private static final double AIRBORNE_GAP = 3.0;
+	private static final int WALLED_TICKS = 200;
 
 	private final EnderDragon dragon;
 	public final DragonBody body = new DragonBody();
@@ -103,8 +127,15 @@ public final class DragonBrain {
 	public final DragonVoice.Roar roar = new DragonVoice.Roar();
 	/** The bite, tail strike or stream breath aimed now (both sides, from {@link DragonData#STRIKE}). */
 	public final Strike strike = new Strike();
+	/** The head turned to what the dragon watches (both sides, so the head and neck hitboxes turn with it). */
+	public final HeadLook look = new HeadLook();
+	private final double[] lookWant = new double[2];
 	/** Hits taken (server): too many at once and a landed dragon takes off. */
 	public final HitTally hits = new HitTally();
+	/** Wild: whether it fights on foot or takes a break in the air (server). */
+	public final CombatStance stance = new CombatStance();
+	/** The last flight once it is brought down (server): over the altar, up, then death ({@link DeathFlight}). */
+	public final DeathFlight death = new DeathFlight();
 	/** What its talons or jaws hold (both sides, from {@link DragonData#GRIP}). */
 	public final PreyHold prey;
 	private final double[] groundHeights = new double[4];
@@ -116,16 +147,32 @@ public final class DragonBrain {
 	private int bodyTickedAt = Integer.MIN_VALUE;
 
 	private Context context = Context.UNKNOWN;
-	private int attackCooldown = 100, groundCooldown = 900, scanCooldown;
+	private int attackCooldown = 100, groundCooldown = 900, scanCooldown, landCooldown;
 	/** Wild: ticks of roaming flight left before it looks for somewhere to land (a first short one). */
 	private int airLeft = 300;
 	private boolean landed;
+	/** Arena: vanilla's dragon chose to land on the exit portal; it perches by a player instead. */
+	private boolean perchWanted;
 	private LivingEntity target, lastAttacker;
+	/** The target last found with nowhere to land by it (on a wall, up a pillar), and when. */
+	private LivingEntity walled;
+	private int walledAt;
 	private Entity lastHurtBy;
 	private int lastHurtAt = Integer.MIN_VALUE / 2;
 	private int actionSequence;
 	/** Ticks of flight left before the next roar (server). */
 	private int roarIn = DragonVoice.AIR_ROAR_MIN_TICKS;
+	/** The fireball charging (server): what it is for and ticks into its windup; null for none. */
+	private LivingEntity fireballTarget;
+	private int fireballTicks;
+	/** What the head watched before the fireball turned it to its target (server; -1: nothing). */
+	private int fireballLookBefore = -1;
+	/**
+	 * When the last fireball started charging: the server's own, the client's view of {@link DragonData#FIREBALL}
+	 * (the count last seen, null before the first tick, and when it changed).
+	 */
+	private Integer fireballsSeen;
+	private int fireballSeenAt = Integer.MIN_VALUE / 2;
 
 	private List<double[]> route = List.of();
 	private int routeIndex;
@@ -157,15 +204,20 @@ public final class DragonBrain {
 	// ---------------------------------------------------------------- what is playing
 
 	public Kind kind() {
+		// the cocoon: only once it is dead (its last flight before that flies as any other)
 		if (dragon.dragonDeathTime > 0 || dragon.isDeadOrDying()) return Kind.DYING;
 		EnderDragonPhase<?> phase = dragon.getPhaseManager().getCurrentPhase().getPhase();
-		if (phase == EnderDragonPhase.DYING) return Kind.DYING;
 		if (phase == EnderDragonPhase.SITTING_SCANNING) return Kind.PERCH_SCANNING;
 		if (phase == EnderDragonPhase.SITTING_FLAMING) return Kind.PERCH_FLAMING;
 		if (phase == EnderDragonPhase.SITTING_ATTACKING) return Kind.PERCH_ATTACKING;
 		if (phase == DragonPhases.GROUND_FIGHT) return Kind.GROUND;
 		if (dragon.getPhaseManager().getCurrentPhase() instanceof BreathStreamPhase) return Kind.PERCH_BREATH;
 		return Kind.AIR;
+	}
+
+	/** Server: where in its wingbeat the dragon is (0..1), or -1 with the wings still. */
+	public double beatPhase() {
+		return flight.beatPhase(dragon.level().getGameTime());
 	}
 
 	public FlightModel.Plan flightPlan() {
@@ -178,20 +230,31 @@ public final class DragonBrain {
 
 	public DragonAnimSelector.Choice choice() {
 		int bits = dragon.getEntityData().get(DragonData.ACTION);
-		return DragonAnimSelector.select(kind(), DragonAnimSelector.actionAnim(bits), DragonAnimSelector.actionSequence(bits),
+		return DragonAnimSelector.select(kind(), foothold(), DragonAnimSelector.actionAnim(bits), DragonAnimSelector.actionSequence(bits),
 				flightPlan(), horizontalSpeed());
+	}
+
+	/** How it stands on the ground (synced): on all fours, sat up on a narrow foothold, or clinging. */
+	public Foothold foothold() {
+		return Foothold.of(dragon.getEntityData().get(DragonData.FOOTHOLD));
+	}
+
+	/** Server: how it stands from now on (set as it lands; back on all fours as it takes off). */
+	public void setFoothold(Foothold foothold) {
+		if (foothold() != foothold) dragon.getEntityData().set(DragonData.FOOTHOLD, foothold.ordinal());
 	}
 
 	public double horizontalSpeed() {
 		return Math.hypot(dragon.getX() - dragon.xo, dragon.getZ() - dragon.zo);
 	}
 
-	/** In a phase that attacks (the charge, the strafe, the perched breath, the snatch, a hold): no roaring through it. */
+	/** In a phase that attacks (the charge, the strafe, the perched breath, the snatch, the breath pass, a hold): no roaring through it. */
 	public boolean attacking() {
 		EnderDragonPhase<?> phase = dragon.getPhaseManager().getCurrentPhase().getPhase();
 		return phase == EnderDragonPhase.CHARGING_PLAYER || phase == EnderDragonPhase.STRAFE_PLAYER
 				|| phase == EnderDragonPhase.SITTING_FLAMING || kind() == Kind.PERCH_BREATH
-				|| phase == DragonPhases.SNATCH || prey.hold() != Grip.Hold.NONE;
+				|| phase == DragonPhases.SNATCH || phase == DragonPhases.BREATH_PASS || phase == DragonPhases.FLYBY_BITE
+				|| phase == DragonPhases.HOVER_ATTACK || prey.hold() != Grip.Hold.NONE;
 	}
 
 	/** On its feet: landed to fight or rest. */
@@ -215,7 +278,8 @@ public final class DragonBrain {
 	}
 
 	private DragonBody.Mode bodyMode() {
-		if (footing()) return DragonBody.Mode.GROUND;
+		// the cocoon floats up still: no banking, leaning, nor the shoulders turned against its pitch
+		if (footing() || kind() == Kind.DYING) return DragonBody.Mode.GROUND;
 		DragonAnim action = action();
 		if (action == DragonAnim.TAKEOFF) return DragonBody.Mode.HOVER;
 		// the flare of a running landing: no more banking, leaning into the braking
@@ -260,6 +324,7 @@ public final class DragonBrain {
 		body.tick(dragon.getYRot(), dragon.getX(), dragon.getY(), dragon.getZ(), bodyMode());
 		clock.tick(choice(), flightPlan(), horizontalSpeed());
 		updateStrike();
+		updateLook();
 		boolean standing = footing();
 		if (standing) sampleGround();
 		body.ground.tick(standing, groundHeights, dragon.getY());
@@ -273,7 +338,10 @@ public final class DragonBrain {
 	private void sampleGround() {
 		BlockGrid grid = grid();
 		double yaw = Math.toRadians(-body.yaw(1.0F)), c = Math.cos(yaw), s = Math.sin(yaw);
-		for (int i = 0; i < 4; i++) {
+		// sat up on its hind feet, nothing stands where the front feet would
+		int feet = onGround() && foothold().narrow() ? 2 : 4;
+		for (int i = feet; i < 4; i++) groundHeights[i] = Double.NaN;
+		for (int i = 0; i < feet; i++) {
 			double mx = GroundFit.FOOTPRINT[i][0], mz = GroundFit.FOOTPRINT[i][1];
 			int g = grid.ground(Mth.floor(dragon.getX() + mx * c + mz * s), Mth.floor(dragon.getZ() - mx * s + mz * c));
 			double h = g == BlockGrid.NO_GROUND ? Double.NaN : g - dragon.getY();
@@ -293,13 +361,19 @@ public final class DragonBrain {
 		if (dragon.getEntityData().get(DragonData.LOOK) != id) dragon.getEntityData().set(DragonData.LOOK, id);
 	}
 
-	/** Puts every part on the model's bones (both sides), then (server) smashes soft blocks they touch. */
+	/**
+	 * Puts every part on the model's bones (both sides), then (server) smashes soft blocks they touch,
+	 * and pushes whatever stands in them out of them.
+	 */
 	public void placeParts() {
 		tickBody();
 		// the tail blends in from the last animation as the model does, and keeps out of the blocks
-		TailMotion.sample(clock.anim(), clock.seconds(), clock.from(), clock.fromSeconds(), clock.blend(1.0F), tailMotion);
+		// the pose the model shows: the animation BLEND_TICKS late, blended out of the last one
+		double shown = clock.shownSeconds(1.0F);
+		TailMotion.sample(clock.anim(), shown, clock.from(), clock.fromSeconds(), clock.blend(1.0F), tailMotion);
 		tailWorld.set(grid(), body, 1.0F, dragon.getX(), dragon.getY(), dragon.getZ(), dragon.tickCount + 1.0);
-		solver.solve(clock.anim(), clock.seconds(), body, strike, 1.0F, tailMotion, tailWorld, offsets);
+		solver.solve(clock.anim(), shown, clock.from(), clock.fromShownSeconds(), clock.blend(1.0F), clock.changes(), body, strike, 1.0F,
+				tailMotion, tailWorld, offsets);
 		EnderDragonPart[] parts = dragon.getSubEntities();
 		for (int i = 0; i < parts.length && i < PoseTrack.PARTS; i++) {
 			parts[i].setPos(dragon.getX() + offsets[i * 3], dragon.getY() + offsets[i * 3 + 1] - parts[i].getBbHeight() / 2.0,
@@ -309,6 +383,42 @@ public final class DragonBrain {
 			breakSoftBlocks(parts);
 			pushOut(parts);
 		}
+		// the hitboxes are soft: what stands in them is pushed out, as mobs push each other (each side what it moves)
+		PartCollision.push(dragon, parts);
+	}
+
+	/**
+	 * Turns the head to what the dragon watches ({@link #lookTarget}), once a tick on both sides, from
+	 * where the last solve posed the head; the next solve bends the neck by it, and the renderer draws it.
+	 * A bite, a roar, the breath or prey in the jaws aims the head itself; a tail strike keeps its eyes
+	 * on the target.
+	 */
+	private void updateLook() {
+		Kind kind = kind();
+		DragonAnim action = action();
+		boolean tailStrike = action == DragonAnim.TAIL_SWEEP;
+		boolean free = (action == null || tailStrike) && kind != Kind.DYING && kind != Kind.PERCH_BREATH
+				&& kind != Kind.PERCH_FLAMING && prey.hold() != Grip.Hold.JAW;
+		// a fireball's windup turns the head all the way round to its target (it fires down the head's line)
+		boolean aiming = BreathAttack.fireballAiming(fireballGlowTicks(0.0F));
+		Entity target = lookTarget();
+		double wantYaw = Double.NaN, wantPitch = Double.NaN;
+		if (target != null && free) {
+			double[] at = new double[3];
+			PartSolver.toModel(body, 1.0F, target.getX() - dragon.getX(), target.getEyeY() - dragon.getY(), target.getZ() - dragon.getZ(), at);
+			if (solver.lookAngles(at[0], at[1], at[2], lookWant)) {
+				wantYaw = lookWant[0];
+				wantPitch = lookWant[1];
+			}
+		}
+		look.update(dragon.tickCount, wantYaw, wantPitch, free ? (kind == Kind.AIR && !aiming ? 0.7 : 1.0) : 0.0, !tailStrike);
+		for (int i = 0; i < PoseTrack.NECK_PIVOTS - 1; i++) {
+			solver.lookX[i] = look.neckPitch(i);
+			solver.lookY[i] = look.neckYaw(i);
+		}
+		solver.lookX[PoseTrack.NECK_PIVOTS - 1] = look.headPitch();
+		solver.lookY[PoseTrack.NECK_PIVOTS - 1] = look.headYaw();
+		solver.lookTail = look.tailYaw(TailChain.SEGMENTS);
 	}
 
 	/**
@@ -411,11 +521,17 @@ public final class DragonBrain {
 
 	public void tickEnd() {
 		tickBody();     // dragons whose AI is off (or dying) still need a body for the renderer
-		if (dragon.level().isClientSide) return;
+		if (dragon.level().isClientSide) {
+			int fireballs = dragon.getEntityData().get(DragonData.FIREBALL);
+			if (fireballsSeen != null && fireballs != fireballsSeen) fireballSeenAt = dragon.tickCount;
+			fireballsSeen = fireballs;
+			return;
+		}
 		// a dying dragon lets go of what it holds
-		if (dragon.isDeadOrDying() && prey.hold() != Grip.Hold.NONE) prey.release(null);
+		if ((dragon.isDeadOrDying() || dying()) && prey.hold() != Grip.Hold.NONE) prey.release(null);
 		prey.tick();
-		if (dragon.isNoAi() || dragon.isDeadOrDying()) return;
+		fireballTick();
+		if (dragon.isNoAi() || dragon.isDeadOrDying() || dying()) return;
 		updateContext();
 		roarTick();
 		if (context == Context.WILD) wildTick();
@@ -438,6 +554,74 @@ public final class DragonBrain {
 		dragon.getEntityData().set(DragonData.VOICE, dragon.getEntityData().get(DragonData.VOICE) + 1);
 	}
 
+	/**
+	 * Server: a fireball at {@code target}. The dragon heats up first, the stream breath's glow played
+	 * {@link BreathAttack#FIREBALL_SPEEDUP} times faster (every client, on the change), and the fireball
+	 * flies from the head once the glow reaches the jaw. Ignored while one is charging.
+	 */
+	public void chargeFireball(LivingEntity target) {
+		if (fireballTarget != null) return;
+		fireballTarget = target;
+		fireballTicks = 0;
+		fireballSeenAt = dragon.tickCount;
+		fireballLookBefore = dragon.getEntityData().get(DragonData.LOOK);
+		dragon.getEntityData().set(DragonData.FIREBALL, dragon.getEntityData().get(DragonData.FIREBALL) + 1);
+	}
+
+	private void fireballTick() {
+		if (fireballTarget == null) return;
+		if (dragon.isDeadOrDying() || dying() || !fireballTarget.isAlive() || fireballTarget.level() != dragon.level()) {
+			endFireball();
+			return;
+		}
+		// the head turns to the target through the windup (the phase's own look comes back after)
+		setLookTarget(fireballTarget);
+		if (++fireballTicks < BreathAttack.FIREBALL_WINDUP_TICKS) return;
+		LivingEntity target = fireballTarget;
+		Vec3 head = partCenter(0);
+		Vec3 aim = new Vec3(target.getX() - head.x, target.getY(0.5) - head.y, target.getZ() - head.z);
+		if (!headPointsAt(target)) {
+			// behind it, or the head has not come round yet: wait for it, but never shoot backwards
+			if (fireballTicks >= BreathAttack.FIREBALL_WINDUP_TICKS + BreathAttack.FIREBALL_AIM_TICKS) endFireball();
+			return;
+		}
+		endFireball();
+		Vec3 dir = aim.normalize();
+		// out of the mouth, in front of the head
+		Vec3 from = head.add(dir.scale(FIREBALL_MUZZLE));
+		if (!dragon.isSilent()) dragon.level().levelEvent(null, 1017, dragon.blockPosition(), 0);
+		DragonFireball fireball = new DragonFireball(dragon.level(), dragon, dir);
+		fireball.moveTo(from.x, from.y, from.z, 0.0F, 0.0F);
+		dragon.level().addFreshEntity(fireball);
+	}
+
+	/** How far in front of the head's center the fireball leaves the mouth (blocks). */
+	private static final double FIREBALL_MUZZLE = 1.5;
+
+	private void endFireball() {
+		fireballTarget = null;
+		// back to what it watched before (a phase that sets its own look does so again next tick)
+		Entity before = fireballLookBefore < 0 ? null : dragon.level().getEntity(fireballLookBefore);
+		setLookTarget(before instanceof LivingEntity living && living.isAlive() ? living : null);
+	}
+
+	/**
+	 * Whether the head, as last posed with its look turn, points within {@link BreathAttack#FIREBALL_CONE}
+	 * of {@code target}: the look's remaining error, the target from the eyes against where the head points.
+	 */
+	private boolean headPointsAt(Entity target) {
+		double[] at = new double[3];
+		PartSolver.toModel(body, 1.0F, target.getX() - dragon.getX(), target.getY(0.5) - dragon.getY(), target.getZ() - dragon.getZ(), at);
+		if (!solver.lookAngles(at[0], at[1], at[2], lookWant)) return false;
+		double yaw = lookWant[0] - look.yaw(), pitch = lookWant[1] - look.pitch();
+		return yaw * yaw + pitch * pitch < BreathAttack.FIREBALL_CONE * BreathAttack.FIREBALL_CONE;
+	}
+
+	/** Client: ticks (fractional) since the last fireball's windup started, for the heat glow. */
+	public double fireballGlowTicks(float partialTick) {
+		return dragon.tickCount - fireballSeenAt + partialTick;
+	}
+
 	private void updateContext() {
 		if (context != Context.UNKNOWN) return;
 		if (dragon.getDragonFight() != null) {
@@ -454,13 +638,22 @@ public final class DragonBrain {
 
 	/**
 	 * Vanilla phases that assume the End's exit portal at 0, 0 are swapped for Dragonfall's own on a
-	 * wild dragon; leaving the ground is always the jump.
+	 * wild dragon; leaving the ground is always the jump. The End fight's dragon never comes down on the
+	 * portal: its landing approach becomes a perch beside a player ({@link #arenaTick}), so every takeoff
+	 * there is from the island's ground.
 	 */
 	public EnderDragonPhase<?> remap(EnderDragonPhase<?> phase) {
 		DragonPhaseInstance current = dragon.getPhaseManager().getCurrentPhase();
 		EnderDragonPhase<?> from = current == null ? null : current.getPhase();
 		if (phase == EnderDragonPhase.TAKEOFF && (from == DragonPhases.GROUND_FIGHT || from == DragonPhases.GROUND_APPROACH)) {
 			return DragonPhases.LIFTOFF;
+		}
+		if (context == Context.ARENA) {
+			if (phase == EnderDragonPhase.LANDING_APPROACH) {
+				perchWanted = true;
+				return from != null ? from : EnderDragonPhase.HOLDING_PATTERN;
+			}
+			if (phase == EnderDragonPhase.TAKEOFF) return DragonPhases.LIFTOFF;
 		}
 		if (context == Context.WILD) {
 			if (phase == EnderDragonPhase.HOLDING_PATTERN || phase == EnderDragonPhase.STRAFE_PLAYER
@@ -484,18 +677,31 @@ public final class DragonBrain {
 		}
 		// vanilla phases (the charge, death) head back to the fight origin: keep it where the dragon is
 		if (dragon.tickCount % 100 == 0) dragon.setFightOrigin(groundAt(dragon.blockPosition()));
+		stance.tick(target != null);
 		if (onGround()) landed = true;
+		if (landCooldown > 0) landCooldown--;
 		if (!(phase instanceof RoamPhase roam)) return;
 		if (landed) {
-			// back in the air: a fresh spell of flight before it comes down again
+			// back in the air: a short flight before it comes down again
 			landed = false;
 			airLeft = Roaming.airSpell(ThreadLocalRandom.current());
 		}
 		airLeft--;
 		if (!roam.idle()) return;
+		// a fight is the ground's (lazy dragons): come down beside the target whenever there is room
+		if (target != null && stance.grounded() && landCooldown <= 0 && !airborne(target)) {
+			landCooldown = 40;
+			if (target.onGround()) {
+				if (tryGroundAssault(target)) return;
+				walled(target);
+			}
+		}
 		if (target != null && attackCooldown <= 0) {
-			attack(roam, target);
-			attackCooldown = ThreadLocalRandom.current().nextInt(140, 260);
+			AirTactics.Reach reach = reach(target);
+			attack(roam, target, reach);
+			// on a break in the air, or at a target it cannot land by, it attacks from there in earnest
+			boolean earnest = !stance.grounded() || AirTactics.airborne(reach);
+			attackCooldown = earnest ? ThreadLocalRandom.current().nextInt(80, 160) : ThreadLocalRandom.current().nextInt(140, 260);
 		} else if (target == null && airLeft <= 0) {
 			airLeft = 100;   // nowhere to land here: look again a little further on
 			landAhead();
@@ -524,22 +730,75 @@ public final class DragonBrain {
 		return dragon.level().getNearestPlayer(HUNT, dragon);
 	}
 
-	/** One attack on a target from the wild circuit. */
-	private void attack(RoamPhase roam, LivingEntity target) {
-		double r = ThreadLocalRandom.current().nextDouble();
-		if (r < 0.15 && SnatchPhase.start(dragon, target)) return;
-		if (r < 0.4 && target.onGround() && tryGroundAssault(target)) return;
-		if (r < 0.7) {
-			roam.startPass(target);
-		} else if (r < 0.85 && dragon.hasLineOfSight(target)) {
-			dragon.getPhaseManager().setPhase(EnderDragonPhase.CHARGING_PLAYER);
-			dragon.getPhaseManager().getPhase(EnderDragonPhase.CHARGING_PLAYER).setTarget(target.position());
-		} else {
-			roam.startBarrage(target);
+	/**
+	 * Whether {@code target} is in the air: gliding on elytra, flying, or with nothing under it for a few
+	 * blocks (a jump is not). There is no landing beside it then: the dragon fights it in the air.
+	 */
+	public boolean airborne(LivingEntity target) {
+		if (target.onGround()) return false;
+		if (target.isFallFlying() || target instanceof Player p && p.getAbilities().flying) return true;
+		return dragon.level().noCollision(target.getBoundingBox().expandTowards(0.0, -AIRBORNE_GAP, 0.0));
+	}
+
+	/** Remembers that {@code target} stands where the dragon cannot come down beside it. */
+	private void walled(LivingEntity target) {
+		walled = target;
+		walledAt = dragon.tickCount;
+	}
+
+	/** Where {@code target} is for an attack from the air: in it, on ground it cannot land by (lately found so), or on open ground. */
+	private AirTactics.Reach reach(LivingEntity target) {
+		boolean walledNow = walled == target && dragon.tickCount - walledAt < WALLED_TICKS;
+		return AirTactics.reach(airborne(target), !walledNow);
+	}
+
+	/**
+	 * One attack on a target from the air (the landing to fight on foot is {@link #wildTick}'s): the
+	 * first of {@link AirTactics#choices} that can start. In the End fight ({@code roam} null) vanilla's
+	 * strafe makes the fireball attacks.
+	 */
+	private void attack(RoamPhase roam, LivingEntity target, AirTactics.Reach reach) {
+		for (AirTactics.Attack attack : AirTactics.choices(reach, ThreadLocalRandom.current().nextDouble())) {
+			if (start(attack, roam, target)) return;
+		}
+	}
+
+	private boolean start(AirTactics.Attack attack, RoamPhase roam, LivingEntity target) {
+		switch (attack) {
+			case SNATCH:
+				return SnatchPhase.start(dragon, target);
+			case BREATH_PASS:
+				return BreathPassPhase.start(dragon, target);
+			case FLYBY_BITE:
+				return FlybyBitePhase.start(dragon, target);
+			case HOVER_BITE:
+				return HoverAttackPhase.start(dragon, target, HoverAttackPhase.Mode.BITE);
+			case HOVER_BREATH:
+				return HoverAttackPhase.start(dragon, target, HoverAttackPhase.Mode.BREATH);
+			case CHARGE:
+				if (!dragon.hasLineOfSight(target)) return false;
+				dragon.getPhaseManager().setPhase(EnderDragonPhase.CHARGING_PLAYER);
+				dragon.getPhaseManager().getPhase(EnderDragonPhase.CHARGING_PLAYER).setTarget(target.position());
+				return true;
+			default:
+				// the fireball pass and the barrage: the roam's; vanilla's strafe in the End fight
+				if (roam == null) {
+					dragon.getPhaseManager().setPhase(EnderDragonPhase.STRAFE_PLAYER);
+					dragon.getPhaseManager().getPhase(EnderDragonPhase.STRAFE_PLAYER).setTarget(target);
+				} else if (attack == AirTactics.Attack.FIREBALL_PASS) {
+					roam.startPass(target);
+				} else {
+					roam.startBarrage(target);
+				}
+				return true;
 		}
 	}
 
 	private void arenaTick() {
+		if (perchWanted) {
+			perchWanted = false;
+			if (dragon.getPhaseManager().getCurrentPhase().getPhase() == EnderDragonPhase.HOLDING_PATTERN && perchByPlayer()) return;
+		}
 		if (groundCooldown > 0) {
 			groundCooldown--;
 			return;
@@ -548,24 +807,113 @@ public final class DragonBrain {
 		groundCooldown = 100;     // retry soon when nobody is on open ground
 		BlockPos origin = dragon.getFightOrigin();
 		Player player = dragon.level().getNearestPlayer(ARENA_TARGET, dragon, origin.getX(), origin.getY(), origin.getZ());
-		if (player == null || !player.onGround() || player.distanceToSqr(Vec3.atCenterOf(origin)) > 100 * 100) return;
-		// now and then a snatch instead of a landing
-		if (ThreadLocalRandom.current().nextDouble() < 0.3 && SnatchPhase.start(dragon, player)) {
+		if (player == null || player.distanceToSqr(Vec3.atCenterOf(origin)) > ISLAND * ISLAND) return;
+		// in the air (elytra): fought there
+		if (airborne(player)) {
+			attack(null, player, AirTactics.Reach.AIR);
+			groundCooldown = ThreadLocalRandom.current().nextInt(200, 400);
+			return;
+		}
+		if (!player.onGround()) return;
+		// now and then a snatch or a breath pass instead of a landing
+		double r = ThreadLocalRandom.current().nextDouble();
+		if (r < 0.3 && SnatchPhase.start(dragon, player) || r >= 0.3 && r < 0.55 && BreathPassPhase.start(dragon, player)) {
 			groundCooldown = ThreadLocalRandom.current().nextInt(500, 900);
 			return;
 		}
 		if (tryGroundAssault(player)) {
 			boolean crystals = dragon.getDragonFight() != null && dragon.getDragonFight().getCrystalsAlive() > 0;
 			groundCooldown = crystals ? ThreadLocalRandom.current().nextInt(900, 1500) : ThreadLocalRandom.current().nextInt(400, 800);
+			return;
+		}
+		// nowhere to land by it (up a spire, pillaring up to a crystal): it comes to fight it in the air there
+		attack(null, player, AirTactics.Reach.WALL);
+		groundCooldown = ThreadLocalRandom.current().nextInt(200, 400);
+	}
+
+	/**
+	 * Arena: perches on the island beside the player nearest the dragon (on the ground, within
+	 * {@link #ISLAND} of the fight's origin), if there is room to land there; else it flies on, and
+	 * vanilla's holding pattern decides to land again later.
+	 */
+	private boolean perchByPlayer() {
+		BlockPos origin = dragon.getFightOrigin();
+		Vec3 center = Vec3.atCenterOf(origin);
+		Player player = dragon.level().getNearestPlayer(ARENA_TARGET.copy().selector(p -> p.distanceToSqr(center) < ISLAND * ISLAND),
+				dragon, dragon.getX(), dragon.getY(), dragon.getZ());
+		if (player == null) return false;
+		int[] site = landingSiteBy(player);
+		if (site == null) return false;
+		GroundApproachPhase.perch(dragon, site);
+		return true;
+	}
+
+	/** A landing site beside {@code target}, on its level; null when there is no room. */
+	private int[] landingSiteBy(LivingEntity target) {
+		int[] site = new LandingSite(grid()).find(target.getX(), target.getZ(), 8, 17, 12, dragon.getX(), dragon.getZ());
+		return site == null || Math.abs(site[1] - target.getY()) > 5 ? null : site;
+	}
+
+	/**
+	 * Lands near the target to fight it on foot, if there is room to land there. With no room for all
+	 * four limbs, it comes down on a narrow foothold ({@link Foothold}) within a bite of it instead: sat up
+	 * on a ledge, or clinging to a pillar's top.
+	 */
+	public boolean tryGroundAssault(LivingEntity target) {
+		int[] site = landingSiteBy(target);
+		if (site != null) {
+			GroundApproachPhase.start(dragon, site, target, Foothold.STAND);
+			return true;
+		}
+		LandingSite sites = new LandingSite(grid());
+		for (Foothold foothold : new Foothold[]{Foothold.UPRIGHT, Foothold.CLING}) {
+			site = sites.near(target.getX(), target.getY(), target.getZ(), NARROW_RANGE[0], NARROW_RANGE[1], NARROW_RANGE[2],
+					dragon.getX(), dragon.getZ(), foothold);
+			if (site == null || !ticking(site[0], site[2])) continue;
+			GroundApproachPhase.start(dragon, site, target, foothold);
+			return true;
+		}
+		return false;
+	}
+
+	// ---------------------------------------------------------------- dying
+
+	/** On its last flight (vanilla's dying phase, health held at 1 until it is over). */
+	public boolean dying() {
+		return dragon.getPhaseManager().getCurrentPhase().getPhase() == EnderDragonPhase.DYING;
+	}
+
+	/**
+	 * Server, as the last flight starts: whatever it was doing stops (it lets go of its prey, takes its feet
+	 * off a foothold), it cries out, and it heads for the altar of the End fight's island, or, a wild dragon,
+	 * only up.
+	 */
+	public void startDeathFlight() {
+		clearAction();
+		setFoothold(Foothold.STAND);
+		if (prey.hold() != Grip.Hold.NONE) prey.release(null);
+		setLookTarget(null);
+		roar();
+		double[] altar = null;
+		if (dragon.getDragonFight() != null) {
+			BlockPos top = dragon.level().getHeightmapPos(Heightmap.Types.MOTION_BLOCKING, EndPodiumFeature.getLocation(dragon.getFightOrigin()));
+			altar = new double[]{top.getX() + 0.5, top.getY(), top.getZ() + 0.5};
+		}
+		death.start(dragon.getX(), dragon.getY(), dragon.getZ(), altar);
+	}
+
+	/** Server, each tick of the last flight: once it is over, the dragon dies (the cocoon, vanilla's light and rise). */
+	public void deathTick() {
+		boolean blocked = death.stage() == DeathFlight.Stage.RISE && dragon.verticalCollision && dragon.getDeltaMovement().y >= 0.0;
+		if (death.tick(dragon.getX(), dragon.getY(), dragon.getZ(), blocked) == DeathFlight.Stage.DONE) {
+			dragon.setDeltaMovement(Vec3.ZERO);
+			dragon.setHealth(0.0F);
 		}
 	}
 
-	/** Lands near the target to fight it on foot, if there is room to land there. */
-	public boolean tryGroundAssault(LivingEntity target) {
-		int[] site = new LandingSite(grid()).find(target.getX(), target.getZ(), 8, 17, 12, dragon.getX(), dragon.getZ());
-		if (site == null || Math.abs(site[1] - target.getY()) > 5) return false;
-		GroundApproachPhase.start(dragon, site, target);
-		return true;
+	/** Where the last flight heads now. */
+	public Vec3 deathTarget() {
+		return new Vec3(death.targetX(), death.targetY(), death.targetZ());
 	}
 
 	/** A blow at part {@code part} (index into the parts; -1: the dragon itself), whether it hurts or not (server). */
@@ -579,11 +927,12 @@ public final class DragonBrain {
 		}
 	}
 
-	/** A hit that took health off (server). */
-	public void hit(DamageSource source) {
+	/** A hit that took {@code lost} health off (server). */
+	public void hit(DamageSource source, float lost) {
 		lastHurtBy = source.getEntity();
 		lastHurtAt = dragon.tickCount;
 		hits.hit(dragon.tickCount);
+		if (context == Context.WILD) stance.hurt(lost / dragon.getMaxHealth(), ThreadLocalRandom.current());
 	}
 
 	/** The living thing that hurt the dragon within the last {@code ticks}, or null. */
@@ -636,7 +985,8 @@ public final class DragonBrain {
 	private FlightModel.Force force(DragonPhaseInstance phase, Vec3 target) {
 		if (phase instanceof DragonfallPhase own) return own.flightForce();
 		EnderDragonPhase<?> id = phase.getPhase();
-		if (id == EnderDragonPhase.HOVERING || id == EnderDragonPhase.DYING) return FlightModel.Force.HOVER;
+		if (id == EnderDragonPhase.HOVERING) return FlightModel.Force.HOVER;
+		if (id == EnderDragonPhase.DYING) return death.hovers(dragon.getX(), dragon.getZ()) ? FlightModel.Force.HOVER : FlightModel.Force.NONE;
 		if (id == EnderDragonPhase.LANDING) {
 			boolean close = dragon.getY() - target.y < 14 && Math.hypot(target.x - dragon.getX(), target.z - dragon.getZ()) < 12;
 			return close ? FlightModel.Force.HOVER : FlightModel.Force.GLIDE;
@@ -654,11 +1004,11 @@ public final class DragonBrain {
 		return dy > 4.0 && (dy > horizontal * STEEP || dragon.horizontalCollision);
 	}
 
-	/** Vanilla's portal landing, takeoff and death fly through the podium as before. */
+	/** Vanilla's portal landing and takeoff fly through the podium as before. */
 	private boolean collides(DragonPhaseInstance phase) {
 		if (phase instanceof DragonfallPhase own) return own.collides();
 		EnderDragonPhase<?> id = phase.getPhase();
-		if (id == EnderDragonPhase.LANDING || id == EnderDragonPhase.TAKEOFF || id == EnderDragonPhase.DYING) return false;
+		if (id == EnderDragonPhase.LANDING || id == EnderDragonPhase.TAKEOFF) return false;
 		return !phase.isSitting() || id == EnderDragonPhase.HOVERING;
 	}
 
@@ -705,7 +1055,7 @@ public final class DragonBrain {
 	private void hoverStep(DragonPhaseInstance phase, Vec3 aim, long tick, boolean collide) {
 		double dx = aim.x - dragon.getX(), dz = aim.z - dragon.getZ();
 		double horizontal = Math.hypot(dx, dz);
-		Vec3 look = phase instanceof RoamPhase roam ? roam.lookTarget() : null;
+		Vec3 look = phase instanceof DragonfallPhase own ? own.hoverLook() : null;
 		double fx = look != null ? look.x - dragon.getX() : dx, fz = look != null ? look.z - dragon.getZ() : dz;
 		if (Math.hypot(fx, fz) > 1.5) {
 			float want = (float) Math.toDegrees(Math.atan2(fx, -fz));

@@ -8,6 +8,7 @@ import crazylimits.dragonfall.body.Grip;
 import crazylimits.dragonfall.body.PoseTrack;
 import crazylimits.dragonfall.body.Tail;
 import crazylimits.dragonfall.body.TailMotion;
+import crazylimits.dragonfall.body.WingRoot;
 import crazylimits.dragonfall.mc.DragonBrain;
 import crazylimits.dragonfall.mc.DragonfallDragon;
 import crazylimits.dragonfall.mc.LevelGrid;
@@ -55,6 +56,7 @@ public final class DragonModel extends DefaultedEntityGeoModel<ReplacedEnderDrag
 		float partialTick = state.getPartialTick();
 		if (DragonDebug.forcedAnimation != null) {
 			forcedTail(dragon, DragonDebug.forcedAnimation, partialTick);
+			rootWebs();
 			return;
 		}
 		DragonBody body = DragonfallDragon.brain(dragon).body;
@@ -85,13 +87,14 @@ public final class DragonModel extends DefaultedEntityGeoModel<ReplacedEnderDrag
 		add("right_wing_tip", 0.0, 0.0, wingTurn[4]);
 		// the feet planted on the ground by IK, the head turned to what the dragon watches (LimbAnimator)
 		LimbAnimator.apply(this, dragon, partialTick);
+		rootWebs();
 		// a roar in flight opens the jaw with the sound (-X opens it)
 		add("jaw_group", -DragonfallDragon.brain(dragon).roar.jaw(dragon.tickCount + partialTick), 0.0, 0.0);
 		// prey in the jaws holds them a little open
 		if (brain.prey.hold() == Grip.Hold.JAW) add("jaw_group", -Grip.JAW_OPEN, 0.0, 0.0);
 
 		// the tail: trailing the turn, the strike's whip, swinging against the head's turn
-		double look = LimbAnimator.tailYaw(dragon);
+		double look = LimbAnimator.tailYaw(dragon, partialTick);
 		for (int i = 0; i < TAIL.length; i++) {
 			tailX[i] += aimTailX[i];
 			tailY[i] += aimTailY[i] + look;
@@ -128,6 +131,15 @@ public final class DragonModel extends DefaultedEntityGeoModel<ReplacedEnderDrag
 				Mth.lerp(partialTick, dragon.yo, dragon.getY()), Mth.lerp(partialTick, dragon.zo, dragon.getZ()), dragon.tickCount + partialTick);
 		limbs.tail.solve(limbs.chain, limbs.motion, bendX, bendY, limbs.world, finalTailX, finalTailY);
 		for (int i = 0; i < TAIL.length; i++) add(TAIL[i], finalTailX[i], finalTailY[i], 0.0);
+	}
+
+	/** The wings' root webs keep pointing at the body, whatever the shoulders do as drawn (WingRoot). */
+	private void rootWebs() {
+		GeoBone left = getAnimationProcessor().getBone("left_wing"), right = getAnimationProcessor().getBone("right_wing");
+		if (left != null)
+			add("left_wing_root_web", 0.0, 0.0, WingRoot.fold(Math.toDegrees(left.getRotX()), Math.toDegrees(left.getRotY()), Math.toDegrees(left.getRotZ())));
+		if (right != null)
+			add("right_wing_root_web", 0.0, 0.0, -WingRoot.fold(Math.toDegrees(right.getRotX()), -Math.toDegrees(right.getRotY()), -Math.toDegrees(right.getRotZ())));
 	}
 
 	private void add(String name, double x, double y, double z) {

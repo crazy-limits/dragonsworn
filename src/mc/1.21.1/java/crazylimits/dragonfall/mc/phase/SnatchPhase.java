@@ -21,8 +21,8 @@ import org.jetbrains.annotations.Nullable;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * The snatch, an eagle's: the dragon swings out to get a run at its prey, dives at it with the right
- * hind foot reaching down, and takes it in its talons ({@link Grip.Hold#TALON}) as it sweeps past. Then
+ * The snatch, an eagle's: the dragon swings out to get a run at its prey, dives at it with both hind legs
+ * thrown forward and the right foot reaching out for it at the last, and takes it in its talons ({@link Grip.Hold#TALON}) as it sweeps past. Then
  * it climbs hard, beating, and drops the prey from {@link #DROP_MIN}..{@link #DROP_MAX} blocks up.
  *
  * <p>Held, the prey cannot move but can use items ({@link PreyHold}): an ender pearl gets it out, and

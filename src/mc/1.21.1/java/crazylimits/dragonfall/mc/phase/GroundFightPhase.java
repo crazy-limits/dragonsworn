@@ -1,5 +1,6 @@
 package crazylimits.dragonfall.mc.phase;
 
+import crazylimits.dragonfall.ai.CombatStance;
 import crazylimits.dragonfall.ai.GroundTactics;
 import crazylimits.dragonfall.ai.Roaming;
 import crazylimits.dragonfall.anim.DragonAnim;
@@ -12,6 +13,7 @@ import crazylimits.dragonfall.mc.DragonSounds;
 import crazylimits.dragonfall.mc.DragonfallDragon;
 import crazylimits.dragonfall.mc.PreyHold;
 import crazylimits.dragonfall.nav.BlockGrid;
+import crazylimits.dragonfall.nav.Foothold;
 import crazylimits.dragonfall.nav.GroundPlanner;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.BlockParticleOption;
@@ -50,16 +52,26 @@ import java.util.random.RandomGenerator;
  * <p>A blow is aimed ({@link Strike}): the jaws or the tail's tip go exactly to where the target was a
  * moment before the blow ({@link #REACTION_TICKS}), and only what is there when it lands is hit. Stepping
  * out of the way is a dodge. Hit too often at once (from its blind spots), it takes to the air
- * ({@link crazylimits.dragonfall.ai.HitTally}).
+ * ({@link crazylimits.dragonfall.ai.HitTally}). A wild dragon is lazy: it fights on foot for as long as it
+ * takes, and takes a break in the air only when hurt too much ({@link CombatStance}).
  *
  * <p>Without one it roams on foot ({@link Roaming}): walks a stretch, stops and looks
- * around, walks on, and wakes for any player who comes close. After a while (or when the target gets
- * away) it takes off.
+ * around, walks on, and wakes for any player who comes close. After a while (a long one, for a wild
+ * dragon), or when the target gets away, it takes off.
  *
- * <p>The seize (Skyrim's dragons): now and then the bite does not let go. The prey hangs from the jaws
+ * <p>The seize (Skyrim's dragons): now and then the bite does not let go. It is a bite first: only one
+ * that lands (its jaws close on the target, {@link #blow}) takes the prey; dodged, the jaws close on
+ * nothing and nothing is held. The prey hangs from the jaws
  * ({@link Grip.Hold#JAW}), unable to move but free to use items (an ender pearl gets it out), and is
  * shaken and chewed ({@link #CHEW_DAMAGE} every {@link #CHEW_TICKS}) until it is flung away. Anyone
  * else hitting the head or neck makes the dragon drop it ({@code DragonBrain#hurtBy}).
+ *
+ * <p>On a narrow foothold ({@link Foothold#UPRIGHT}: sat up on its hind feet, the wings out for balance;
+ * {@link Foothold#CLING}: gripping a pillar's top, the wings beating) it fights with its head alone: it
+ * turns to face its prey and bites (and seizes) what is in reach, but never walks, lashes its tail or
+ * roars. Once its prey has been out of the jaws' reach for {@link #NARROW_PATIENCE} it takes off (and
+ * looks for somewhere better); clinging tires it out after {@link #CLING_MAX}, and with nobody to fight
+ * it does not stay up there long.
  *
  * <p>Arrows hit it here (unlike the vanilla perch): ranged players earn these windows too. The head
  * and neck no longer hurt by touch; the bite does.
@@ -83,17 +95,24 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 	static final double SEIZE_CHANCE = 0.35;
 	static final float SEIZE_DAMAGE = 4.0F, CHEW_DAMAGE = 3.0F;
 	static final int HOLD_MIN = 70, HOLD_MAX = 110, CHEW_TICKS = 20, SEIZE_COOLDOWN = 300;
+	/**
+	 * A narrow foothold: ticks its prey may stay out of the jaws' reach before it takes off, how long it
+	 * clings at most (the wings carry it), and how long it stays up there with nobody to fight.
+	 */
+	static final int NARROW_PATIENCE = 100, CLING_MAX = 500, NARROW_REST = 100;
 
 	@Nullable
 	private LivingEntity target;
-	private int ticks, duration, lostTicks, pauseTicks, wanderTicks;
+	/** How it stands: on all fours, or on a narrow foothold (no walking, no tail). */
+	private Foothold foothold = Foothold.STAND;
+	private int ticks, duration, lostTicks, pauseTicks, wanderTicks, unreachedTicks;
 	private double walkHeading;
 	@Nullable
 	private DragonAnim action;
 	private int actionTicks;
 	private boolean actionHit;
-	/** The bite playing is a seize; how long the jaws have held, and for how long they will. */
-	private boolean seizing;
+	/** The bite playing is a seize; the next bite will be one; how long the jaws have held, and for how long they will. */
+	private boolean seizing, seizeNext;
 	private int holdTicks, holdFor, seizeReadyAt;
 	private int attackReadyAt, roarReadyAt;
 	/** Where the blow playing is aimed (world). */
@@ -123,10 +142,23 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 	 * four feet at once. A running landing has struck the ground already and skidded out.
 	 */
 	public static void start(EnderDragon dragon, @Nullable LivingEntity target, boolean thud) {
+		start(dragon, target, thud, Foothold.STAND);
+	}
+
+	/** As above, standing with {@code foothold}. */
+	public static void start(EnderDragon dragon, @Nullable LivingEntity target, boolean thud, Foothold foothold) {
 		dragon.getPhaseManager().setPhase(DragonPhases.GROUND_FIGHT);
 		GroundFightPhase phase = dragon.getPhaseManager().getPhase(DragonPhases.GROUND_FIGHT);
+		phase.foothold = foothold;
+		DragonfallDragon.brain(dragon).setFoothold(foothold);
+		if (foothold == Foothold.CLING) phase.duration = Math.min(phase.duration, CLING_MAX);
 		if (thud) phase.landingThud();
 		phase.engage(target);
+	}
+
+	/** How it stands. */
+	public Foothold foothold() {
+		return foothold;
 	}
 
 	@Override
@@ -142,15 +174,18 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 	@Override
 	public void begin() {
 		target = null;
-		ticks = lostTicks = wanderTicks = 0;
-		duration = 400 + dragon.getRandom().nextInt(300);
+		foothold = Foothold.STAND;
+		ticks = lostTicks = wanderTicks = unreachedTicks = 0;
+		// a wild dragon stays down a good while
+		duration = brain().context() == DragonBrain.Context.WILD ? Roaming.groundSpell(ThreadLocalRandom.current())
+				: 400 + dragon.getRandom().nextInt(300);
 		pauseTicks = Roaming.pause(ThreadLocalRandom.current());
 		walkHeading = Roaming.headingOfYaw(dragon.getYRot());
 		action = null;
 		path = List.of();
 		wander = null;
 		attackReadyAt = 20;
-		seizing = false;
+		seizing = seizeNext = false;
 		holdTicks = 0;
 		seizeReadyAt = 100;
 		roarReadyAt = 0;
@@ -163,9 +198,8 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 
 	private void engage(@Nullable LivingEntity target) {
 		this.target = target;
-		if (target != null) startAction(DragonAnim.ROAR);
-		// a wild dragon landed to roam stays down a good while
-		else if (brain().context() == DragonBrain.Context.WILD) duration = Roaming.groundSpell(ThreadLocalRandom.current());
+		// sat up there is no roaring: the roar rears up on all fours
+		if (target != null && !foothold.narrow()) startAction(DragonAnim.ROAR);
 	}
 
 	private DragonBrain brain() {
@@ -192,6 +226,7 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 		// worn down from where it cannot answer: up and away
 		if (brain().hits.overwhelmed(dragon.tickCount)) {
 			brain().hits.clear();
+			brain().stance.overwhelmed(ThreadLocalRandom.current());
 			takeOff();
 			return;
 		}
@@ -203,7 +238,14 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 			hold();
 			return;
 		}
-		if (ticks > duration) {
+		boolean wild = brain().context() == DragonBrain.Context.WILD;
+		// hurt too much on the ground: a break in the air (it attacks from there)
+		if (wild && target != null && !brain().stance.grounded()) {
+			takeOff();
+			return;
+		}
+		// a wild dragon fights on as long as it has someone to fight (clinging tires it out all the same)
+		if (ticks > duration && !(wild && target != null && foothold != Foothold.CLING)) {
 			takeOff();
 			return;
 		}
@@ -226,13 +268,22 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 		float bearing = Mth.wrapDegrees((float) Math.toDegrees(Math.atan2(dx, -dz)) - dragon.getYRot());
 		boolean ready = ticks >= attackReadyAt, near = ready && distance < STRIKE_RANGE;
 		Vec3 at = strikePoint(target);
-		GroundTactics.Decision decision = GroundTactics.decide(distance, bearing,
-				near && reaches(DragonAnim.ATTACK, at), near && reaches(DragonAnim.TAIL_SWEEP, at), ready, ticks >= roarReadyAt,
+		boolean narrow = foothold.narrow();
+		// on a narrow foothold it cannot walk in: out of its jaws' reach too long, it leaves
+		boolean biteReaches = (near || narrow) && distance < STRIKE_RANGE && reaches(bite(), at);
+		unreachedTicks = narrow && !biteReaches ? unreachedTicks + 1 : 0;
+		if (unreachedTicks > NARROW_PATIENCE) {
+			takeOff();
+			return;
+		}
+		GroundTactics.Decision decision = GroundTactics.decide(foothold, distance, bearing,
+				near && biteReaches, near && !narrow && reaches(DragonAnim.TAIL_SWEEP, at), ready, ticks >= roarReadyAt,
 				brain().hurtRecentlyBy(target, PROVOKED_TICKS), ThreadLocalRandom.current().nextDouble());
 		switch (decision.action()) {
 			case BITE -> {
-				startAction(DragonAnim.ATTACK);
-				seizing = ticks >= seizeReadyAt && PreyHold.holdable(target) && ThreadLocalRandom.current().nextDouble() < SEIZE_CHANCE;
+				startAction(bite());
+				seizing = PreyHold.holdable(target) && (seizeNext || ticks >= seizeReadyAt && ThreadLocalRandom.current().nextDouble() < SEIZE_CHANCE);
+				seizeNext = false;
 			}
 			case TAIL_STRIKE -> startAction(DragonAnim.TAIL_SWEEP);
 			case ROAR -> startAction(DragonAnim.ROAR);
@@ -251,6 +302,11 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 		if (near != null) {
 			engage(near);
 			duration = Math.max(duration, ticks + 300);
+			return;
+		}
+		// nowhere to walk to up there, and nothing to do: off again soon
+		if (foothold.narrow()) {
+			if (++wanderTicks > NARROW_REST) takeOff();
 			return;
 		}
 		if (wander != null) {
@@ -348,7 +404,9 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 		float yaw = dragon.getYRot() * Mth.DEG_TO_RAD;
 		double fx = Mth.sin(yaw), fz = -Mth.cos(yaw);
 		int best = grid.ground(Mth.floor(dragon.getX()), Mth.floor(dragon.getZ()));
-		for (double[] at : new double[][]{{fx * 3.5, fz * 3.5}, {-fx * 1.5, -fz * 1.5}}) {
+		// sat up, it stands on its hind feet alone, right under it
+		double[][] feet = foothold.narrow() ? new double[0][] : new double[][]{{fx * 3.5, fz * 3.5}, {-fx * 1.5, -fz * 1.5}};
+		for (double[] at : feet) {
 			int g = grid.ground(Mth.floor(dragon.getX() + at[0]), Mth.floor(dragon.getZ() + at[1]));
 			if (g != BlockGrid.NO_GROUND && g - dragon.getY() <= GroundPlanner.STEP_UP + 0.5) best = Math.max(best, g);
 		}
@@ -378,6 +436,15 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 
 	// ---------------------------------------------------------------- actions
 
+	/** The bite of its foothold: on all fours, sat up or clinging. */
+	private DragonAnim bite() {
+		return switch (foothold) {
+			case STAND -> DragonAnim.ATTACK;
+			case UPRIGHT -> DragonAnim.UPRIGHT_BITE;
+			case CLING -> DragonAnim.CLING_BITE;
+		};
+	}
+
 	private void startAction(DragonAnim anim) {
 		action = anim;
 		actionTicks = 0;
@@ -401,33 +468,37 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 		return probe.solve(brain().body, 1.0F) < Strike.radius(anim) * 0.5;
 	}
 
+	/** When {@code anim}'s blow lands, seconds into the action: when the model shows it (the animation starts after the blend). */
+	private static double hitSeconds(DragonAnim anim) {
+		return switch (anim) {
+			case ATTACK, UPRIGHT_BITE, CLING_BITE, TAIL_SWEEP -> Strike.hitSeconds(anim) + DragonAnim.BLEND_TICKS / 20.0;
+			case ROAR -> DragonAnim.ROAR_SECONDS;
+			default -> Double.MAX_VALUE;
+		};
+	}
+
 	private void runAction() {
 		actionTicks++;
 		double seconds = actionTicks / 20.0;
 		boolean strike = Strike.strikes(action);
-		// a blow lands when the model shows it (the animation starts after the blend)
-		double hitAt = switch (action) {
-			case ATTACK, TAIL_SWEEP -> Strike.hitSeconds(action) + DragonAnim.BLEND_TICKS / 20.0;
-			case ROAR -> DragonAnim.ROAR_SECONDS;
-			default -> Double.MAX_VALUE;
-		};
+		double hitAt = hitSeconds(action);
 		// the aim follows the target until a moment before the blow; then it is committed
 		if (strike && target != null && !actionHit && actionTicks < hitAt * 20.0 - REACTION_TICKS) {
 			aim = strikePoint(target);
 			brain().aimStrike(aim);
 			// a bite turns the body after it while the neck coils
-			if (action == DragonAnim.ATTACK) turnToward(target.getX(), target.getZ());
+			if (action.bites()) turnToward(target.getX(), target.getZ());
 		}
 		if (!actionHit && seconds >= hitAt) {
 			actionHit = true;
 			switch (action) {
-				case ATTACK, TAIL_SWEEP -> blow(action);
+				case ATTACK, UPRIGHT_BITE, CLING_BITE, TAIL_SWEEP -> blow(action);
 				case ROAR -> roar();
 				default -> {}
 			}
 		}
 		if (seconds >= PoseTrack.length(action) + (strike ? DragonAnim.BLEND_TICKS / 20.0 : 0.0)) {
-			int recovery = action == DragonAnim.ATTACK ? BITE_RECOVERY : action == DragonAnim.TAIL_SWEEP ? TAIL_RECOVERY : 0;
+			int recovery = action.bites() ? BITE_RECOVERY : action == DragonAnim.TAIL_SWEEP ? TAIL_RECOVERY : 0;
 			attackReadyAt = Math.max(attackReadyAt, ticks + recovery);
 			action = null;
 			aim = null;
@@ -446,7 +517,7 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 		double[] end = new double[3];
 		probe.blow(brain().body, 1.0F, end);
 		Vec3 point = dragon.position().add(end[0], end[1], end[2]);
-		boolean bite = anim == DragonAnim.ATTACK;
+		boolean bite = anim.bites();
 		boolean seize = bite && seizing;
 		seizing = false;
 		if (bite) dragon.playSound(SoundEvents.RAVAGER_ATTACK, 3.0F, 0.6F);
@@ -468,8 +539,18 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 		}
 	}
 
-	/** Takes {@code prey} in the jaws now and fights it from there (the seize's hold). */
-	public boolean seize(LivingEntity prey) {
+	/** Makes its next bite a seize (if the target can be held): it still has to land to take the prey. */
+	public void seizeNext() {
+		seizeNext = true;
+	}
+
+	/** A seizing bite is playing and its aim is committed: from now on only what is at the jaws when they close is taken. */
+	public boolean seizeCommitted() {
+		return seizing && action != null && action.bites() && !actionHit && actionTicks >= hitSeconds(action) * 20.0 - REACTION_TICKS;
+	}
+
+	/** Takes {@code prey} in the jaws (a seizing bite closed on it) and fights it from there (the seize's hold). */
+	private boolean seize(LivingEntity prey) {
 		if (!brain().prey.seize(prey, Grip.Hold.JAW)) return false;
 		target = prey;
 		holdTicks = 0;

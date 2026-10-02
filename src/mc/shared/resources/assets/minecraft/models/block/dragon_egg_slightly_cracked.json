@@ -1,0 +1,11 @@
+{
+	"parent": "minecraft:block/dragon_egg",
+	"textures": {
+		"north": "minecraft:block/dragon_egg_slightly_cracked_north",
+		"west": "minecraft:block/dragon_egg_slightly_cracked_west",
+		"south": "minecraft:block/dragon_egg_slightly_cracked_south",
+		"east": "minecraft:block/dragon_egg_slightly_cracked_east",
+		"top": "minecraft:block/dragon_egg_slightly_cracked_top",
+		"bottom": "minecraft:block/dragon_egg_slightly_cracked_bottom"
+	}
+}

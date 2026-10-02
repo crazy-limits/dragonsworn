@@ -113,4 +113,40 @@ class StrikeTest {
 			}
 		}
 	}
+
+	@Test
+	void thePassStretchesTheNeckDownAtTheGround() {
+		DragonBody body = new DragonBody();
+		body.tick(0, 0, 64, 0, DragonBody.Mode.FLIGHT);
+		Strike strike = new Strike();
+		// the pass's cone: ahead and below, a little to either side (yaw 0 faces -z)
+		double[][] aims = {{0, -11, -11}, {5, -11, -8}, {-4, -11, -14}, {0, -11, -3}};
+		for (double[] a : aims) {
+			strike.aim(DragonAnim.GLIDE_BREATH, a[0], a[1], a[2]);
+			assertTrue(strike.solve(body, 1.0F) < 0.1, "the head points at " + a[0] + ", " + a[1] + ", " + a[2]);
+		}
+		// it carries the bends through the stream and none at its start
+		assertEquals(0.0, Strike.weight(DragonAnim.GLIDE_BREATH, 0.2, 0));
+		assertEquals(1.0, Strike.weight(DragonAnim.GLIDE_BREATH, Strike.hitSeconds(DragonAnim.GLIDE_BREATH), 0));
+	}
+
+	@Test
+	void theBitesSatUpOrClingingReachWhatTheBiteOnAllFoursDoes() {
+		DragonBody body = facing(0);
+		Strike strike = new Strike();
+		// a body 5-6 blocks ahead (the narrow footholds are picked that far from the prey), and to the sides
+		double[][] aims = {{0, 1.0, -5}, {2, 0.9, -5}, {-2, 2.0, -5}, {0, 2.0, -6}, {1, 1.0, -5.5}};
+		for (DragonAnim bite : new DragonAnim[]{DragonAnim.UPRIGHT_BITE, DragonAnim.CLING_BITE}) {
+			for (double[] a : aims) {
+				strike = new Strike();
+				strike.aim(bite, a[0], a[1], a[2]);
+				double miss = strike.solve(body, 1.0F);
+				assertTrue(miss < 0.05, bite + " reaches " + a[0] + ", " + a[1] + ", " + a[2] + ": misses by " + miss);
+			}
+			// 6 ahead at a body's middle: within the bite's reach as the fight counts it (half its radius)
+			strike = new Strike();
+			strike.aim(bite, 0, 1.0, -6);
+			assertTrue(strike.solve(body, 1.0F) < Strike.radius(bite) * 0.5, bite + " reaches 6 ahead");
+		}
+	}
 }

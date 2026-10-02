@@ -52,7 +52,7 @@ PARTS = [
 	('wing', 'left_wing_tip', [101, 65, -16], 2.4, 1.0),
 	('wing', 'left_wing_web2', lambda rig: _fan(rig, 'left', 45, 16), 3.0, 1.0),
 	('wing', 'left_wing_web2', lambda rig: _fan(rig, 'left', 105, 22), 3.0, 1.0),
-	('wing', 'right_wing_tip', [-100, 65, -13.5], 2.4, 1.0),
+	('wing', 'right_wing_tip', [-101, 65, -16], 2.4, 1.0),
 	('wing', 'right_wing_web2', lambda rig: _fan(rig, 'right', 45, 16), 3.0, 1.0),
 	('wing', 'right_wing_web2', lambda rig: _fan(rig, 'right', 105, 22), 3.0, 1.0),
 	('leg', 'lowerleg_left', [16, 20, 34], 1.4, 2.0),
@@ -69,10 +69,9 @@ def _fan(rig, side, along, across):
 	if side not in _APEX:
 		ex, ey, ez = rig.bones[f'{side}_wing_tip3']['pivot']
 		_APEX[side] = (-ex, ey, ez)                          # editor -> file
-	# both hands are built along +x from their apex (the right one inside a frame turned 140 degrees);
-	# the left fan's membrane opens toward +z, the right one's toward -z
+	# the left hand is built along +x from its apex, its membrane opening toward +z; the right is its mirror
 	ax, ay, az = _APEX[side]
-	return [ax + along, ay, az + (across if side == 'left' else -across)]
+	return [ax + (along if side == 'left' else -along), ay, az + across]
 
 
 def _chain_of(rig, bone):

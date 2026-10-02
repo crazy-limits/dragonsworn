@@ -1,6 +1,6 @@
 """Builds the breath's heat glow: an emissive texture animation of the chest, throat and jaw lighting up.
 
-    python3 tools/heat.py        (build_assets.py runs it too)
+    python3 tools/heat.py        (build_assets.py runs it, between build_wings.py and pack_uv.py)
 
 Before the stream breath the dragon heats up from inside: its chest starts to glow first and fast, the
 heat climbs the underside of the neck, then the jaw and the mouth light up, and the fire comes. Each
@@ -23,11 +23,10 @@ import os
 from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
-ASSETS = os.path.join(ROOT, 'src', 'mc', 'shared', 'resources', 'assets', 'dragonfall', 'textures', 'entity')
-SKIN = os.path.join(ASSETS, 'ender_dragon.png')
-GEO = os.path.join(ROOT, 'src', 'gecko4', 'resources', 'assets', 'dragonfall', 'geo', 'entity', 'ender_dragon.geo.json')
-DST = os.path.join(ASSETS, 'heat')
+OUT = os.path.join(HERE, 'out')
+SKIN = os.path.join(OUT, 'ender_dragon.png')          # baked on build_wings.py's layout; pack_uv.py repacks it
+GEO = os.path.join(OUT, 'ender_dragon.geo.json')
+DST = os.path.join(OUT, 'heat')
 FRAMES = 8              # HeatGlowLayer.FRAMES
 
 # glow colors (the rune magenta of the dragon texture), by brightness: embers, glow, white-hot
@@ -176,7 +175,7 @@ def build():
 			out.putpixel((px, py), (*(round(c * glow) for c in color), 255))
 		path = os.path.join(DST, f'ender_dragon_heat_{k}.png')
 		out.save(path, optimize=True)
-		print('  ->', os.path.relpath(path, ROOT))
+		print('  ->', os.path.relpath(path, HERE))
 
 
 def mix(a, b, k):

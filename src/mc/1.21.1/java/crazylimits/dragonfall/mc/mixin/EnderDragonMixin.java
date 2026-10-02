@@ -15,7 +15,6 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityDimensions;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.boss.EnderDragonPart;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
@@ -44,7 +43,9 @@ import java.util.List;
  *       vanilla's straight-through flight;</li>
  *   <li>only soft blocks (leaves, plants) are broken, instead of everything not dragon-immune;</li>
  *   <li>the flight plan and the current action are synced to clients;</li>
- *   <li>what it holds rides it, placed in its talons or jaws ({@link PreyHold}).</li>
+ *   <li>what it holds is never hurt by its contact damage ({@link PreyHold});</li>
+ *   <li>no wing buffet: vanilla's shove (and its hit) on anything near the wings is gone;</li>
+ *   <li>brought down anywhere, even on its feet, it takes its last flight (vanilla's dying phase) before it dies.</li>
  * </ul>
  */
 @Mixin(EnderDragon.class)
@@ -105,6 +106,8 @@ public abstract class EnderDragonMixin extends Mob implements DragonfallDragon {
 		builder.define(DragonData.VOICE, 0);
 		builder.define(DragonData.STRIKE, DragonData.NO_STRIKE);
 		builder.define(DragonData.GRIP, 0);
+		builder.define(DragonData.FIREBALL, 0);
+		builder.define(DragonData.FOOTHOLD, 0);
 	}
 
 	/** Vanilla flies straight at the target through anything; the brain flies there its own way. */
@@ -131,45 +134,31 @@ public abstract class EnderDragonMixin extends Mob implements DragonfallDragon {
 		if (!dragonfall$brain().onGround()) original.call(self, dragonfall$notHeld(entities));
 	}
 
-	/** The wings' buffet does not hit what the dragon holds either. */
+	/** No wing buffet: whoever stands close to the dragon is not thrown back (nor hit) by its wings. */
 	@WrapOperation(method = "aiStep", at = @At(value = "INVOKE",
 			target = "Lnet/minecraft/world/entity/boss/enderdragon/EnderDragon;knockBack(Lnet/minecraft/server/level/ServerLevel;Ljava/util/List;)V"))
-	private void dragonfall$wingBuffet(EnderDragon self, ServerLevel level, List<Entity> entities, Operation<Void> original) {
-		original.call(self, level, dragonfall$notHeld(entities));
+	private void dragonfall$noWingBuffet(EnderDragon self, ServerLevel level, List<Entity> entities, Operation<Void> original) {
+	}
+
+	/**
+	 * Vanilla lets a dragon killed while sitting (on the portal) die on the spot; this one always takes its
+	 * last flight first ({@code DragonDeathPhaseMixin}), wherever it stands.
+	 */
+	@WrapOperation(method = "hurt(Lnet/minecraft/world/entity/boss/EnderDragonPart;Lnet/minecraft/world/damagesource/DamageSource;F)Z",
+			at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/boss/enderdragon/phases/DragonPhaseInstance;isSitting()Z", ordinal = 0))
+	private boolean dragonfall$diesInFlight(DragonPhaseInstance phase, Operation<Boolean> original) {
+		return false;
 	}
 
 	@Unique
 	private List<Entity> dragonfall$notHeld(List<Entity> entities) {
-		if (getPassengers().isEmpty()) return entities;
-		return entities.stream().filter(e -> e.getVehicle() != (Object) this).toList();
-	}
-
-	/** The prey rides the dragon: it is put in the talons or the jaws (both sides). */
-	@Override
-	protected void positionRider(Entity passenger, Entity.MoveFunction move) {
 		PreyHold prey = dragonfall$brain().prey;
-		if (!prey.holds(passenger)) {
-			super.positionRider(passenger, move);
-			return;
-		}
-		Vec3 at = prey.holdPoint(passenger);
-		move.accept(passenger, at.x, at.y, at.z);
+		if (!prey.holding()) return entities;
+		return entities.stream().filter(e -> !prey.holds(e)).toList();
 	}
 
-	/** Let go, the prey drops from where it was held (not onto the dragon's back). */
-	@Override
-	public Vec3 getDismountLocationForPassenger(LivingEntity passenger) {
-		PreyHold prey = dragonfall$brain().prey;
-		return prey.holds(passenger) ? prey.holdPoint(passenger) : super.getDismountLocationForPassenger(passenger);
-	}
-
-	/** Prey never steers the dragon (a mob riding a mob would). */
-	@Override
-	public LivingEntity getControllingPassenger() {
-		return null;
-	}
-
-	@Inject(method = "aiStep", at = @At("TAIL"))
+	/** Every return: a dead dragon's aiStep leaves early (its body, clock and cocoon still need their tick). */
+	@Inject(method = "aiStep", at = @At("RETURN"))
 	private void dragonfall$tick(CallbackInfo ci) {
 		dragonfall$brain().tickEnd();
 	}
@@ -189,7 +178,7 @@ public abstract class EnderDragonMixin extends Mob implements DragonfallDragon {
 	/** A hit that took health off (not one the dragon shrugged off, or met while still flashing red). */
 	@Inject(method = "hurt(Lnet/minecraft/world/entity/boss/EnderDragonPart;Lnet/minecraft/world/damagesource/DamageSource;F)Z", at = @At("RETURN"))
 	private void dragonfall$hit(EnderDragonPart part, DamageSource source, float amount, CallbackInfoReturnable<Boolean> cir) {
-		if (getHealth() < dragonfall$healthBefore) dragonfall$brain().hit(source);
+		if (getHealth() < dragonfall$healthBefore) dragonfall$brain().hit(source, dragonfall$healthBefore - getHealth());
 	}
 
 	@Inject(method = "addAdditionalSaveData", at = @At("TAIL"))

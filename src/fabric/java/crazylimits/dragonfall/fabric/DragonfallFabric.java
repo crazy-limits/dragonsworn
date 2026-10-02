@@ -3,6 +3,7 @@ package crazylimits.dragonfall.fabric;
 import crazylimits.dragonfall.mc.DragonSounds;
 import crazylimits.dragonfall.mc.DragonfallCommon;
 import crazylimits.dragonfall.mc.breath.BreathParticles;
+import crazylimits.dragonfall.mc.breath.DragonFire;
 import net.fabricmc.api.ModInitializer;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -16,5 +17,6 @@ public final class DragonfallFabric implements ModInitializer {
 		BreathParticles.ALL.forEach((id, type) -> Registry.register(BuiltInRegistries.PARTICLE_TYPE, id, type));
 		// the server plays some (the landing) by id
 		DragonSounds.ALL.forEach((id, sound) -> Registry.register(BuiltInRegistries.SOUND_EVENT, id, sound));
+		DragonFire.register((id, block) -> Registry.register(BuiltInRegistries.BLOCK, id, block));
 	}
 }

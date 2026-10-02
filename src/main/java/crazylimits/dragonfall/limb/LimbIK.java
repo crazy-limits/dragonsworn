@@ -148,6 +148,12 @@ public final class LimbIK {
 			}
 			if (seed == 0.0 && left < 1e-2) break;
 		}
+		if (best == null) {
+			// no finite answer (a NaN target): the animation's pose, unreached
+			System.arraycopy(start, 0, shoulder.rot, 0, 3);
+			elbow.rot[2] = start[3];
+			return Double.POSITIVE_INFINITY;
+		}
 		System.arraycopy(best, 0, shoulder.rot, 0, 3);
 		elbow.rot[2] = best[3];
 		return bestLeft;
