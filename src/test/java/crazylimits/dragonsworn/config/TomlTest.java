@@ -128,12 +128,11 @@ class TomlTest {
 	}
 
 	@Test
-	void aStringEndingInABackslashCannotTakeATrailingComment() {
-		// NOTE: looks like a bug: stripComment treats the closing quote of "a\\" as escaped (it only looks at the
-		// character before it), so the trailing comment is kept and the value no longer parses. Without the comment it works.
+	void aStringEndingInABackslashCanTakeATrailingComment() {
 		assertEquals("a\\", value("\"a\\\\\""));
-		assertNull(value("\"a\\\\\" # comment"));
-		assertEquals(List.of("line 1: bad value for k: \"a\\\\\" # comment"), problems);
+		assertEquals("a\\", value("\"a\\\\\" # comment"));
+		assertEquals("say \"hi\" # not a comment", value("\"say \\\"hi\\\" # not a comment\" # a comment"));
+		assertEquals(List.of(), problems);
 	}
 
 	@Test
@@ -199,14 +198,12 @@ class TomlTest {
 	}
 
 	@Test
-	void doublesInScientificNotationAreWrittenWithSixDecimals() {
-		assertEquals("10000000000.000000", Toml.format(1e10));
-		assertEquals("0.000100", Toml.format(1e-4));
-		// NOTE: looks like a bug: a double below 5e-7 formats as zero (and a small one loses digits),
-		// so it does not read back as written.
-		assertEquals("0.000000", Toml.format(1e-7));
-		assertEquals(0.0, value(Toml.format(1e-7)));
-		assertEquals(0.000123, value(Toml.format(1.23456e-4)));
+	void doublesInScientificNotationAreWrittenAsExactPlainDecimals() {
+		assertEquals("10000000000.0", Toml.format(1e10));
+		assertEquals("0.0001", Toml.format(1e-4));
+		assertEquals("0.0000001", Toml.format(1e-7));
+		assertEquals(1e-7, value(Toml.format(1e-7)));
+		assertEquals(1.23456e-4, value(Toml.format(1.23456e-4)));
 	}
 
 	@Test

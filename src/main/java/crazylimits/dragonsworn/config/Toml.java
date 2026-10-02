@@ -49,7 +49,10 @@ public final class Toml {
 		if (value instanceof String s) return '"' + s.replace("\\", "\\\\").replace("\"", "\\\"") + '"';
 		if (value instanceof Double d) {
 			String s = Double.toString(d);
-			return s.contains("E") ? String.format(java.util.Locale.ROOT, "%.6f", d) : s;
+			if (!s.contains("E")) return s;
+			// no exponents in the file: the exact plain decimal, still read back as a double
+			String plain = new java.math.BigDecimal(s).stripTrailingZeros().toPlainString();
+			return plain.contains(".") ? plain : plain + ".0";
 		}
 		return String.valueOf(value);
 	}
@@ -58,7 +61,8 @@ public final class Toml {
 		boolean quoted = false;
 		for (int i = 0; i < line.length(); i++) {
 			char c = line.charAt(i);
-			if (c == '"' && (i == 0 || line.charAt(i - 1) != '\\')) quoted = !quoted;
+			if (quoted && c == '\\') i++;     // an escape: the next character is the string's, even a quote
+			else if (c == '"') quoted = !quoted;
 			else if (c == '#' && !quoted) return line.substring(0, i);
 		}
 		return line;
