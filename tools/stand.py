@@ -1,6 +1,7 @@
 """The standing (perched) pose: chest raised 30 degrees, propped on the wrists of the folded wings,
-the neck curved like a swan's. The arms are straight (elbow at zero): each wing runs in one line from
-the shoulder down and out to its wrist, and the folded hand lies flat on the ground behind it.
+the neck curved like a swan's. All four limbs stand on the ground: each wing's upper arm reaches out
+from the shoulder, the forearm comes down onto the wrist claw like a front leg, and the folded hand
+lies back along the flank, above the claw.
 
 Every frame is solved, not keyed by hand: the four feet stay planted exactly on their marks while the
 body breathes, rears (roar) or lunges (attack). The tail is not keyed: the game lays it on the real
@@ -11,13 +12,11 @@ from walk import solve_limbs
 
 PITCH = 30.0            # chest up
 LIFT = 10.0             # body raised so the hips sit at ~35 px with the chest up
-# planted feet (editor space, model y = 0 is the ground): hind ankles under the hips, wrists forward and
-# out. A straight arm is long (~140 px from a shoulder ~80 px up), so it reaches the ground only splayed:
-# the hand lies flat no closer in than ~118 px (~128 px when the bite lowers the chest).
-FEET = {'lh': [-16.0, 3.0, 16.0], 'rh': [16.0, 3.0, 16.0], 'lf': [-132.0, 0.0, -58.0], 'rf': [132.0, 0.0, -58.0]}
-STAND_ARM = [-20.0, 24.0, 27.0, 0.0]   # seed for the arm solve with the chest up
-ELBOW = 0.0             # straight arms
-FAN = 28                # the hand nearly shut, so the fingers lie in one bundle along the ground
+# planted feet (editor space, model y = 0 is the ground): hind ankles under the hips, wrist claws forward
+# and out to the side
+FEET = {'lh': [-16.0, 3.0, 16.0], 'rh': [16.0, 3.0, 16.0], 'lf': [-90.0, 0.0, -58.0], 'rf': [90.0, 0.0, -58.0]}
+STAND_ARM = [-40.0, 12.0, -4.0, 72.0]   # reference arm (shoulder x, y, z, elbow z) with the chest up
+FAN = 28                # the hand nearly shut, so the fingers lie back in one bundle
 
 # The swan neck: the base rises steeply out of the raised chest, the upper neck arches forward and
 # the head looks down its nose. Values per segment (base to head), editor X (+ = front up).
@@ -36,13 +35,16 @@ class Stand:
 		self.sol = {}
 
 	def pose(self, body_pitch=0.0, body_lift=0.0, body_z=0.0, fan=FAN, swan=None, head=None,
-			 neck_yaw=(0, 0, 0, 0), head_yaw=0.0, jaw=-1.5, wings=None, body_yaw=0.0):
+			 neck_yaw=(0, 0, 0, 0), head_yaw=0.0, jaw=-1.5, wings=None, body_yaw=0.0, feet=None):
 		"""A standing pose. body_* are offsets from the stand; `wings` replaces the solved arms
-		(e.g. spread for a roar) with a dict of wing bone rotations."""
+		(e.g. spread for a roar) with a dict of wing bone rotations; `feet` moves feet off their marks
+		(limb -> target, e.g. the hind feet of a landing, planted ahead and passed over by the body)."""
 		pose = dict(fingers(fan))
 		pose['body'] = {'p': [0, LIFT + body_lift, body_z], 'r': [PITCH + body_pitch, body_yaw, 0]}
-		targets = dict(FEET) if wings is None else {k: v for k, v in FEET.items() if k[1] == 'h'}
-		solve_limbs(pose, targets, self.sol, arm_ref=STAND_ARM, shoulder_pitch=STAND_ARM[0], elbow=ELBOW)
+		targets = dict(FEET, **(feet or {}))
+		if wings is not None:
+			targets = {k: v for k, v in targets.items() if k[1] == 'h'}
+		solve_limbs(pose, targets, self.sol, arm_ref=STAND_ARM, shoulder_pitch=STAND_ARM[0])
 		if wings is not None:
 			pose.update(wings)
 		pose.update(neck(swan or SWAN, neck_yaw))

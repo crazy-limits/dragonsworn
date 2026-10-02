@@ -15,6 +15,9 @@ config = "dragonfall.mixins.json"
 [[mixins]]
 config = "dragonfall.breath.mixins.json"
 
+[[mixins]]
+config = "dragonfall.arena.mixins.json"
+
 [[dependencies.${id}]]
 modId = "neoforge"
 type = "required"

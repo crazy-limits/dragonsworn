@@ -9,12 +9,18 @@ import java.util.PriorityQueue;
 
 /**
  * Walking paths on the ground. A column is walkable when the dragon's feet find ground there and around
- * it ({@link #FOOT} blocks either way, within {@link #STANCE} of each other) and its body fits above
- * ({@link #BODY_HEIGHT} blocks clear). From one column to the next it climbs at most {@link #STEP_UP}
- * and drops at most {@link #STEP_DOWN}. A* over the 8 neighbours, then pulled taut along walkable lines.
+ * it ({@link #FOOT} blocks either way, within {@link #STANCE} of each other), its legs fit above
+ * ({@link #BODY_HEIGHT} blocks clear) and its body, wider than its stance, does too: nothing but a
+ * low step under its belly within {@link #BODY_RADIUS} blocks. From one column to the next it climbs at
+ * most {@link #STEP_UP} and drops at most {@link #STEP_DOWN}. A* over the 8 neighbours, a little
+ * dearer beside walls (it keeps off them when it can), then pulled taut along walkable lines.
  */
 public final class GroundPlanner {
-	public static final int FOOT = 1, STANCE = 2, BODY_HEIGHT = 5, STEP_UP = 1, STEP_DOWN = 2;
+	public static final int FOOT = 1, STANCE = 2, BODY_HEIGHT = 6, STEP_UP = 1, STEP_DOWN = 2;
+	/** Half-width of the body over the path (blocks), and the height its belly clears. */
+	public static final int BODY_RADIUS = 2, BELLY = 1;
+	/** Extra cost of a step with something solid right beside the body. */
+	static final double WALL_COST = 0.6;
 
 	private final BlockGrid grid;
 	private final Map<Long, Integer> standCache = new HashMap<>();
@@ -47,9 +53,28 @@ public final class GroundPlanner {
 					}
 				}
 			}
+			if (result != BlockGrid.NO_GROUND && !clear(x, h, z, BODY_RADIUS)) result = BlockGrid.NO_GROUND;
 		}
 		standCache.put(key, result);
 		return result;
+	}
+
+	/** Whether the ring {@code radius} blocks out from x, z (beyond the feet) is clear from the belly up. */
+	private boolean clear(int x, int h, int z, int radius) {
+		for (int dx = -radius; dx <= radius; dx++) {
+			for (int dz = -radius; dz <= radius; dz++) {
+				if (Math.abs(dx) <= FOOT && Math.abs(dz) <= FOOT) continue;
+				for (int y = h + BELLY; y < h + BODY_HEIGHT; y++) {
+					if (grid.blocked(x + dx, y, z + dz)) return false;
+				}
+			}
+		}
+		return true;
+	}
+
+	/** Whether a wall stands right beside the body at x, z (standing at h). */
+	private boolean nearWall(int x, int h, int z) {
+		return !clear(x, h, z, BODY_RADIUS + 1);
 	}
 
 	private boolean step(int fromY, int toY) {
@@ -92,7 +117,8 @@ public final class GroundPlanner {
 					if (!step(n.y, y)) continue;
 					// diagonal moves must not cut a corner
 					if (dx != 0 && dz != 0 && (!step(n.y, stand(n.x + dx, n.z)) || !step(n.y, stand(n.x, n.z + dz)))) continue;
-					Node next = new Node(x, y, z, n, g + Math.abs(y - n.y) * 0.5, Math.hypot(tx - x, tz - z));
+					double cost = g + Math.abs(y - n.y) * 0.5 + (nearWall(x, y, z) ? WALL_COST : 0.0);
+					Node next = new Node(x, y, z, n, cost, Math.hypot(tx - x, tz - z));
 					seen.put(k, next);
 					open.add(next);
 				}

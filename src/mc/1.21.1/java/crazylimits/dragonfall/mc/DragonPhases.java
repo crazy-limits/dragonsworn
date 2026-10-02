@@ -5,6 +5,7 @@ import crazylimits.dragonfall.mc.phase.GroundApproachPhase;
 import crazylimits.dragonfall.mc.phase.GroundFightPhase;
 import crazylimits.dragonfall.mc.phase.LiftoffPhase;
 import crazylimits.dragonfall.mc.phase.RoamPhase;
+import crazylimits.dragonfall.mc.phase.SnatchPhase;
 import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
 
 /**
@@ -20,6 +21,8 @@ public final class DragonPhases {
 	public static EnderDragonPhase<GroundFightPhase> GROUND_FIGHT;
 	/** Leaves the ground: crouch, jump with legs and wings, climb on the wings. */
 	public static EnderDragonPhase<LiftoffPhase> LIFTOFF;
+	/** Dives at its prey, takes it in its talons, climbs and drops it. */
+	public static EnderDragonPhase<SnatchPhase> SNATCH;
 
 	private DragonPhases() {}
 
@@ -29,5 +32,11 @@ public final class DragonPhases {
 		GROUND_APPROACH = EnderDragonPhaseInvoker.dragonfall$createPhase(GroundApproachPhase.class, "DragonfallGroundApproach");
 		GROUND_FIGHT = EnderDragonPhaseInvoker.dragonfall$createPhase(GroundFightPhase.class, "DragonfallGroundFight");
 		LIFTOFF = EnderDragonPhaseInvoker.dragonfall$createPhase(LiftoffPhase.class, "DragonfallLiftoff");
+	}
+
+	/** Phases added later: registered after every earlier one, so saved phase ids keep their meaning. */
+	public static synchronized void registerLate() {
+		if (SNATCH != null) return;
+		SNATCH = EnderDragonPhaseInvoker.dragonfall$createPhase(SnatchPhase.class, "DragonfallSnatch");
 	}
 }

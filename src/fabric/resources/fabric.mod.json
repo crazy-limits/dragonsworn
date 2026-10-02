@@ -9,7 +9,8 @@
 	"environment": "*",
 	"mixins": [
 		"dragonfall.mixins.json",
-		"dragonfall.breath.mixins.json"
+		"dragonfall.breath.mixins.json",
+		"dragonfall.arena.mixins.json"
 	],
 	"entrypoints": {
 		"main": ["crazylimits.dragonfall.fabric.DragonfallFabric"],

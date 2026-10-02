@@ -110,8 +110,17 @@ def _tail_geometry(rig):
 	return rest, capsules
 
 
-def export(rig, track, animations):
-	"""`track` = {anim name: [full pose per keyframe]}, `animations` = anims.ANIMATIONS."""
+def _java_string(s, chunk=60000):
+	"""A Java expression for a long string: javac caps one string constant at 65535 bytes, and folds
+	constants joined by +, so a long one is joined at run time."""
+	if len(s) <= chunk:
+		return f'"{s}"'
+	return 'String.join("", ' + ', '.join(f'"{s[i:i + chunk]}"' for i in range(0, len(s), chunk)) + ')'
+
+
+def export(rig, track, animations, tails):
+	"""`track` = {anim name: [full pose per keyframe]}, `animations` = anims.ANIMATIONS, `tails` = {anim name:
+	[per keyframe: 9 tail bends down, 9 right, rest, lift]} (anims.tail_track)."""
 	anchors = []
 	for name, bone, point, w, h in PARTS:
 		p = point(rig) if callable(point) else point
@@ -135,6 +144,15 @@ def export(rig, track, animations):
 					raw += struct.pack('<h', max(-32768, min(32767, round(v / 16.0 * 256))))
 		data.append(base64.b64encode(bytes(raw)).decode('ascii'))
 		meta.append((name, length, loop is True, step, len(frames)))
+
+	tail_names, tail_data = [], []
+	for name, rows in tails.items():
+		raw = bytearray()
+		for row in rows:
+			for v in row:
+				raw += struct.pack('<h', max(-32768, min(32767, round(v * 64))))
+		tail_names.append(name)
+		tail_data.append(base64.b64encode(bytes(raw)).decode('ascii'))
 
 	chains = [_chain_of(rig, bone) for _, bone, _, _, _ in PARTS]
 	tail_rest, tail_capsules = _tail_geometry(rig)
@@ -165,7 +183,12 @@ def export(rig, track, animations):
 		f'\tstatic final int[] FRAMES = {{{", ".join(str(m[4]) for m in meta)}}};',
 		'\tstatic final String[] DATA = {',
 	]
-	lines += [f'\t\t"{d}",' for d in data]
+	lines += [f'\t\t{_java_string(d)},' for d in data]
+	lines += ['\t};',
+			  '\t/** Flight tails (anims.tail_track): per keyframe of the animation, 9 bends down, 9 right, rest, lift; int16 / 64. */',
+			  f'\tstatic final String[] TAIL_ANIMS = {{{", ".join(q(n) for n in tail_names)}}};',
+			  '\tstatic final String[] TAIL_DATA = {']
+	lines += [f'\t\t{_java_string(d)},' for d in tail_data]
 	lines += ['\t};', '', '\tprivate PoseData() {}', '}', '']
 	os.makedirs(os.path.dirname(OUT), exist_ok=True)
 	with open(OUT, 'w') as f:

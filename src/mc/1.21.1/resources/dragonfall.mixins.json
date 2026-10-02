@@ -9,6 +9,10 @@
 		"EnderDragonPartAccessor",
 		"EnderDragonPhaseInvoker",
 		"EnderDragonPhaseManagerMixin",
-		"EntityAccessor"
+		"EntityAccessor",
+		"PlayerMixin"
+	],
+	"client": [
+		"client.LivingEntityRendererMixin"
 	]
 }

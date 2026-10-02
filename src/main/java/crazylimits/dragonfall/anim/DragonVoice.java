@@ -22,9 +22,14 @@ public final class DragonVoice {
 	/** Seconds after an animation is chosen that the model reaches the roar. */
 	public static final double ROAR_AT = DragonAnim.ROAR_SECONDS + DragonAnim.BLEND_TICKS / 20.0;
 	/** Where in a beat the swing sounds: a little into the downstroke, so its peak meets the fastest sweep. */
-	public static final double WING_PHASE = 0.52;
-	/** {@link DragonAnim#TAKEOFF}: the legs push (the step) as the downstroke starts (the swing). */
-	static final double TAKEOFF_STEP = 0.48, TAKEOFF_WING = 0.42;
+	public static final double WING_PHASE = 0.3;
+	/** {@link DragonAnim#TAKEOFF}: all four push off (the step), the first power stroke goes down (the swing). */
+	static final double TAKEOFF_STEP = 0.5, TAKEOFF_WING = DragonAnim.TAKEOFF_TOP_SECONDS + 0.12;
+	/**
+	 * {@link DragonAnim#LAND}: the braking stroke (the swing), the hind feet striking the ground and the
+	 * claws a moment after (they strike together; one tick apart, two sounds).
+	 */
+	static final double LAND_WING = 0.8, LAND_STEP = DragonAnim.LAND_TOUCH_SECONDS, LAND_HANDS = LAND_STEP + 0.1;
 	/**
 	 * {@link DragonAnim#WALK} (2.4 s, see {@code tools/walk.py}): each limb plants when its swing ends,
 	 * a quarter cycle after its swing starts (left hind 0, left front 0.25, right hind 0.5, right front 0.75).
@@ -61,6 +66,9 @@ public final class DragonVoice {
 			case FLAP -> every(DragonAnim.PUSH_SECONDS, WING_PHASE * DragonAnim.FLAP_SECONDS + blend, before, after) ? Cue.WING : null;
 			case TAKEOFF -> once(TAKEOFF_WING + blend, before, after) ? Cue.WING
 					: once(TAKEOFF_STEP + blend, before, after) ? Cue.STEP_HIND : null;
+			case LAND -> once(LAND_WING + blend, before, after) ? Cue.WING
+					: once(LAND_STEP + blend, before, after) ? Cue.STEP_HIND
+					: once(LAND_HANDS + blend, before, after) ? Cue.STEP_FRONT : null;
 			case WALK -> {
 				for (int i = 0; i < WALK_PLANTS.length; i++) {
 					if (every(WALK_CYCLE, WALK_PLANTS[i] % WALK_CYCLE + blend, before, after)) yield WALK_FEET[i];

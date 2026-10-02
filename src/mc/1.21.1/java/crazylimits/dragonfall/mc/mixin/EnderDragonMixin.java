@@ -6,13 +6,16 @@ import crazylimits.dragonfall.body.PoseTrack;
 import crazylimits.dragonfall.mc.DragonBrain;
 import crazylimits.dragonfall.mc.DragonData;
 import crazylimits.dragonfall.mc.DragonfallDragon;
+import crazylimits.dragonfall.mc.PreyHold;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.protocol.game.ClientboundAddEntityPacket;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityDimensions;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.boss.EnderDragonPart;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
@@ -40,7 +43,8 @@ import java.util.List;
  *   <li>flight steered by the brain (wingbeat thrust, banking, flying around terrain) instead of
  *       vanilla's straight-through flight;</li>
  *   <li>only soft blocks (leaves, plants) are broken, instead of everything not dragon-immune;</li>
- *   <li>the flight plan and the current action are synced to clients.</li>
+ *   <li>the flight plan and the current action are synced to clients;</li>
+ *   <li>what it holds rides it, placed in its talons or jaws ({@link PreyHold}).</li>
  * </ul>
  */
 @Mixin(EnderDragon.class)
@@ -100,6 +104,7 @@ public abstract class EnderDragonMixin extends Mob implements DragonfallDragon {
 		builder.define(DragonData.LOOK, -1);
 		builder.define(DragonData.VOICE, 0);
 		builder.define(DragonData.STRIKE, DragonData.NO_STRIKE);
+		builder.define(DragonData.GRIP, 0);
 	}
 
 	/** Vanilla flies straight at the target through anything; the brain flies there its own way. */
@@ -119,11 +124,49 @@ public abstract class EnderDragonMixin extends Mob implements DragonfallDragon {
 		if (part == body) dragonfall$brain().placeParts();
 	}
 
-	/** Contact damage from the head and neck: kept in flight, replaced by real bites on the ground. */
+	/** Contact damage from the head and neck: kept in flight, replaced by real bites on the ground; never on what it holds. */
 	@WrapOperation(method = "aiStep", at = @At(value = "INVOKE",
 			target = "Lnet/minecraft/world/entity/boss/enderdragon/EnderDragon;hurt(Ljava/util/List;)V"))
 	private void dragonfall$contactDamage(EnderDragon self, List<Entity> entities, Operation<Void> original) {
-		if (!dragonfall$brain().onGround()) original.call(self, entities);
+		if (!dragonfall$brain().onGround()) original.call(self, dragonfall$notHeld(entities));
+	}
+
+	/** The wings' buffet does not hit what the dragon holds either. */
+	@WrapOperation(method = "aiStep", at = @At(value = "INVOKE",
+			target = "Lnet/minecraft/world/entity/boss/enderdragon/EnderDragon;knockBack(Lnet/minecraft/server/level/ServerLevel;Ljava/util/List;)V"))
+	private void dragonfall$wingBuffet(EnderDragon self, ServerLevel level, List<Entity> entities, Operation<Void> original) {
+		original.call(self, level, dragonfall$notHeld(entities));
+	}
+
+	@Unique
+	private List<Entity> dragonfall$notHeld(List<Entity> entities) {
+		if (getPassengers().isEmpty()) return entities;
+		return entities.stream().filter(e -> e.getVehicle() != (Object) this).toList();
+	}
+
+	/** The prey rides the dragon: it is put in the talons or the jaws (both sides). */
+	@Override
+	protected void positionRider(Entity passenger, Entity.MoveFunction move) {
+		PreyHold prey = dragonfall$brain().prey;
+		if (!prey.holds(passenger)) {
+			super.positionRider(passenger, move);
+			return;
+		}
+		Vec3 at = prey.holdPoint(passenger);
+		move.accept(passenger, at.x, at.y, at.z);
+	}
+
+	/** Let go, the prey drops from where it was held (not onto the dragon's back). */
+	@Override
+	public Vec3 getDismountLocationForPassenger(LivingEntity passenger) {
+		PreyHold prey = dragonfall$brain().prey;
+		return prey.holds(passenger) ? prey.holdPoint(passenger) : super.getDismountLocationForPassenger(passenger);
+	}
+
+	/** Prey never steers the dragon (a mob riding a mob would). */
+	@Override
+	public LivingEntity getControllingPassenger() {
+		return null;
 	}
 
 	@Inject(method = "aiStep", at = @At("TAIL"))
@@ -140,7 +183,7 @@ public abstract class EnderDragonMixin extends Mob implements DragonfallDragon {
 	@Inject(method = "hurt(Lnet/minecraft/world/entity/boss/EnderDragonPart;Lnet/minecraft/world/damagesource/DamageSource;F)Z", at = @At("HEAD"))
 	private void dragonfall$hurtBy(EnderDragonPart part, DamageSource source, float amount, CallbackInfoReturnable<Boolean> cir) {
 		dragonfall$healthBefore = getHealth();
-		dragonfall$brain().hurtBy(source);
+		dragonfall$brain().hurtBy(source, Arrays.asList(subEntities).indexOf(part));
 	}
 
 	/** A hit that took health off (not one the dragon shrugged off, or met while still flashing red). */

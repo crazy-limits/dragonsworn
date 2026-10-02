@@ -102,19 +102,57 @@ class TailTest {
 	}
 
 	@Test
+	void inFlightTheBodysMotionRunsDownTheTailAsAWave() {
+		// over one beat each segment swings, and the swing peaks later toward the tip
+		int root = peakTime(0), tip = peakTime(7);
+		assertNotEquals(root, tip);
+		assertTrue(Math.floorMod(tip - root, 40) < 20, "the tip follows the root: " + root + " -> " + tip);
+		for (int k = 0; k < 9; k++) {
+			double lo = Double.MAX_VALUE, hi = -Double.MAX_VALUE;
+			for (int i = 0; i < 40; i++) {
+				double x = motion(DragonAnim.FLY, i * DragonAnim.FLAP_SECONDS / 40).x[k];
+				lo = Math.min(lo, x);
+				hi = Math.max(hi, x);
+			}
+			assertTrue(hi - lo > 0.3 && hi - lo < 30, "segment " + k + " swings " + (hi - lo));
+		}
+		// hovering it hangs; gliding it sways, the tip most; in flight it does not lie down
+		double hang = 0;
+		for (int i = 0; i < 40; i++) for (double x : motion(DragonAnim.HOVER, i * DragonAnim.FLAP_SECONDS / 40).x) hang += x;
+		assertTrue(hang > 0, "the hover's tail hangs");
+		TailMotion.Pose glide = motion(DragonAnim.GLIDE, 0.5);
+		assertTrue(Math.abs(glide.y[8]) > Math.abs(glide.y[0]) && Math.abs(glide.y[8]) > 0.5);
+		assertEquals(0.0, motion(DragonAnim.FLY, 0.3).rest, 1e-6);
+	}
+
+	@Test
+	void takeoffAndLandingLayTheTailDownWhileTheFeetAreOnTheGround() {
+		assertEquals(1.0, motion(DragonAnim.TAKEOFF, 0.2).rest, 0.02, "crouched");
+		assertEquals(0.0, motion(DragonAnim.TAKEOFF, PoseTrack.length(DragonAnim.TAKEOFF)).rest, 0.02, "in the air");
+		assertEquals(0.0, motion(DragonAnim.LAND, 1.0).rest, 0.02, "flaring");
+		assertEquals(1.0, motion(DragonAnim.LAND, DragonAnim.LAND_TOUCH_SECONDS + 0.8).rest, 0.02, "landed");
+		assertTrue(motion(DragonAnim.LAND, 1.2).x[0] + motion(DragonAnim.LAND, 1.2).x[1] > 0.5, "the flare drops the tail as an air brake");
+	}
+
+	private static int peakTime(int segment) {
+		int best = 0;
+		double max = -Double.MAX_VALUE;
+		for (int i = 0; i < 40; i++) {
+			double x = motion(DragonAnim.FLY, i * DragonAnim.FLAP_SECONDS / 40).x[segment];
+			if (x > max) {
+				max = x;
+				best = i;
+			}
+		}
+		return best;
+	}
+
+	@Test
 	void theMotionIsTheOldKeyframes() {
 		// values the keyframes had (tail_1, tail_3, tail_6, tail_9), read from the animation file they replace
 		TailMotion.Pose walk = motion(DragonAnim.WALK, 0);
 		assertArrayEquals(new double[]{-1.5, 0.67, 0.66}, new double[]{walk.x[0], walk.x[2], walk.x[5]}, 0.01);
 		assertArrayEquals(new double[]{1.36, 2.52, 3.0}, new double[]{walk.y[0], walk.y[2], walk.y[5]}, 0.01);
-		TailMotion.Pose fly = motion(DragonAnim.FLY, 0);
-		assertArrayEquals(new double[]{1.83, 4.99, 7.65}, new double[]{fly.x[0], fly.x[2], fly.x[5]}, 0.01);
-		TailMotion.Pose flap = motion(DragonAnim.FLAP, 0.88);
-		assertArrayEquals(new double[]{-2.5, -3.64, -4.24}, new double[]{flap.x[0], flap.x[2], flap.x[5]}, 0.01);
-		TailMotion.Pose glide = motion(DragonAnim.GLIDE, 0);
-		assertArrayEquals(new double[]{0.57, 1.15, 2.09, 2.78}, new double[]{glide.y[0], glide.y[2], glide.y[5], glide.y[8]}, 0.01);
-		TailMotion.Pose hover = motion(DragonAnim.HOVER, 0.4);
-		assertArrayEquals(new double[]{0.38, 0.87, 1.96}, new double[]{hover.x[0], hover.x[2], hover.x[5]}, 0.01);
 		TailMotion.Pose death = motion(DragonAnim.DEATH, 2.4);
 		assertArrayEquals(new double[]{2.0, 1.33, 0.5}, new double[]{death.x[0], death.x[2], death.x[5]}, 0.01);
 		assertEquals(-4.0, death.y[0], 0.01);

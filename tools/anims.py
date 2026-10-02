@@ -13,11 +13,13 @@ import json
 import math
 import os
 
+import flight
 import parts
 import stand
 import walk
 from chain import NECK, TAIL, expand
 from fan import fingers, wing_fan
+from rig import apply
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 S, C, PI2 = math.sin, math.cos, 2 * math.pi
@@ -73,221 +75,362 @@ def walk_pose(t, L):
 	return _walk_cache[key]
 
 
-def spline(points, u):
-	"""Periodic Catmull-Rom through [(u, value), ...] over u in [0, 1): smooth, passes every point."""
-	n = len(points)
-	u %= 1.0
-	for i in range(n):
-		u0, v0 = points[i]
-		u1, v1 = points[(i + 1) % n]
-		if u1 <= u0:
-			u1 += 1.0
-		uu = u if u >= u0 else u + 1.0
-		if u0 <= uu < u1:
-			vp = points[i - 1][1]
-			vn = points[(i + 2) % n][1]
-			s = (uu - u0) / (u1 - u0)
-			return 0.5 * ((2 * v0) + (-vp + v1) * s + (2 * vp - 5 * v0 + 4 * v1 - vn) * s * s
-						  + (-vp + 3 * v0 - 3 * v1 + vn) * s * s * s)
-	return points[0][1]
+# ---------------------------------------------------------------- flight
+# The wingbeat and the body's answer to it are in flight.py. Every flying pose goes through
+# flight_pose: wings, body, the head held still by the neck, the legs, and hints for the tail (the
+# game's: tail_track below turns them into TailMotion's flight tails).
+
+FLAP = flight.FLAP
+GLIDE_WING = {'shoulder': 8.0, 'elbow': -6.0, 'sweep': 3.0, 'twist': 0.0, 'pleat': 3.0}
+FLY_HEIGHT = 6.0                # body raised (px) in flight: the feet hang below the model's origin
+NECK_FLY, HEAD_FLY = [2.0, 1.0, 0.0, 0.0], -5.0   # a gentle upward curve, the head looking ahead
+# the neck's share of a bend that carries the head (base to head): the base does most of it
+NECK_SHARE = [0.45, 0.3, 0.17, 0.08]
+# thigh, shin, foot: tucked back under the tail like an eagle's; hanging under an upright body
+LEGS_TUCKED = (-50.0, -20.0, -50.0)
+LEGS_DANGLE = (-28.0, 18.0, 26.0)
+# landing gear: thighs swung forward, shins reaching down and forward, toes pointing ahead
+LEGS_FORWARD = (38.0, -26.0, 46.0)
+HEAD_PIVOT = walk.rig.bones['head_group']['pivot']
 
 
-# One wingbeat, u in [0, 1): u = 0 is wings level at the start of the upstroke.
-# Upstroke (slow): the arms rise only ~30 degrees -- no higher, or the wings cross over the back -- while
-# the hands hang down, so each wing is an upside-down U (an arch). The fan half-shuts (less area).
-# Downstroke (fast, powerful): the arms sweep forward and down until the wings point down, the hands
-# trailing up, so each wing is a U (a cup) scooping air; the push lifts the body and throws the chest up.
-# Signs are for the left wing (right mirrors).
-BEAT = {
-	'shoulder': [(0.0, 2), (0.3, 29), (0.45, 22), (0.63, -22), (0.8, -62), (0.92, -30)],         # + = up
-	'elbow':    [(0.0, -6), (0.2, -30), (0.38, -40), (0.52, -12), (0.66, 26), (0.8, 14), (0.92, 4)],  # + = tip up
-	'sweep':    [(0.0, 4), (0.3, 14), (0.5, 4), (0.7, -14), (0.88, -8)],                         # + = back
-	'pleat':    [(0.0, 18), (0.25, 48), (0.42, 42), (0.58, 6), (0.85, 3)],                       # fan fold
-	'lift':     [(0.0, -3), (0.3, -14), (0.5, -15), (0.68, 8), (0.82, 32), (0.93, 15)],         # body px
-	'pitch':    [(0.0, 0), (0.3, -10), (0.5, -12), (0.7, 11), (0.84, 22), (0.95, 8)],           # chest up
-	'surge':    [(0.0, 0), (0.3, 3), (0.55, 2), (0.75, -4), (0.88, -5), (0.97, -1)],            # body px, - = forward
-}
-PUSH_END = 0.8      # beat phase where the downstroke bottoms out: wings pointing down
-PUSH_SETTLE = 0.5   # seconds a single push takes to settle from wings-down into the glide
-FLAP = 1.6   # seconds per wingbeat
+def qblend(a, b, k):
+	"""Blend two flight parameter sets (numbers, lists and tuples blend per element)."""
+	out = {}
+	for key in set(a) | set(b):
+		x, y = a.get(key, b.get(key)), b.get(key, a.get(key))
+		if isinstance(x, (list, tuple)):
+			out[key] = type(x)(p + (r - p) * k for p, r in zip(x, y))
+		else:
+			out[key] = x + (y - x) * k
+	return out
 
 
-def beat(u):
-	"""Pose parameters of one wingbeat at phase u."""
-	return {k: spline(v, u) for k, v in BEAT.items()}
+def _head(pose):
+	"""Height of the head's pivot and the head's pitch in the model (only the body-neck-head chain)."""
+	mats = walk.rig.matrices({b: pose[b] for b in ['body'] + NECK + ['head_group'] if b in pose})
+	y = apply(mats['head_group'], HEAD_PIVOT)[1]
+	pitch = pose['body']['r'][0] + sum(pose[n]['r'][0] for n in NECK) + pose['head_group']['r'][0]
+	return y, pitch
 
 
-def glide_params(t, L=3.0):
-	w = PI2 * t / L
-	return {'shoulder': 8 + 3 * S(w + 0.5), 'elbow': -4 - 3 * S(w), 'sweep': 0.0, 'pleat': 4 + 2 * S(w),
-			'lift': 6 + 1.5 * S(w) - 6, 'pitch': 0.0, 'roll': 4 * S(w), 'yaw': 0.0, 'surge': 0.0}
-
-
-def _lagged(q, key, k, default):
-	"""Per-segment value `k` of a list parameter, or `default` when the pose has none."""
-	v = q.get(key)
-	return v[k] if v else default
-
-
-def flight_pose(q, t):
-	"""Pose from flight parameters. The hand fan pleats ripple from the leading finger to the trailing one.
-
-	The body answers every beat: it heaves (lift), throws the chest (pitch) and surges forward on the
-	downstroke. The neck counters the chest so the head holds its gaze and floats, each segment a little
-	later than the one below it. (The tail's answering wave is procedural: body/TailMotion.java.)"""
-	pitch, lift = q['pitch'], q['lift']
-	p = {
-		'body': {'p': [0, 6 + lift, q.get('surge', 0.0)], 'r': [pitch, q.get('yaw', 0), q.get('roll', 0)]},
-		'left_wing': {'r': [0, q['sweep'], -q['shoulder']]}, 'left_wing_tip': {'r': [0, 0, -q['elbow']]},
-		'right_wing': {'r': [0, -q['sweep'], q['shoulder']]}, 'right_wing_tip': {'r': [0, 0, q['elbow']]},
-	}
-	pl = q['pleat']
-	ripple = q.get('ripple', 0.0)
-	p.update(wing_fan([max(0.0, pl + ripple * (g - 1)) for g in range(3)]))
-	# neck: a gentle upward curve (3 deg at the base) minus most of the chest throw, felt later up the neck
-	neck_base = [2.0, 1.0, 0.0, 0.0]
+def _neck(pose, base, bend):
 	for k, seg in enumerate(NECK):
-		lagged = _lagged(q, 'neck_pitch', k, pitch)
-		p[seg] = {'r': [neck_base[k] - 0.2 * lagged, _lagged(q, 'neck_yaw', k, 0.0), 0]}
-	head_pitch = _lagged(q, 'neck_pitch', 3, pitch)
-	p['head_group'] = {'r': [-5 - 0.25 * head_pitch, q.get('head_yaw', 0.0), 0]}
-	p['jaw_group'] = {'r': [-1 - 0.5 * max(0, _lagged(q, 'neck_pitch', 0, pitch)) / 6, 0, 0]}
-	pl2 = _lagged(q, 'tail_pitch', 2, pitch)
-	pl3 = _lagged(q, 'tail_pitch', 5, pitch)
-	p.update({
-		'upperleg_left': {'r': [-50 - 0.5 * pl2, 0, 0]}, 'lowerleg_left': {'r': [-20 + 0.4 * pl3, 0, 0]}, 'foot_left': {'r': [-50 - 0.6 * pl3, 0, 0]},
-		'upperleg_right': {'r': [-50 - 0.5 * pl2, 0, 0]}, 'lowerleg_right': {'r': [-20 + 0.4 * pl3, 0, 0]}, 'foot_right': {'r': [-50 - 0.6 * pl3, 0, 0]},
-	})
+		pose[seg] = {'r': [base[k] + bend * NECK_SHARE[k], pose.get(seg, {'r': [0, 0, 0]})['r'][1], 0]}
+
+
+def flight_pose(q):
+	"""A flying pose from parameters:
+	wings: shoulder, elbow, sweep, twist, pleat or pleats (one per finger gap; flight.wings);
+	body: heave (px), pitch (deg, chest up), surge (px forward), roll, yaw;
+	neck/head: `neck` (base curve), `head` (base pitch), `neck_yaw`, `head_yaw`, `still` (the body pitch
+	the base curve is made for), `lag` = (heave, pitch) a moment ago and `follow` = (share of the heave,
+	share of the pitch) the head takes from it: the neck is solved so the head stays where the base
+	curve holds it on a still body, plus that share;
+	legs: `legs` (thigh, shin, foot) and `leg_swing` (deg, + swings the feet down and forward); `jaw`;
+	tail hints (`push`, `droop`, `sway`, `stand`, `lift`), kept in the pose under '_tail'."""
+	pitch, heave = q['pitch'], q['heave']
+	p = {
+		'body': {'p': [0, FLY_HEIGHT + heave, -q.get('surge', 0.0)], 'r': [pitch, q.get('yaw', 0.0), q.get('roll', 0.0)]},
+		'left_wing': {'r': [q['twist'], q['sweep'], -q['shoulder']]}, 'left_wing_tip': {'r': [0, 0, -q['elbow']]},
+		'right_wing': {'r': [q['twist'], -q['sweep'], q['shoulder']]}, 'right_wing_tip': {'r': [0, 0, q['elbow']]},
+	}
+	# the pleats close from the leading finger to the trailing one: each gap a little behind the last
+	p.update(wing_fan([max(0.0, v) for v in q.get('pleats', [q['pleat']] * 3)]))
+
+	# the head: held where the neck's base curve puts it on a still body, plus a share of the motion
+	base, head = q.get('neck', NECK_FLY), q.get('head', HEAD_FLY)
+	neck_yaw = q.get('neck_yaw', (0.0,) * 4)
+	for k, seg in enumerate(NECK):
+		p[seg] = {'r': [base[k], neck_yaw[k], 0]}
+	p['head_group'] = {'r': [head, q.get('head_yaw', 0.0), 0]}
+	still = q.get('still', 0.0)
+	ref = dict(p, body={'p': [0, FLY_HEIGHT, 0], 'r': [still, 0, 0]})
+	y_still, pitch_still = _head(ref)
+	lag_heave, lag_pitch = q.get('lag', (heave, pitch))
+	fy, fp = q.get('follow', (0.3, 0.25))
+	rigid = dict(p, body={'p': [0, FLY_HEIGHT + lag_heave, 0], 'r': [lag_pitch, 0, 0]})
+	y_target = y_still + fy * (_head(rigid)[0] - y_still)
+	# secant on the neck's bend
+	b0, b1 = 0.0, -6.0
+	_neck(p, base, b0)
+	f0 = _head(p)[0] - y_target
+	for _ in range(8):
+		_neck(p, base, b1)
+		f1 = _head(p)[0] - y_target
+		if abs(f1) < 0.01 or f1 == f0:
+			break
+		b0, b1, f0 = b1, b1 - f1 * (b1 - b0) / (f1 - f0), f1
+	b1 = max(-40.0, min(40.0, b1))
+	_neck(p, base, b1)
+	# the head's pitch: still, plus its share of the body's
+	p['head_group']['r'][0] = head - (pitch - still) - b1 + fp * (lag_pitch - still)
+
+	thigh, shin, foot = q.get('legs', LEGS_TUCKED)
+	sw = q.get('leg_swing', 0.0)
+	for side in ('left', 'right'):
+		p[f'upperleg_{side}'] = {'r': [thigh + sw, 0, 0]}
+		p[f'lowerleg_{side}'] = {'r': [shin - 0.4 * sw, 0, 0]}
+		p[f'foot_{side}'] = {'r': [foot + 0.7 * sw, 0, 0]}
+	p['jaw_group'] = {'r': [q.get('jaw', -1.0), 0, 0]}
+	p['_tail'] = {k: q.get(k, 0.0) for k in ('push', 'droop', 'sway', 'stand', 'lift')}
 	return p
 
 
-def beat_params(u):
-	q = beat(u)
-	q['ripple'] = 10 * S(PI2 * u - 1.2)
-	q['roll'] = 0.0
-	# the body's follow-through, felt later up the neck and down the tail (a wave along each chain)
-	q['neck_pitch'] = [spline(BEAT['pitch'], u - 0.04 - 0.03 * k) for k in range(len(NECK))]
-	q['tail_pitch'] = [spline(BEAT['pitch'], u - 0.06 - 0.03 * k) for k in range(len(TAIL))]
+def beat_q(style, u, gain=1.0):
+	"""Flight parameters of a beat at phase u (gain scales the stroke and the body's answer)."""
+	q = dict(flight.wings(style, u, gain))
+	heave, pitch, surge = flight.body(style, u, gain)
+	q.update(heave=heave, pitch=pitch, surge=surge, roll=0.0, yaw=0.0)
+	# the head answers the body late, and only partly
+	lh, lp, _ = flight.body(style, u - 0.06, gain)
+	q['lag'] = (lh, lp)
+	# the legs hang on by inertia: the body heaving up leaves them behind (swung down)
+	q['leg_swing'] = 12.0 * gain * (flight.HEAVE(u) - flight.HEAVE(u - 0.1))
+	# effort: the jaw parts on each push
+	q['jaw'] = -1.0 - 3.0 * gain * flight.downstroke(u - 0.04)
+	q['push'] = gain * flight.downstroke(u)
+	return q
+
+
+def glide_q(t, L=3.0):
+	"""The glide: wings still in a shallow V, the body rocking a little from wing to wing (a vulture's
+	teeter), the neck steering against the roll, the tail swaying lazily."""
+	w = PI2 * t / L
+	q = dict(GLIDE_WING)
+	q.update(shoulder=8 + 2.5 * S(w + 0.5), elbow=-6 - 2 * S(w), pleats=[3 + 2 * S(w - 0.3 * g) for g in range(3)], twist=1.5 * S(w + 1.0),
+			 heave=1.2 * S(w), pitch=0.8 * S(w + 0.7), surge=0.0, roll=4 * S(w), yaw=0.0,
+			 neck_yaw=(1.5 * S(w), 1.5 * S(w), 0.0, 0.0), head_yaw=4 * S(w + 0.5), jaw=-1.0, sway=S(w))
+	q['lag'] = (1.2 * S(w - 0.4), 0.8 * S(w + 0.3))
 	return q
 
 
 def fly(t, L):
-	"""Continuous flapping: climbing, hovering, taking off."""
-	return flight_pose(beat_params(t / L), t)
+	"""Continuous flapping: climbing, slow flight, charges. Deep strokes; the body heaves on each."""
+	return flight_pose(beat_q(flight.FLY, t / L))
 
 
 def flap(t, L):
-	"""A single push: from the glide, up (arch) and down (cup) until the wings point down, then from
-	that bottom position straight into the glide."""
-	g = glide_params(0.0)
-	beat_time = PUSH_END * FLAP
-	if t <= beat_time:
-		u = t / FLAP
-		b = beat_params(u)
-		env = ease(u / 0.12)   # ease out of the glide at the start of the upstroke
-	else:
-		b = beat_params(PUSH_END)
-		env = 1 - ease((t - beat_time) / PUSH_SETTLE)
-	q = {}
-	for k in set(g) | set(b):
-		gv, bv = g.get(k, 0.0), b.get(k, g.get(k, 0.0))
-		if isinstance(bv, list):
-			q[k] = [v * env for v in bv]
-		else:
-			q[k] = gv + (bv - gv) * env
-	return flight_pose(q, t)
+	"""One push out of a glide: the wings rise from the glide, sweep down hard, rise again and settle
+	back into the glide, all in one beat."""
+	u = t / FLAP
+	env = ease(u / 0.2) * (1 - ease((u - 0.8) / 0.2))
+	q = qblend(glide_q(0.0), beat_q(flight.PUSH, u), env)
+	q['sway'] = 0.0
+	return flight_pose(q)
 
 
 def glide(t, L):
-	q = glide_params(t, L)
-	w = PI2 * t / L
-	q['neck_pitch'] = [0.0] * len(NECK)
-	q['tail_pitch'] = [0.0] * len(TAIL)
-	# a slow lazy sway: the neck steers a little against the roll
-	q['neck_yaw'] = [1.5 * S(w), 1.5 * S(w), 0.0, 0.0]
-	q['head_yaw'] = 4 * S(w + 0.5)
-	return flight_pose(q, t)
+	return flight_pose(glide_q(t, L))
 
 
-# Hovering: the body stands up in the air (chest up like the perched stance), the tail hangs down and
-# the head is held up and level; the wings beat in a near-horizontal stroke plane and every downstroke
-# heaves the body up (the game moves the dragon up and down with each beat too).
+# Hovering: the body stands up in the air (chest up like the perched stance) and the stroke plane turns
+# near horizontal: the wings sweep forward and back, every downstroke heaving the body (the game moves
+# the dragon with it). The neck curls forward out of the raised chest so the head stays level.
 HOVER_PITCH = 38.0
+NECK_HOVER, HEAD_HOVER = [-6.0, -7.0, -8.0, -8.0], -2.0
 
 
-def hover_params(u):
-	q = beat_params(u)
-	beat_pitch = q['pitch']
-	q['pitch'] = HOVER_PITCH + 0.5 * beat_pitch
-	q['lift'] = 0.8 * q['lift']
-	q['surge'] = 0.0
-	# the neck curls forward out of the raised chest so the head stays level and looks ahead
-	q['neck_pitch'] = [HOVER_PITCH * 1.05 + 0.5 * v for v in q['neck_pitch']]
-	# the tail hangs (TailMotion.java); the legs follow its wave: a small droop plus the beat's wave
-	q['tail_pitch'] = [6.0 + 0.6 * v for v in q['tail_pitch']]
+def hover_q(u, gain=1.0):
+	q = beat_q(flight.HOVER, u, gain)
+	q.update(pitch=HOVER_PITCH + q['pitch'], surge=0.0, neck=NECK_HOVER, head=HEAD_HOVER, still=HOVER_PITCH,
+			 legs=LEGS_DANGLE, droop=1.0)
+	q['lag'] = (q['lag'][0], HOVER_PITCH + q['lag'][1])
+	q['leg_swing'] *= 1.8   # dangling, they swing more
 	return q
 
 
-def hover_pose(q, t):
-	p = flight_pose(q, t)
-	p['head_group']['r'][0] = -2 - 0.2 * (q['pitch'] - HOVER_PITCH)
-	# legs dangle under the raised body instead of tucking back
-	sway = 0.4 * (q['pitch'] - HOVER_PITCH)
-	for side in ('left', 'right'):
-		p[f'upperleg_{side}'] = {'r': [-28 + sway, 0, 0]}
-		p[f'lowerleg_{side}'] = {'r': [18 - 0.5 * sway, 0, 0]}
-		p[f'foot_{side}'] = {'r': [26 + sway, 0, 0]}
-	return p
-
-
 def hover(t, L):
-	return hover_pose(hover_params(t / L), t)
+	return flight_pose(hover_q(t / L))
 
 
 def blend(a, b, k):
-	"""Per-bone linear blend of two full poses (`full_pose`), k = 0 -> a, 1 -> b."""
+	"""Per-bone linear blend of two poses, k = 0 -> a, 1 -> b (tail hints included)."""
 	out = {}
 	for bone in set(a) | set(b):
 		va, vb = a.get(bone, {}), b.get(bone, {})
+		if bone == '_tail':
+			out[bone] = {key: va.get(key, 0.0) + (vb.get(key, 0.0) - va.get(key, 0.0)) * k for key in set(va) | set(vb)}
+			continue
 		out[bone] = {key: [x + (y - x) * k for x, y in zip(va.get(key, [0, 0, 0]), vb.get(key, [0, 0, 0]))]
 					 for key in set(va) | set(vb)}
 	return out
 
 
-def _wings_of(q):
-	"""Only the wing bones (arms and hand fans) of a flight pose."""
-	return {b: v for b, v in flight_pose(q, 0).items() if '_wing' in b}
+def _wings(pose):
+	"""Only the wing bones (arms and hand fans) of a pose."""
+	return {b: v for b, v in pose.items() if '_wing' in b}
 
 
-TAKEOFF_JUMP = 0.55   # seconds into the takeoff when the legs and the downstroke push together
-_takeoff_air = {}
+def _standing_tail(lift=0.0):
+	return {'push': 0.0, 'droop': 0.0, 'sway': 0.0, 'stand': 1.0, 'lift': lift}
+
+
+# The takeoff, a four-legged launch (pterosaurs and bats vault off their arms as well as their legs).
+# 0-0.35 crouch: the body sinks, all four feet on the ground, the folded wings braced on their claws.
+# 0.35-0.55 the push: hind legs and arms straighten together and throw the body up (the game throws the
+# dragon at TAKEOFF_JUMP); the head is thrown up and forward. Nothing leaves the ground before the jump.
+# 0.55-0.8 the wings sweep up off the ground to the top of the stroke while it rises on the leap; from
+# 0.8 the first power stroke at the beat's own pace, the tail swinging against it, and the body stands
+# up into the hover. It ends on the hover's beat boundary (u = 1), so the hover carries on in step (the
+# game starts its beat at TAKEOFF_PHASE at the jump).
+TAKEOFF_JUMP = 0.55
+TAKEOFF_TOP = 0.8       # the wings at the top: the power stroke starts
+TAKEOFF_LENGTH = round(TAKEOFF_TOP + (1 - flight.U_TOP) * FLAP, 2)
+# where the game's hover beat is at the jump (DragonAnim.TAKEOFF_PHASE)
+TAKEOFF_PHASE = flight.U_TOP - (TAKEOFF_TOP - TAKEOFF_JUMP) / FLAP
+POWER = flight.Style(mid=10.0, amp=58.0, elbow_amp=28.0, sweep=2.0, sweep_amp=20.0, sweep8=4.0, heave=0.0,
+					 pitch=0.0, surge=0.0, twist_amp=14.0, pleat_shut=36.0)
+
+
+def _takeoff_u(t):
+	"""Beat phase of the wings: from the ground up to the top by TAKEOFF_TOP, then the beat's own pace."""
+	if t < TAKEOFF_TOP:
+		return flight.U_TOP * ease((t - TAKEOFF_JUMP) / (TAKEOFF_TOP - TAKEOFF_JUMP))
+	return flight.U_TOP + (t - TAKEOFF_TOP) / FLAP
+
+
+_takeoff = {}
 
 
 def takeoff(t, L):
-	# 0-0.35 crouch: the body sinks onto the hind legs, the wings rise to the top of the upstroke.
-	# 0.35-0.6 the push: the legs straighten while the wings sweep down -- both at once; the game
-	# throws the dragon up at TAKEOFF_JUMP. 0.6-1.4 airborne: legs fold to dangle, the body stands up
-	# and the beat carries on into the hover (the next animation), wings only.
-	ground_end = 0.6
-	if t <= ground_end:
-		crouch = ease(t / 0.35) * (1 - ease((t - 0.35) / 0.25))
-		push = ease((t - 0.35) / 0.25)
-		u = 0.32 * ease(t / 0.35) + 0.48 * push          # up to the top, then the downstroke to its end
-		q = beat_params(u)
+	if t <= TAKEOFF_JUMP:
+		crouch = ease(t / 0.35) * (1 - ease((t - 0.35) / 0.2))
+		push = ease((t - 0.35) / 0.2)
 		sw = stand.SWAN
-		return standing('takeoff').pose(
-			body_pitch=-6 * crouch + 8 * push, body_lift=-9 * crouch + 9 * push,
-			swan=[sw[0] - 6 * crouch, sw[1], sw[2] + 8 * push, sw[3] + 6 * push],
-			head=stand.HEAD + 6 * push, jaw=-1.5 - 8 * push, fan=10 + (stand.FAN - 10) * (1 - push),
-			wings=_wings_of(q))
-	if 'lift' not in _takeoff_air:
-		_takeoff_air['lift'] = full_pose(takeoff(ground_end, L))
-		_takeoff_air['hover'] = full_pose(hover(0.0, FLAP))
-	k = ease((t - ground_end) / (L - ground_end))
-	# the beat goes on from the bottom of the downstroke (0.8) into the hover's next beat (1.0 = 0)
-	beat_u = 0.8 + 0.2 * k
-	air = full_pose(hover_pose(hover_params(beat_u % 1.0), t))
-	return blend(blend(_takeoff_air['lift'], air, ease(k * 1.6)), _takeoff_air['hover'], ease((k - 0.6) / 0.4))
+		pose = standing('takeoff').pose(
+			body_pitch=-7 * crouch + 9 * push, body_lift=-10 * crouch + 8 * push,
+			swan=[sw[0] - 8 * crouch + 4 * push, sw[1] - 2 * crouch, sw[2] + 12 * push, sw[3] + 8 * push],
+			head=stand.HEAD - 4 * crouch + 10 * push, jaw=-1.5 - 10 * push)
+		pose['_tail'] = _standing_tail(14 * push)
+		return pose
+	if 'lift' not in _takeoff:
+		_takeoff['lift'] = takeoff(TAKEOFF_JUMP, L)
+	lift = _takeoff['lift']
+	u = _takeoff_u(t)
+	# airborne: the power stroke, then the hover's beat; the body stands up into the hover
+	q = hover_q(u % 1.0)
+	q.update(qblend(flight.wings(POWER, u), flight.wings(flight.HOVER, u), ease((t - TAKEOFF_TOP - 0.5) / 0.4)))
+	air = flight_pose(q)
+	body = blend(lift, air, ease((t - TAKEOFF_JUMP) / (L - TAKEOFF_JUMP) * 1.6))
+	# the wings come off the ground on their own, quicker than the body
+	wings = blend(_wings(lift), _wings(air), ease((t - TAKEOFF_JUMP) / (TAKEOFF_TOP - TAKEOFF_JUMP)))
+	body.update(wings)
+	return body
+
+
+# The landing at speed, an eagle's: it glides in and lands running instead of hovering down.
+# 0-0.5 gear down: the legs swing forward (feet reaching ahead, toes pointing forward), the wings cup.
+# 0.5-1.5 the flare: the body pitches up past 45 degrees, the stroke plane turns horizontal and one deep
+# braking stroke sweeps forward and down, the tail drops (an air brake). 1.5-1.9 the wings rise, the
+# legs reach for the ground, and over the last LAND_PLANT the wings sweep down onto their claws.
+# 1.9 (LAND_TOUCH) all four feet strike together, the hind feet ahead of the body; the game puts the
+# dragon on the ground then and skids it out to a stop (DragonAnim.LAND_TOUCH_SECONDS). 1.9-3.3 on
+# all fours: the legs take the blow, the body rides forward over the planted feet and settles into the
+# stance, the neck comes down into its swan curve.
+LAND_FLARE, LAND_BRAKE, LAND_TOUCH, LAND_LENGTH = 0.5, 1.5, 1.9, 3.3
+LAND_PLANT = 0.35       # the wings come down onto their claws over the last of the air
+LAND_PITCH = 48.0
+# where the hind feet strike, and where the body has carried them back to once stopped (stand.FEET)
+TOUCH_FEET = {'lh': [-16.0, 3.0, -2.0], 'rh': [16.0, 3.0, -2.0]}
+_land = {}
+
+
+def _land_u(t):
+	"""Beat phase of the braking stroke: one beat over the flare, then the wings rise to the top and stay
+	there through the touch (an eagle strikes with its wings raised)."""
+	if t < LAND_FLARE:
+		return 0.0
+	if t < LAND_BRAKE:
+		return (t - LAND_FLARE) / (LAND_BRAKE - LAND_FLARE)
+	return 1.0 + flight.U_TOP * ease((t - LAND_BRAKE) / 0.5)
+
+
+def _land_air(t):
+	"""The airborne landing at time t (also continued past the touch for the wings)."""
+	gear = ease(t / 0.9)
+	flare = ease((t - LAND_FLARE + 0.1) / 0.8)
+	u = _land_u(t)
+	# the braking stroke: a hover beat, starting from the glide
+	beat = hover_q(u if u < 1.0 else u - 1.0, gain=ease((t - LAND_FLARE) / 0.25))
+	approach = glide_q(0.0)
+	approach.update(shoulder=12.0, elbow=-12.0, sweep=-4.0, twist=4.0, pleats=[2.0] * 3, sway=0.0,
+					pitch=12.0 * gear, neck=NECK_FLY, head=HEAD_FLY)
+	q = qblend(approach, beat, flare)
+	q['pitch'] = 12.0 * gear + (LAND_PITCH - 12.0) * flare + (q['pitch'] - HOVER_PITCH) * flare * 0.5
+	q['still'] = 12.0 * gear + (HOVER_PITCH - 12.0) * flare
+	q['heave'] = beat['heave'] * flare
+	q['surge'] = 0.0
+	q['legs'] = tuple(a + (b - a) * gear for a, b in zip(LEGS_TUCKED, LEGS_FORWARD))
+	q['leg_swing'] = 0.0
+	# the tail drops and spreads as an air brake (TailMotion: droop), the push of the braking stroke
+	q['droop'] = 2.5 * flare
+	q['push'] = flight.downstroke(u) if u < 1.0 else 0.0
+	q['jaw'] = -1.5 - 4 * flare
+	return flight_pose(q)
+
+
+def _reach(pose, t):
+	"""The legs reach for the ground over the last 0.5 s before the touch: from where the gear holds the
+	feet down to the touch marks, solved by IK so they strike exactly there."""
+	k = ease((t - (LAND_TOUCH - 0.5)) / 0.5)
+	if k <= 0:
+		return pose
+	m = walk.rig.matrices(pose)
+	targets = {}
+	for limb, side in (('lh', 'left'), ('rh', 'right')):
+		hung = apply(m[f'lowerleg_{side}'], walk.ANKLE[side])
+		targets[limb] = [h + (g - h) * k for h, g in zip(hung, TOUCH_FEET[limb])]
+	solved = dict(pose)
+	walk.solve_limbs(solved, targets, _land.setdefault('reach', {}))
+	w = ease((t - (LAND_TOUCH - 0.5)) / 0.15)
+	out = dict(pose)
+	for side in ('left', 'right'):
+		for b in (f'upperleg_{side}', f'lowerleg_{side}', f'foot_{side}'):
+			out[b] = {'r': [x + (y - x) * w for x, y in zip(pose[b]['r'], solved[b]['r'])]}
+	return out
+
+
+def _land_kw(s):
+	"""The standing solve's settings s seconds after the touch: the body carried on from the flare,
+	riding forward over the planted feet, the legs taking the blow."""
+	touch = _land_touch()
+	pitch0 = touch['body']['r'][0] - stand.PITCH
+	lift0 = touch['body']['p'][1] - stand.LIFT
+	ride = ease(s / 0.6)            # the body rides over the feet
+	absorb = math.sin(math.pi * min(1.0, s / 0.5)) * (1 - ease(s / 0.5) * 0.3)
+	settle = ease((s - 0.3) / 1.0)
+	feet = {k: [v + (stand.FEET[k][i] - v) * ride for i, v in enumerate(TOUCH_FEET[k])] for k in TOUCH_FEET}
+	return dict(body_pitch=pitch0 * (1 - settle) - 6 * absorb, body_lift=lift0 * (1 - ease(s / 0.4)) - 7 * absorb,
+				body_z=0.0, jaw=-1.5 - 5 * (1 - settle), feet=feet)
+
+
+def _land_touch():
+	if 'touch' not in _land:
+		_land['touch'] = _reach(_land_air(LAND_TOUCH), LAND_TOUCH)
+	return _land['touch']
+
+
+def land(t, L):
+	if t < LAND_TOUCH:
+		pose = _reach(_land_air(t), t)
+		# the wings sweep down so the claws plant together with the hind feet
+		plant = ease((t - (LAND_TOUCH - LAND_PLANT)) / LAND_PLANT)
+		if plant > 0:
+			if 'plant' not in _land:
+				_land['plant'] = _wings(standing('land').pose(**_land_kw(0.0)))
+			pose.update(blend(_wings(pose), _land['plant'], plant))
+		return pose
+	touch = _land_touch()
+	s = t - LAND_TOUCH
+	# all four feet on the ground: the hind feet on their marks, the claws on the stance's
+	pose = standing('land').pose(**_land_kw(s))
+	# the neck and head come down from the flare into the swan neck
+	k = ease(s / 0.9)
+	for b in NECK + ['head_group']:
+		pose[b] = {'r': [x + (y - x) * k for x, y in zip(touch[b]['r'], pose[b]['r'])]}
+	pose['_tail'] = blend({'_tail': touch['_tail']}, {'_tail': _standing_tail(0.0)}, ease(s / 0.5))['_tail']
+	return pose
 
 
 ROAR_AT = 0.6     # the growl starts: DragonAnim.ROAR_SECONDS mirrors it (DragonVoice plays it then)
@@ -341,27 +484,35 @@ def tail_sweep(t, L):
 	return standing('tail_sweep').pose(body_pitch=-3 * wind, body_lift=-2 * wind)
 
 
-BREATH_WINDUP, BREATH_STREAM, BREATH_RECOVER = 1.0, 3.0, 0.8   # seconds; BreathAttack.java mirrors these
+BREATH_WINDUP, BREATH_STREAM, BREATH_RECOVER = 2.0, 3.0, 0.8   # seconds; BreathAttack.java mirrors these
+BREATH_LEAN, BREATH_NECK_DOWN = 10.0, 8.0   # degrees: the chest leans forward, the straight neck points down
+BREATH_LUNGE = 0.65   # seconds before the fire the neck starts to lunge out (0.3 s): out before the model's blend lag
 
 
 def breath(t, L):
-	# The stream breath (BreathAttack.java). 0-1.0 inhale: the chest swells, the neck coils back and up
-	# and the jaw starts to part (the telegraph). 1.0-4.0 the stream: the neck reaches forward and down,
-	# the head aims at the ground ahead with the jaw wide open and trembles while the flames pour out
-	# (the game spawns them in the mouth). 4.0-4.8 the jaw closes and the stance returns. The feet stay
-	# planted; the game turns the whole dragon to sweep the stream.
+	# The stream breath (BreathAttack.java). 0-2.0 inhale: the chest swells, the neck coils back and up
+	# and the jaw starts to part (the telegraph); at its end the neck lunges out. 2.0-5.0 the stream: the
+	# neck straight out forward and a little down, the head low at the chest's height, the jaw wide open,
+	# trembling while the flames pour out (the game spawns them in the mouth). 5.0-5.8 the jaw closes and
+	# the stance returns. The feet stay planted; the game turns the dragon only when the neck cannot reach.
+	# The model plays this BLEND_TICKS late, so the fire (at 2.0 s of the game's clock) comes when the
+	# model is at 1.7 s: the lunge is done by then (BREATH_LUNGE before the fire).
 	end = BREATH_WINDUP + BREATH_STREAM
-	inhale = ease(t / BREATH_WINDUP) * (1 - ease((t - BREATH_WINDUP) / 0.35))
-	pour = ease((t - BREATH_WINDUP + 0.1) / 0.3) * (1 - ease((t - end) / BREATH_RECOVER))
+	pour = ease((t - BREATH_WINDUP + BREATH_LUNGE) / 0.3) * (1 - ease((t - end) / BREATH_RECOVER))
+	inhale = ease(t / BREATH_WINDUP) * (1 - pour)
 	jaw = 14 * ease(t / BREATH_WINDUP) * (1 - pour) + 38 * pour
 	shake = 1.2 * S(t * 47) * pour
-	sway = 3 * S(math.pi * (t - BREATH_WINDUP)) * pour
 	sw = stand.SWAN
+	# pouring, the chest leans forward and the neck runs out straight from it, a little down, the head
+	# low at the chest's height and in line with the neck. No sway: the game turns the straight neck onto
+	# the aim and follows the target with it (body/Strike), so any keyed side-to-side would throw it off
+	pitch = 7 * inhale - BREATH_LEAN * pour
+	coiled = [sw[0] + 8 * inhale, sw[1] + 10 * inhale, sw[2] - 10 * inhale, sw[3] - 4 * inhale]
+	straight = [-(stand.PITCH - BREATH_LEAN) - BREATH_NECK_DOWN, 0.0, 0.0, 0.0]
 	return standing('breath').pose(
-		body_pitch=7 * inhale - 6 * pour, body_lift=3 * inhale - 2 * pour, body_z=4 * inhale - 6 * pour,
-		swan=[sw[0] + 8 * inhale - 22 * pour, sw[1] + 10 * inhale - 6 * pour,
-			  sw[2] - 10 * inhale + 22 * pour, sw[3] - 4 * inhale + 18 * pour],
-		neck_yaw=(0, 0, sway, sway), head=stand.HEAD + 16 * inhale - 4 * pour + shake, head_yaw=shake,
+		body_pitch=pitch, body_lift=3 * inhale - 4 * pour, body_z=4 * inhale - 6 * pour,
+		swan=[c + (st - c) * pour for c, st in zip(coiled, straight)],
+		head=(stand.HEAD + 16 * inhale) * (1 - pour) - 3 * pour + shake, head_yaw=shake,
 		jaw=-1.5 - jaw, fan=stand.FAN - 1 - 4 * inhale)
 
 
@@ -382,15 +533,79 @@ def death(t, L):
 	return p
 
 
+# ---------------------------------------------------------------- the flying tail (for the game)
+# The flight animations' tails are made here and run by the game (body/TailMotion.java via
+# TailTrack): the tail is a rope hung from the body. Each point along it is where a stiff tail would
+# have been a moment ago, later toward the tip (TAIL_DELAY at the tip), so every heave and pitch of the
+# body runs down it as a wave. On top: it drops a little on each downstroke (birds lower the tail
+# as the wings push), hangs (droop) when the body stands up or brakes, sways with the glide, and
+# blends into the standing tail (curled, laid on the ground: TailMotion.standing) on the ground.
+TAIL_ANIMS = ('fly', 'flap', 'glide', 'hover', 'takeoff', 'land')
+TAIL_DELAY = 0.32       # seconds for the body's motion to reach the tip
+_TAIL_PIVOTS = [walk.rig.bones[s]['pivot'] for s in TAIL] + [[0, 60, 194]]
+TAIL_S = [p[2] - _TAIL_PIVOTS[0][2] for p in _TAIL_PIVOTS]
+TAIL_ROOT = _TAIL_PIVOTS[0][2] - walk.rig.bones['body']['pivot'][2]   # px behind the body's pivot
+TAIL_PUSH = [2.5, 2.0, 1.5, 1.0, 0.6, 0.3, 0.0, 0.0, 0.0]               # deg per unit of downstroke
+TAIL_SHARE = [0.2 + 0.035 * k for k in range(len(TAIL))]                 # of the droop, per segment
+TAIL_CURL = [0.0, 0.0, 2.0, 2.0, 2.0, 2.25, 2.25, 2.25, 2.25]          # TailMotion.CURL, spread
+
+
+def tail_track(frames, hints, length, loop, step):
+	"""Per keyframe: 9 bends down (x), 9 bends right (y), rest, lift (TailMotion.Pose)."""
+	n = len(frames)
+
+	def hint(t, key):
+		t = t % length if loop is True else max(0.0, min(length, t))
+		x = t / step
+		i = min(n - 2, int(x))
+		k = x - i
+		return hints[i][key] * (1 - k) + hints[i + 1][key] * k
+
+	def body(t):
+		t = t % length if loop is True else max(0.0, min(length, t))
+		x = t / step
+		i = min(n - 2, int(x))
+		k = x - i
+		y = frames[i]['body']['p'][1] * (1 - k) + frames[i + 1]['body']['p'][1] * k
+		th = frames[i]['body']['r'][0] * (1 - k) + frames[i + 1]['body']['r'][0] * k
+		return y, th
+
+	out = []
+	for i in range(n):
+		t = i * step
+		pts = []
+		for s in TAIL_S:
+			d = TAIL_DELAY * s / TAIL_S[-1]
+			y, th = body(t - d)
+			r = math.radians(th)
+			pts.append(((TAIL_ROOT + s) * math.cos(r), y - (TAIL_ROOT + s) * math.sin(r)))
+		th_now = body(t)[1]
+		xs, prev = [], th_now
+		for k in range(len(TAIL)):
+			phi = math.degrees(math.atan2(pts[k][1] - pts[k + 1][1], pts[k + 1][0] - pts[k][0]))
+			xs.append(phi - prev)
+			prev = phi
+		h = hints[i]
+		push = [hint(t - TAIL_DELAY * TAIL_S[k] / TAIL_S[-1], 'push') for k in range(len(TAIL))]
+		sway = [hint(t - TAIL_DELAY * TAIL_S[k] / TAIL_S[-1], 'sway') for k in range(len(TAIL))]
+		stand_k = h['stand']
+		x = [(xs[k] + TAIL_PUSH[k] * push[k] + 6.0 * h['droop'] * TAIL_SHARE[k]) * (1 - stand_k) + TAIL_CURL[k] * stand_k
+			 for k in range(len(TAIL))]
+		y = [-(1.2 + 0.2 * k) * sway[k] * (1 - stand_k) for k in range(len(TAIL))]
+		out.append(x + y + [stand_k, h['lift']])
+	return out
+
+
 # name: (pose, length s, loop, keyframe step s)
 ANIMATIONS = {
 	'idle': (idle, 4.0, True, 0.05),
 	'walk': (walk_pose, walk.LENGTH, True, 0.05),
 	'fly': (fly, FLAP, True, 0.04),
-	'flap': (flap, PUSH_END * FLAP + PUSH_SETTLE, False, 0.04),
+	'flap': (flap, FLAP, False, 0.04),
 	'glide': (glide, 3.0, True, 0.05),
 	'hover': (hover, FLAP, True, 0.04),
-	'takeoff': (takeoff, 1.4, False, 0.04),
+	'takeoff': (takeoff, TAKEOFF_LENGTH, False, 0.04),
+	'land': (land, LAND_LENGTH, False, 0.04),
 	'roar': (roar, 3.0, False, 0.025),
 	'attack': (attack, 1.3, False, 0.05),
 	'tail_sweep': (tail_sweep, 1.8, False, 0.025),
@@ -422,15 +637,17 @@ def r3(v):
 
 def build():
 	out = {'format_version': '1.8.0', 'animations': {}, 'geckolib_format_version': 2}
-	track = {}
+	track, tails = {}, {}
 	for name, (fn, length, loop, step) in ANIMATIONS.items():
 		bones = {}
 		frames = track.setdefault(name, [])
+		hints = []
 		steps = round(length / step)
 		for i in range(steps + 1):
 			t = round(i * step, 4)
 			# a looping animation reuses frame 0 at its end so the loop is seamless
 			pose = full_pose(fn(0.0 if loop is True and i == steps else t, length))
+			hints.append(pose.pop('_tail', None))
 			frames.append(pose)
 			for bone, v in pose.items():
 				ch = bones.setdefault(bone, {})
@@ -440,13 +657,15 @@ def build():
 				if 'p' in v:
 					px, py, pz = v['p']
 					ch.setdefault('position', {})[f'{t:g}'] = {'vector': r3([-px, py, pz])}
+		if name in TAIL_ANIMS:
+			tails[name] = tail_track(frames, hints, length, loop, step)
 		out['animations'][PREFIX + name] = {'loop': loop, 'animation_length': length, 'bones': bones}
 		print(f'{name:7s} {length:4.2f}s {len(bones)} bones')
 	os.makedirs(os.path.join(HERE, 'out'), exist_ok=True)
 	with open(os.path.join(HERE, 'out', 'ender_dragon.animation.json'), 'w') as f:
 		json.dump(out, f, separators=(',', ':'))
 	# the hitbox anchors of every keyframe, for the game (see parts.py)
-	parts.export(walk.rig, track, ANIMATIONS)
+	parts.export(walk.rig, track, ANIMATIONS, tails)
 
 
 if __name__ == '__main__':

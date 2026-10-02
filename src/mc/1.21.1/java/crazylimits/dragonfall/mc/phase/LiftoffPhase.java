@@ -17,9 +17,9 @@ import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Leaving the ground ({@link DragonAnim#TAKEOFF}): it crouches, then the legs and the first downstroke
- * throw it up together; from there it climbs on the wings alone, standing up in the air (the hover),
- * until it is {@link #CLEAR} blocks up or blocked above. Then it carries on into normal flight, where
+ * Leaving the ground ({@link DragonAnim#TAKEOFF}): it crouches on all fours, then all four limbs throw it
+ * up together and the wings take over; from there it climbs on the wings alone, standing up in the air
+ * (the hover), until it is {@link #CLEAR} blocks up or blocked above. Then it carries on into normal flight, where
  * the body leans forward as it picks up speed.
  */
 public class LiftoffPhase extends AbstractDragonPhaseInstance implements DragonfallPhase {
@@ -67,9 +67,12 @@ public class LiftoffPhase extends AbstractDragonPhaseInstance implements Dragonf
 		}
 	}
 
-	/** Legs and wings push together: a strong throw up, and the hover's beat starts with it. */
+	/**
+	 * All four limbs push off together: a strong throw up, and the hover's beat starts where the
+	 * animation's wings are ({@link DragonAnim#TAKEOFF_PHASE}), so beats and lift stay in step.
+	 */
 	private void jump() {
-		brain().forceFlight(FlightModel.Force.HOVER);
+		brain().forceFlight(FlightModel.Force.HOVER, DragonAnim.TAKEOFF_PHASE);
 		dragon.setDeltaMovement(0.0, 0.55, 0.0);
 		if (dragon.level() instanceof ServerLevel level) {
 			BlockPos below = BlockPos.containing(dragon.getX(), dragon.getY() - 0.5, dragon.getZ());

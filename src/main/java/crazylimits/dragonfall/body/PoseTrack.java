@@ -76,6 +76,16 @@ public final class PoseTrack {
 		return TRACKS.get(anim).length;
 	}
 
+	/** Seconds between the animation's keyframes. */
+	static double step(DragonAnim anim) {
+		return TRACKS.get(anim).step;
+	}
+
+	/** Whether the animation loops (the others hold their last frame). */
+	static boolean loops(DragonAnim anim) {
+		return TRACKS.get(anim).loop;
+	}
+
 	/**
 	 * Fills {@code out} ({@link #POINTS} * 3) with the frame at {@code seconds}: looping animations wrap,
 	 * the others hold their last frame. Frames are linearly interpolated.

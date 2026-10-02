@@ -11,14 +11,19 @@ import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
 
 /**
- * A void flame, after Ice and Fire's dragon fire: full bright, cooling from white to violet over its
- * life (the sprite frame follows its age), growing as it spreads and fading out at the end.
- * {@link Breath} is the stream out of the mouth; {@link Cloud} is a flame licking up out of a breath cloud.
+ * A void flame: its sprite frame follows its age, it grows as it spreads and fades out at the end.
+ * {@link Cloud} is a small flame licking up out of a breath cloud (Ice and Fire's dragon fire, cooling
+ * from white to violet). {@link Breath} is a puff of the stream out of the mouth (its own sprites, see
+ * {@code tools/particles.py}): a ball of purple fire that billows into dark smoke with the last purple
+ * flames flickering in it. The fire glows; the smoke, from {@link #smokeFrom} of its life, is lit by
+ * the world, slows down and drifts up.
  */
 public class VoidFlameParticle extends TextureSheetParticle {
 	private final SpriteSet sprites;
 	private final float startSize, endSize;
 	private final float rise;
+	/** From this share of its life it is smoke (0 for none: a flame throughout). */
+	private float smokeFrom;
 
 	protected VoidFlameParticle(ClientLevel level, double x, double y, double z, double vx, double vy, double vz, SpriteSet sprites,
 			int lifetime, float startSize, float endSize, float friction, float rise) {
@@ -47,7 +52,12 @@ public class VoidFlameParticle extends TextureSheetParticle {
 		float k = (float) age / lifetime;
 		quadSize = Mth.lerp(Mth.sqrt(k), startSize, endSize);
 		alpha = k < 0.7F ? 1.0F : 1.0F - (k - 0.7F) / 0.3F;
-		yd += rise;
+		boolean smoke = smokeFrom > 0.0F && k >= smokeFrom;
+		yd += smoke ? rise * 3.0F : rise;
+		if (smoke) {
+			xd *= 0.9;
+			zd *= 0.9;
+		}
 		// flames that hit the ground spread out along it instead of stopping dead
 		if (onGround) {
 			xd *= 1.08;
@@ -62,6 +72,7 @@ public class VoidFlameParticle extends TextureSheetParticle {
 
 	@Override
 	protected int getLightColor(float partialTick) {
+		if (smokeFrom > 0.0F && (age + partialTick) / lifetime >= smokeFrom) return super.getLightColor(partialTick);
 		return 0xF000F0;
 	}
 
@@ -75,8 +86,11 @@ public class VoidFlameParticle extends TextureSheetParticle {
 		@Override
 		public Particle createParticle(SimpleParticleType type, ClientLevel level, double x, double y, double z, double vx, double vy, double vz) {
 			RandomSource r = level.random;
-			return new VoidFlameParticle(level, x, y, z, vx, vy, vz, sprites, 18 + r.nextInt(10),
-					0.25F + r.nextFloat() * 0.15F, 1.1F + r.nextFloat() * 0.6F, 0.95F, 0.004F);
+			// fire for the first ~40% of its life (sprites 0-3), then smoke
+			VoidFlameParticle puff = new VoidFlameParticle(level, x, y, z, vx, vy, vz, sprites, 30 + r.nextInt(14),
+					0.3F + r.nextFloat() * 0.15F, 1.8F + r.nextFloat() * 0.8F, 0.95F, 0.003F);
+			puff.smokeFrom = 0.5F;
+			return puff;
 		}
 	}
 

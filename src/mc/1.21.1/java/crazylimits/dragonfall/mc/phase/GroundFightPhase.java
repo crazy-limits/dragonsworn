@@ -3,18 +3,22 @@ package crazylimits.dragonfall.mc.phase;
 import crazylimits.dragonfall.ai.GroundTactics;
 import crazylimits.dragonfall.ai.Roaming;
 import crazylimits.dragonfall.anim.DragonAnim;
+import crazylimits.dragonfall.body.Grip;
 import crazylimits.dragonfall.body.PoseTrack;
 import crazylimits.dragonfall.body.Strike;
 import crazylimits.dragonfall.mc.DragonBrain;
 import crazylimits.dragonfall.mc.DragonPhases;
 import crazylimits.dragonfall.mc.DragonSounds;
 import crazylimits.dragonfall.mc.DragonfallDragon;
+import crazylimits.dragonfall.mc.PreyHold;
 import crazylimits.dragonfall.nav.BlockGrid;
 import crazylimits.dragonfall.nav.GroundPlanner;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.BlockParticleOption;
 import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Mth;
@@ -52,14 +56,19 @@ import java.util.random.RandomGenerator;
  * around, walks on, and wakes for any player who comes close. After a while (or when the target gets
  * away) it takes off.
  *
+ * <p>The seize (Skyrim's dragons): now and then the bite does not let go. The prey hangs from the jaws
+ * ({@link Grip.Hold#JAW}), unable to move but free to use items (an ender pearl gets it out), and is
+ * shaken and chewed ({@link #CHEW_DAMAGE} every {@link #CHEW_TICKS}) until it is flung away. Anyone
+ * else hitting the head or neck makes the dragon drop it ({@code DragonBrain#hurtBy}).
+ *
  * <p>Arrows hit it here (unlike the vanilla perch): ranged players earn these windows too. The head
  * and neck no longer hurt by touch; the bite does.
  */
 public class GroundFightPhase extends AbstractDragonPhaseInstance implements DragonfallPhase {
 	/** Walking speed, blocks per tick (the walk animation speeds up to match). */
 	static final double WALK_SPEED = 0.11;
-	/** Degrees per tick it can turn. */
-	static final float TURN_SPEED = 4.0F;
+	/** Degrees per tick it can turn: slowly enough for its feet to step round after it ({@code TurnSteps}). */
+	static final float TURN_SPEED = 3.0F;
 	private static final TargetingConditions WAKE = TargetingConditions.forCombat().range(24.0);
 	/** The aim stops following the target this long before the blow lands: the window to dodge. */
 	static final int REACTION_TICKS = 7;
@@ -70,6 +79,10 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 	/** Only targets this close are worth asking the IK whether a blow reaches. */
 	static final double STRIKE_RANGE = 14.0;
 	static final float BITE_DAMAGE = 12.0F, TAIL_DAMAGE = 9.0F;
+	/** A bite that may not let go: how often, its own (lighter) blow, how long it holds, and the chewing. */
+	static final double SEIZE_CHANCE = 0.35;
+	static final float SEIZE_DAMAGE = 4.0F, CHEW_DAMAGE = 3.0F;
+	static final int HOLD_MIN = 70, HOLD_MAX = 110, CHEW_TICKS = 20, SEIZE_COOLDOWN = 300;
 
 	@Nullable
 	private LivingEntity target;
@@ -79,6 +92,9 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 	private DragonAnim action;
 	private int actionTicks;
 	private boolean actionHit;
+	/** The bite playing is a seize; how long the jaws have held, and for how long they will. */
+	private boolean seizing;
+	private int holdTicks, holdFor, seizeReadyAt;
 	private int attackReadyAt, roarReadyAt;
 	/** Where the blow playing is aimed (world). */
 	@Nullable
@@ -86,7 +102,9 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 	/** Asks whether a blow would reach, without touching the dragon's own aim. */
 	private final Strike probe = new Strike();
 	private List<int[]> path = List.of();
-	private int pathIndex, repathAt;
+	private int pathIndex, repathAt, blockedTicks;
+	/** The path bends (more than one straight leg): a way round something. */
+	private boolean detour;
 	@Nullable
 	private int[] wander;
 	private double lastX, lastZ;
@@ -97,8 +115,18 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 
 	/** Lands (the dragon is on the ground already) and fights {@code target}, or rests when null. */
 	public static void start(EnderDragon dragon, @Nullable LivingEntity target) {
+		start(dragon, target, true);
+	}
+
+	/**
+	 * As {@link #start(EnderDragon, LivingEntity)}; {@code thud}: it has just come down (hovering), all
+	 * four feet at once. A running landing has struck the ground already and skidded out.
+	 */
+	public static void start(EnderDragon dragon, @Nullable LivingEntity target, boolean thud) {
 		dragon.getPhaseManager().setPhase(DragonPhases.GROUND_FIGHT);
-		dragon.getPhaseManager().getPhase(DragonPhases.GROUND_FIGHT).engage(target);
+		GroundFightPhase phase = dragon.getPhaseManager().getPhase(DragonPhases.GROUND_FIGHT);
+		if (thud) phase.landingThud();
+		phase.engage(target);
 	}
 
 	@Override
@@ -122,13 +150,15 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 		path = List.of();
 		wander = null;
 		attackReadyAt = 20;
+		seizing = false;
+		holdTicks = 0;
+		seizeReadyAt = 100;
 		roarReadyAt = 0;
 		aim = null;
 		brain().hits.clear();
 		lastX = dragon.getX();
 		lastZ = dragon.getZ();
 		dragon.setDeltaMovement(Vec3.ZERO);
-		landingThud();
 	}
 
 	private void engage(@Nullable LivingEntity target) {
@@ -144,6 +174,7 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 
 	@Override
 	public void end() {
+		if (brain().prey.hold() == Grip.Hold.JAW) brain().prey.release(null);
 		if (action != null) brain().clearAction();
 		action = null;
 		aim = null;
@@ -166,6 +197,10 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 		}
 		if (action != null) {
 			runAction();
+			return;
+		}
+		if (brain().prey.hold() == Grip.Hold.JAW || holdTicks > 0) {
+			hold();
 			return;
 		}
 		if (ticks > duration) {
@@ -195,11 +230,15 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 				near && reaches(DragonAnim.ATTACK, at), near && reaches(DragonAnim.TAIL_SWEEP, at), ready, ticks >= roarReadyAt,
 				brain().hurtRecentlyBy(target, PROVOKED_TICKS), ThreadLocalRandom.current().nextDouble());
 		switch (decision.action()) {
-			case BITE -> startAction(DragonAnim.ATTACK);
+			case BITE -> {
+				startAction(DragonAnim.ATTACK);
+				seizing = ticks >= seizeReadyAt && PreyHold.holdable(target) && ThreadLocalRandom.current().nextDouble() < SEIZE_CHANCE;
+			}
 			case TAIL_STRIKE -> startAction(DragonAnim.TAIL_SWEEP);
 			case ROAR -> startAction(DragonAnim.ROAR);
 			case NONE -> {
-				if (decision.walk()) walkToward(target.getX(), target.getZ(), GroundTactics.CLOSE_IN);
+				// on a way round something it keeps walking, even where that leads away from the target
+				if (decision.walk() || detouring()) walkToward(target.getX(), target.getZ(), GroundTactics.CLOSE_IN);
 				else if (decision.turn()) turnToward(target.getX(), target.getZ());
 			}
 		}
@@ -265,6 +304,7 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 			repathAt = ticks + 20;
 			path = new GroundPlanner(brain().grid()).plan(Mth.floor(dragon.getX()), Mth.floor(dragon.getZ()), Mth.floor(x), Mth.floor(z), reach, 1500);
 			pathIndex = 0;
+			detour = path.size() > 1;
 			if (path.isEmpty()) {
 				turnToward(x, z);
 				return false;
@@ -279,19 +319,38 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 		if (!turnToward(nx, nz)) return true;          // face the way first, then walk
 		float yaw = dragon.getYRot() * Mth.DEG_TO_RAD;
 		double step = Math.min(WALK_SPEED, Math.hypot(nx - dragon.getX(), nz - dragon.getZ()));
-		dragon.setPos(dragon.getX() + Mth.sin(yaw) * step, dragon.getY(), dragon.getZ() - Mth.cos(yaw) * step);
+		// the body bumps into what the path squeezed past: slide along it and look for another way
+		if (brain().walk(Mth.sin(yaw) * step, -Mth.cos(yaw) * step)) {
+			blockedTicks = 0;
+		} else if (++blockedTicks % 10 == 0) {
+			repathAt = ticks;
+			if (blockedTicks >= 60) {
+				blockedTicks = 0;
+				path = List.of();
+				return false;
+			}
+		}
 		return true;
 	}
 
-	/** Keeps the feet on the terrain under the body: the highest ground under the hips and wrists. */
+	/** Walking a path round something, its last leg not yet begun. */
+	private boolean detouring() {
+		return detour && pathIndex < path.size() - 1;
+	}
+
+	/**
+	 * Keeps the feet on the terrain under the body: the highest ground under the hips and wrists. A
+	 * wall the wrists are against is not ground to climb: only ground within a step of its feet counts
+	 * there (under its middle, whatever is there).
+	 */
 	private void followGround() {
 		BlockGrid grid = brain().grid();
 		float yaw = dragon.getYRot() * Mth.DEG_TO_RAD;
 		double fx = Mth.sin(yaw), fz = -Mth.cos(yaw);
-		int best = BlockGrid.NO_GROUND;
-		for (double[] at : new double[][]{{0, 0}, {fx * 3.5, fz * 3.5}, {-fx * 1.5, -fz * 1.5}}) {
+		int best = grid.ground(Mth.floor(dragon.getX()), Mth.floor(dragon.getZ()));
+		for (double[] at : new double[][]{{fx * 3.5, fz * 3.5}, {-fx * 1.5, -fz * 1.5}}) {
 			int g = grid.ground(Mth.floor(dragon.getX() + at[0]), Mth.floor(dragon.getZ() + at[1]));
-			best = Math.max(best, g);
+			if (g != BlockGrid.NO_GROUND && g - dragon.getY() <= GroundPlanner.STEP_UP + 0.5) best = Math.max(best, g);
 		}
 		if (best == BlockGrid.NO_GROUND) {
 			takeOff();       // the ground is gone (water, void): fly
@@ -302,7 +361,12 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 		dragon.setDeltaMovement(dragon.getX() - lastX, 0.0, dragon.getZ() - lastZ);
 	}
 
-	private void landingThud() {
+	/** Feet on the ground: their thud and dust (a hovering landing's, a running landing's strike). */
+	public void landingThud() {
+		thud(dragon);
+	}
+
+	public static void thud(EnderDragon dragon) {
 		if (!(dragon.level() instanceof ServerLevel level)) return;
 		// all four feet at once, and the wings braking: the walk's own steps follow from its animation
 		level.playSound(null, dragon.getX(), dragon.getY(), dragon.getZ(), DragonSounds.STEP, SoundSource.HOSTILE, 1.0F, 0.7F);
@@ -383,17 +447,62 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 		probe.blow(brain().body, 1.0F, end);
 		Vec3 point = dragon.position().add(end[0], end[1], end[2]);
 		boolean bite = anim == DragonAnim.ATTACK;
+		boolean seize = bite && seizing;
+		seizing = false;
 		if (bite) dragon.playSound(SoundEvents.RAVAGER_ATTACK, 3.0F, 0.6F);
 		else dragon.playSound(SoundEvents.PLAYER_ATTACK_SWEEP, 4.0F, 0.5F);
 		double radius = Strike.radius(anim);
 		DamageSource source = dragon.damageSources().mobAttack(dragon);
 		for (Entity e : dragon.level().getEntities(dragon, new AABB(point, point).inflate(radius + 2.0), EntitySelector.NO_CREATIVE_OR_SPECTATOR)) {
 			if (!(e instanceof LivingEntity living) || !e.getBoundingBox().inflate(radius).contains(point)) continue;
+			// the seize: the jaws close on the target and keep it
+			if (seize && living == target && living.hurt(source, SEIZE_DAMAGE) && living.isAlive() && seize(living)) {
+				seize = false;
+				continue;
+			}
 			if (!living.hurt(source, bite ? BITE_DAMAGE : TAIL_DAMAGE) || bite) continue;
 			// the tail flings what it hits away from the dragon
 			Vec3 push = e.position().subtract(dragon.position()).multiply(1, 0, 1).normalize().scale(1.8);
 			living.push(push.x, 0.45, push.z);
 			living.hurtMarked = true;
+		}
+	}
+
+	/** Takes {@code prey} in the jaws now and fights it from there (the seize's hold). */
+	public boolean seize(LivingEntity prey) {
+		if (!brain().prey.seize(prey, Grip.Hold.JAW)) return false;
+		target = prey;
+		holdTicks = 0;
+		holdFor = HOLD_MIN + dragon.getRandom().nextInt(HOLD_MAX - HOLD_MIN + 1);
+		return true;
+	}
+
+	/**
+	 * Prey in the jaws: shaken (the body's shake runs while the hold is synced) and chewed, then flung
+	 * off to one side. When it gets away (or someone hitting the head made the dragon drop it) the fight
+	 * goes on, the head free again.
+	 */
+	private void hold() {
+		DragonBrain brain = brain();
+		brain.setLookTarget(null);
+		if (!brain.prey.holding()) {
+			holdTicks = 0;
+			attackReadyAt = Math.max(attackReadyAt, ticks + BITE_RECOVERY);
+			seizeReadyAt = ticks + SEIZE_COOLDOWN;
+			return;
+		}
+		holdTicks++;
+		Entity prey = brain.prey.prey();
+		if (holdTicks == 3 && prey instanceof ServerPlayer player) player.displayClientMessage(Component.translatable("dragonfall.seized"), true);
+		if (holdTicks % CHEW_TICKS == 0 && prey instanceof LivingEntity living) {
+			living.hurt(dragon.damageSources().mobAttack(dragon), CHEW_DAMAGE);
+			dragon.playSound(SoundEvents.RAVAGER_ATTACK, 1.5F, 0.8F);
+		}
+		if (holdTicks >= holdFor) {
+			// flung off to one side, out and up
+			float yaw = (dragon.getYRot() + (dragon.getRandom().nextBoolean() ? 70.0F : -70.0F)) * Mth.DEG_TO_RAD;
+			brain.prey.release(new Vec3(Mth.sin(yaw) * 1.3, 0.55, -Mth.cos(yaw) * 1.3));
+			dragon.playSound(SoundEvents.PLAYER_ATTACK_SWEEP, 3.0F, 0.5F);
 		}
 	}
 

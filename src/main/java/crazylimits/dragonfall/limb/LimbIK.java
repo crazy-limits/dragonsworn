@@ -17,6 +17,10 @@ package crazylimits.dragonfall.limb;
 public final class LimbIK {
 	/** How far a shoulder may turn to reach the ground, degrees. */
 	public static final double MAX_SHOULDER = 35.0;
+	/** How far an elbow may bend from the animation to reach, degrees. */
+	public static final double MAX_ELBOW = 40.0;
+	/** How far a thigh may swing out or in at the hip to reach sideways, degrees. */
+	public static final double MAX_SPLAY = 25.0;
 	/**
 	 * Past this share of its full length a leg straightens ever more slowly toward the target (the soft
 	 * reach limit): near full stretch the knee angle would otherwise jump for a tiny move.
@@ -83,6 +87,147 @@ public final class LimbIK {
 		}
 		shoulder.rot[2] = z0 + dz;
 		return Math.abs(f);
+	}
+
+	/**
+	 * As {@link #solveLeg}, the ankle also carried sideways: the thigh first swings out or in at the hip
+	 * (about Z, at most {@link #MAX_SPLAY}) so that the leg's plane passes through {@code target}, then
+	 * the leg bends in that plane. For a foot stepping round in a turn ({@link TurnSteps}).
+	 */
+	public static double solveLegReach(double[] parent, Joint thigh, Joint shin, Joint foot, double[] target) {
+		double[] hip = add(thigh.pivot, thigh.pos);
+		double[] inParent = Affine.apply(Affine.invertRigid(parent), target, new double[3]);
+		// how far out from the hip the leg's plane lies now, as animated
+		double[] ankleRest = add(foot.pivot, foot.pos);
+		double[] ankle = Affine.apply(Affine.mul(thigh.local(), shin.local()), ankleRest, new double[3]);
+		double c = ankle[0] - hip[0];
+		double dx = inParent[0] - hip[0], dy = inParent[1] - hip[1];
+		double r = Math.hypot(dx, dy);
+		double splay = 0.0;
+		if (r > Math.abs(c) + 1e-6) {
+			// turned back by the splay the target lies in the plane: dx cos t + dy sin t = c
+			double phi = Math.atan2(dy, dx), a = Math.acos(c / r);
+			double t1 = wrap(phi - a), t2 = wrap(phi + a);
+			splay = Math.abs(t1) < Math.abs(t2) ? t1 : t2;
+			splay = Math.max(-Math.toRadians(MAX_SPLAY), Math.min(Math.toRadians(MAX_SPLAY), splay));
+		}
+		Joint turn = new Joint();
+		System.arraycopy(hip, 0, turn.pivot, 0, 3);
+		turn.rot[2] = Math.toDegrees(splay);
+		double left = solveLeg(Affine.mul(parent, turn.local()), thigh, shin, foot, target);
+		thigh.rot[2] += turn.rot[2];
+		return left;
+	}
+
+	/**
+	 * The whole front limb onto a point, as {@code tools/walk.py} solves it offline: the shoulder turns
+	 * about all three axes (each at most {@link #MAX_SHOULDER} from the animation) and the elbow about Z
+	 * only (at most {@link #MAX_ELBOW}), so {@code contact} -- a point the hand carries, in the elbow's
+	 * local frame -- goes to {@code target} (model). The fold beyond the elbow is untouched (the wing
+	 * rule). Four angles for three coordinates: damped least squares takes the least change from the
+	 * animation, so a planted wrist stays where it stands, in, out, forward or back, while the body turns
+	 * over it. Returns the distance left (pixels).
+	 */
+	public static double solveArmReach(double[] parent, Joint shoulder, Joint elbow, double[] contact, double[] target) {
+		// A straight arm (the standing pose) is singular: bending the elbow does not shorten it at first,
+		// so the solve would never bend it. Bent starts either way find the reach in (walk.py does the same).
+		double[] start = {shoulder.rot[0], shoulder.rot[1], shoulder.rot[2], elbow.rot[2]};
+		double[] best = null;
+		double bestLeft = Double.MAX_VALUE, bestChange = Double.MAX_VALUE;
+		for (double seed : ELBOW_SEEDS) {
+			double left = armReach(parent, shoulder, elbow, contact, target, start, seed);
+			double change = 0.0;
+			for (int a = 0; a < 3; a++) change += Math.abs(shoulder.rot[a] - start[a]);
+			change += Math.abs(elbow.rot[2] - start[3]);
+			// the nearest miss; among those that reach, the least change from the animation
+			boolean better = left < bestLeft - 0.05 || (left < bestLeft + 0.05 && change < bestChange);
+			if (better) {
+				best = new double[]{shoulder.rot[0], shoulder.rot[1], shoulder.rot[2], elbow.rot[2]};
+				bestLeft = left;
+				bestChange = change;
+			}
+			if (seed == 0.0 && left < 1e-2) break;
+		}
+		System.arraycopy(best, 0, shoulder.rot, 0, 3);
+		elbow.rot[2] = best[3];
+		return bestLeft;
+	}
+
+	/** Bent-elbow starts tried by {@link #solveArmReach}, degrees from the animation. */
+	private static final double[] ELBOW_SEEDS = {0.0, 15.0, -15.0};
+
+	private static double armReach(double[] parent, Joint shoulder, Joint elbow, double[] contact, double[] target, double[] start, double seed) {
+		double[] base = start;
+		double[] limit = {MAX_SHOULDER, MAX_SHOULDER, MAX_SHOULDER, MAX_ELBOW};
+		double[] d = {0.0, 0.0, 0.0, seed}, r = new double[3], ri = new double[3], p = new double[3];
+		double[][] j = new double[3][4];
+		armResidual(parent, shoulder, elbow, contact, target, base, d, p, r);
+		for (int it = 0; it < 16 && norm(r) > 1e-3; it++) {
+			for (int a = 0; a < 4; a++) {
+				d[a] += 0.01;
+				armResidual(parent, shoulder, elbow, contact, target, base, d, p, ri);
+				d[a] -= 0.01;
+				for (int k = 0; k < 3; k++) j[k][a] = (ri[k] - r[k]) / 0.01;
+			}
+			// (J^T J + l I) step = -J^T r: the smallest turn that does it
+			double[][] m = new double[4][5];
+			for (int a = 0; a < 4; a++) {
+				for (int b = 0; b < 4; b++) {
+					double sum = a == b ? 1e-2 : 0.0;
+					for (int k = 0; k < 3; k++) sum += j[k][a] * j[k][b];
+					m[a][b] = sum;
+				}
+				double g = 0.0;
+				for (int k = 0; k < 3; k++) g += j[k][a] * r[k];
+				m[a][4] = -g;
+			}
+			double[] step = solve(m);
+			if (step == null) break;
+			double moved = 0.0;
+			for (int a = 0; a < 4; a++) {
+				double next = Math.max(-limit[a], Math.min(limit[a], d[a] + step[a]));
+				moved += Math.abs(next - d[a]);
+				d[a] = next;
+			}
+			armResidual(parent, shoulder, elbow, contact, target, base, d, p, r);
+			if (moved < 1e-6) break;
+		}
+		for (int a = 0; a < 3; a++) shoulder.rot[a] = base[a] + d[a];
+		elbow.rot[2] = base[3] + d[3];
+		return norm(r);
+	}
+
+	private static void armResidual(double[] parent, Joint shoulder, Joint elbow, double[] contact, double[] target,
+			double[] base, double[] d, double[] p, double[] out) {
+		double[] m = Affine.mul(Affine.mul(parent, shoulder.local(base[0] + d[0], base[1] + d[1], base[2] + d[2])),
+				elbow.local(elbow.rot[0], elbow.rot[1], base[3] + d[3]));
+		Affine.apply(m, contact, p);
+		for (int k = 0; k < 3; k++) out[k] = p[k] - target[k];
+	}
+
+	private static double norm(double[] v) {
+		return Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+	}
+
+	/** Gaussian elimination of an n x n system given as rows {coefficients..., rhs}; null when singular. */
+	private static double[] solve(double[][] m) {
+		int n = m.length;
+		for (int c = 0; c < n; c++) {
+			int pivot = c;
+			for (int r = c + 1; r < n; r++) if (Math.abs(m[r][c]) > Math.abs(m[pivot][c])) pivot = r;
+			if (Math.abs(m[pivot][c]) < 1e-12) return null;
+			double[] t = m[c];
+			m[c] = m[pivot];
+			m[pivot] = t;
+			for (int r = 0; r < n; r++) {
+				if (r == c) continue;
+				double f = m[r][c] / m[c][c];
+				for (int k = c; k <= n; k++) m[r][k] -= f * m[c][k];
+			}
+		}
+		double[] x = new double[n];
+		for (int i = 0; i < n; i++) x[i] = m[i][n] / m[i][i];
+		return x;
 	}
 
 	/** {@code d} past the soft limit eased toward {@code full} without ever reaching it. */

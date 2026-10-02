@@ -34,7 +34,13 @@ public final class DragonRenderer extends GeoReplacedEntityRenderer<EnderDragon,
 	public DragonRenderer(EntityRendererProvider.Context context) {
 		super(context, new DragonModel(), new ReplacedEnderDragon());
 		addRenderLayer(new AutoGlowingGeoLayer<>(this));
+		addRenderLayer(new HeatGlowLayer(this));
 		this.shadowRadius = 0;
+	}
+
+	/** The dragon being drawn (for the render layers, which get the stand-in animatable). */
+	EnderDragon entity() {
+		return this.currentEntity;
 	}
 
 	/**

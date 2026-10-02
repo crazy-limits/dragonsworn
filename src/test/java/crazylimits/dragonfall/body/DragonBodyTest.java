@@ -69,4 +69,49 @@ class DragonBodyTest {
 		}
 		assertTrue(body.pitch(1) < -10, "head and body tilt forward: " + body.pitch(1));
 	}
+
+	@Test
+	void inABankTheInsideWingSweepsBackAndTheOutsideReachesForward() {
+		double[] w = new double[6];
+		circle(4.0, 1.0, 60, DragonBody.Mode.FLIGHT).wingTurn(1, w);
+		// a right turn: the right wing is inside
+		assertTrue(w[3] > 5 && w[4] < -5, "inside (right) swept back, hand down");
+		assertTrue(w[0] < 0 && w[1] > 0, "outside (left) forward, hand up");
+		double[] none = new double[6];
+		circle(4.0, 1.0, 60, DragonBody.Mode.GROUND).wingTurn(1, none);
+		for (double v : none) assertEquals(0.0, v, 1e-9, "only in flight");
+	}
+
+	@Test
+	void rollingInTwistsTheWingsAgainstTheRoll() {
+		// just started a right turn: still rolling right
+		double[] w = new double[6];
+		DragonBody body = circle(0.0, 1.0, 40, DragonBody.Mode.FLIGHT);
+		double yaw = 0, x = 0, z = -40;
+		for (int i = 0; i < 6; i++) {
+			yaw += 4.0;
+			x += Math.sin(Math.toRadians(yaw));
+			z -= Math.cos(Math.toRadians(yaw));
+			body.tick(yaw, x, 80, z, DragonBody.Mode.FLIGHT);
+		}
+		body.wingTurn(1, w);
+		assertTrue(w[5] < 0 && w[2] > 0, "right wing leading edge down, left up: " + w[2] + " " + w[5]);
+	}
+
+	@Test
+	void theHeadLooksIntoTheTurnAndTheTailRuddersAsItTightens() {
+		DragonBody entering = circle(0.0, 1.0, 40, DragonBody.Mode.FLIGHT);
+		double yaw = 0, x = 0, z = -40;
+		for (int i = 0; i < 6; i++) {
+			yaw += 3.0;
+			x += Math.sin(Math.toRadians(yaw));
+			z -= Math.cos(Math.toRadians(yaw));
+			entering.tick(yaw, x, 80, z, DragonBody.Mode.FLIGHT);
+		}
+		double[] nx = new double[4], ny = new double[4], tx = new double[9], ty = new double[9];
+		entering.bends(1, nx, ny, tx, ty);
+		// the head end of the neck is already turned in before the body has caught up
+		assertTrue(Math.hypot(nx[3], ny[3]) > 3, "head leads: " + nx[3] + " " + ny[3]);
+		assertTrue(Math.hypot(tx[0], ty[0]) > 0.5, "the rudder swings the tail's root out as the turn starts");
+	}
 }

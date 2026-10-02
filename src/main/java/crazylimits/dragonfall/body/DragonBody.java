@@ -17,6 +17,13 @@ import crazylimits.dragonfall.limb.GroundFit;
  *       are rotated into the body's frame, and the head is held closer to level than the body.</li>
  *   <li><b>Pitch</b> follows the climb or dive, and the body leans forward when it speeds up (taking
  *       off forward from a hover, accelerating out of a glide).</li>
+ *   <li><b>Turning with every part</b> (birds: the head turns first and the body follows about a beat
+ *       later; the tail twists against the roll as it starts; the wing inside the turn folds a little).
+ *       The head leads by {@link #HEAD_LEAD} ticks of the turn rate, on top of the lag; the tail is a
+ *       rudder, swung out further while a turn tightens and back while it opens ({@link #RUDDER}); the
+ *       wings turn asymmetric ({@link #wingTurn}): the inside one swept back with its hand drooping, the
+ *       outside one reaching forward, and both twisted against the roll rate, the way a roll is started
+ *       and stopped.</li>
  *   <li><b>Wings against the pitch.</b> In the air the shoulders turn about their X axis against the
  *       body's whole pitch (keyframed and procedural) so the wings stay level with the ground: chest up,
  *       wings tilt forward; nose down, back. The shoulder only turns {@link #WING_FLEX} degrees.</li>
@@ -41,6 +48,17 @@ public final class DragonBody {
 	public static final double HEAD_LEVELING = 0.6;
 	/** How far a shoulder can turn against the body's pitch, degrees (the muscles' reach). */
 	public static final double WING_FLEX = 35.0;
+	/** Ticks of the current turn rate the head looks ahead by, and the most it leads (degrees). */
+	public static final double HEAD_LEAD = 5.0, MAX_HEAD_LEAD = 30.0;
+	/** How the head's lead is shared down the neck, base to head: the head end turns most. */
+	private static final double[] NECK_LEAD = {0.1, 0.2, 0.3, 0.4};
+	/** Degrees of rudder per degree/tick of tightening turn, on the first tail segments (root to tip). */
+	public static final double RUDDER = 6.0;
+	private static final double[] RUDDER_SHARE = {0.35, 0.3, 0.2, 0.1, 0.05};
+	/** Fully banked (degrees) the wings are fully asymmetric: inside swept back / hand down, outside forward / up. */
+	static final double WING_TURN_BANK = 50.0, INSIDE_SWEEP = 12.0, INSIDE_DROOP = 14.0, OUTSIDE_REACH = 6.0, OUTSIDE_LIFT = 5.0;
+	/** Degrees of twist per degree/tick of roll, and its limit. */
+	static final double ROLL_TWIST = 2.5, MAX_ROLL_TWIST = 12.0;
 	private static final int SIZE = 48;
 
 	private final double[] yaw = new double[SIZE], x = new double[SIZE], y = new double[SIZE], z = new double[SIZE];
@@ -48,9 +66,17 @@ public final class DragonBody {
 	private int latest = -1;
 	private double lastRawYaw;
 	private double flight, bank, prevBank, lean, smoothPitch, lastSpeed, airborne, prevAirborne;
+	/** The steering's turn rate (degrees/tick, smoothed), a slower copy of it, and the roll rate. */
+	private double turn, turnSlow, rollRate;
+	/** The jaw hold's shake ({@link Grip}): on or off, its weight easing in and out, and its clock (ticks). */
+	private boolean shaking;
+	private double shake, prevShake, shakeTicks;
 
 	/** Records this tick. Call once per game tick after the dragon moved. */
 	public void tick(double yawDegrees, double px, double py, double pz, Mode mode) {
+		prevShake = shake;
+		shake += ((shaking ? 1.0 : 0.0) - shake) * 0.25;
+		shakeTicks = shake > 1e-3 ? shakeTicks + 1.0 : 0.0;
 		if (latest < 0 || teleported(px, py, pz)) {
 			reset(yawDegrees, px, py, pz);
 			return;
@@ -69,11 +95,15 @@ public final class DragonBody {
 		airborne += ((mode == Mode.GROUND ? 0.0 : 1.0) - airborne) * 0.15;
 
 		// bank, from the body's turn rate and speed
-		double turn = (at(yaw, BODY_LAG - 1) - at(yaw, BODY_LAG + 1)) / 2.0;
+		double bodyTurn = (at(yaw, BODY_LAG - 1) - at(yaw, BODY_LAG + 1)) / 2.0;
 		double speed = Math.hypot(at(x, BODY_LAG - 1) - at(x, BODY_LAG + 1), at(z, BODY_LAG - 1) - at(z, BODY_LAG + 1)) / 2.0;
-		double bankTarget = flight * Math.toDegrees(Math.atan(speed * Math.toRadians(turn) / G));
+		double bankTarget = flight * Math.toDegrees(Math.atan(speed * Math.toRadians(bodyTurn) / G));
 		prevBank = bank;
 		bank += (clamp(bankTarget, MAX_BANK) - bank) * 0.18;
+		rollRate += (bank - prevBank - rollRate) * 0.4;
+		// the steering (the head's), smoothed
+		turn += (yaw[latest] - at(yaw, 1) - turn) * 0.3;
+		turnSlow += (turn - turnSlow) * 0.08;
 
 		// pitch: the climb or dive now (the body takes it BODY_LAG later), plus the forward lean
 		double nowSpeed = Math.hypot(x[latest] - at(x, 2), z[latest] - at(z, 2)) / 2.0;
@@ -108,6 +138,16 @@ public final class DragonBody {
 		latest = 0;
 		lastRawYaw = yawDegrees;
 		bank = prevBank = lean = smoothPitch = lastSpeed = airborne = prevAirborne = 0.0;
+		turn = turnSlow = rollRate = 0.0;
+	}
+
+	/** Shakes the prey held in the jaws (the neck throws the head side to side), or stops. */
+	public void setShaking(boolean shaking) {
+		this.shaking = shaking;
+	}
+
+	private double shakeWeight(float partialTick) {
+		return prevShake + (shake - prevShake) * partialTick;
 	}
 
 	/** Body yaw (the model's facing) at render time {@code partialTick}. Continuous, not wrapped. */
@@ -139,13 +179,28 @@ public final class DragonBody {
 		double sin = Math.sin(phi), cos = Math.cos(phi);
 		double back = 1.0 - partialTick;
 		int neck = neckX.length;
+		// the head looks ahead into the turn it is making
+		double lead = clamp(HEAD_LEAD * turn, MAX_HEAD_LEAD);
 		for (int i = 1; i <= neck; i++) {
 			double newer = BODY_LAG * (1.0 - (double) i / neck) + back, older = BODY_LAG * (1.0 - (double) (i - 1) / neck) + back;
-			bend(at(yaw, newer) - at(yaw, older), at(pitch, newer) - at(pitch, older), sin, cos, MAX_NECK_BEND, neckX, neckY, i - 1);
+			double share = i - 1 < NECK_LEAD.length ? NECK_LEAD[i - 1] : 0.0;
+			bend(at(yaw, newer) - at(yaw, older) + lead * share, at(pitch, newer) - at(pitch, older), sin, cos, MAX_NECK_BEND, neckX, neckY, i - 1);
 		}
+		// the rudder: swung out while the turn tightens (it helps yaw the body round), back as it opens
+		double rudder = -RUDDER * (turn - turnSlow) * flight;
 		for (int j = 1; j <= tailX.length; j++) {
 			double older = BODY_LAG + TAIL_STEP * j + back, newer = BODY_LAG + TAIL_STEP * (j - 1) + back;
-			bend(at(yaw, older) - at(yaw, newer), at(pitch, older) - at(pitch, newer), sin, cos, MAX_TAIL_BEND, tailX, tailY, j - 1);
+			double share = j - 1 < RUDDER_SHARE.length ? RUDDER_SHARE[j - 1] : 0.0;
+			bend(at(yaw, older) - at(yaw, newer) + rudder * share, at(pitch, older) - at(pitch, newer), sin, cos, MAX_TAIL_BEND, tailX, tailY, j - 1);
+		}
+		// the jaw hold's shake, on top
+		double w = shakeWeight(partialTick);
+		if (w > 1e-3) {
+			double t = shakeTicks - 1.0 + partialTick;
+			for (int i = 0; i < neck; i++) {
+				neckY[i] += Grip.shakeYaw(i, t, w);
+				neckX[i] += Grip.shakePitch(t, w);
+			}
 		}
 	}
 
@@ -158,9 +213,29 @@ public final class DragonBody {
 		return -air * clamp(keyframedPitch + pitch(partialTick), WING_FLEX);
 	}
 
+	/**
+	 * The wings' share of a turn, editor degrees per wing, to add to the keyframes: {@code out} = left
+	 * sweep (+ back), left hand (+ up), left twist (+ leading edge up), then the same for the right. In a
+	 * bank the wing inside the turn sweeps back with its hand drooping and the outside one reaches
+	 * forward; while the roll changes, the wing that must drop twists its leading edge down and the other
+	 * up. Only in flight.
+	 */
+	public void wingTurn(float partialTick, double[] out) {
+		double k = flight * clamp(roll(partialTick) / WING_TURN_BANK, 1.0);
+		double right = Math.max(k, 0.0), left = Math.max(-k, 0.0);
+		double twist = flight * clamp(ROLL_TWIST * rollRate, MAX_ROLL_TWIST);
+		out[0] = INSIDE_SWEEP * left - OUTSIDE_REACH * right;
+		out[1] = -INSIDE_DROOP * left + OUTSIDE_LIFT * right;
+		out[2] = twist;
+		out[3] = INSIDE_SWEEP * right - OUTSIDE_REACH * left;
+		out[4] = -INSIDE_DROOP * right + OUTSIDE_LIFT * left;
+		out[5] = -twist;
+	}
+
 	/** How far the head rolls back toward level, degrees (counter to {@link #roll}). */
 	public double headRoll(float partialTick) {
-		return HEAD_LEVELING * roll(partialTick);
+		double w = shakeWeight(partialTick);
+		return HEAD_LEVELING * roll(partialTick) + (w > 1e-3 ? Grip.shakeRoll(shakeTicks - 1.0 + partialTick, w) : 0.0);
 	}
 
 	/**

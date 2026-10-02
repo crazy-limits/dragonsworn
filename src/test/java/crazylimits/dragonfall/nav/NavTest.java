@@ -73,6 +73,38 @@ class NavTest {
 	}
 
 	@Test
+	void theBodyDoesNotSqueezeThroughAGapOnlyItsFeetFit() {
+		World w = new World();
+		w.box(10, 64, -30, 11, 72, -2);                      // a wall with a 3-block gap at z = -1..1
+		w.box(10, 64, 2, 11, 72, 30);
+		GroundPlanner ground = new GroundPlanner(w);
+		assertEquals(BlockGrid.NO_GROUND, ground.stand(10, 0), "the body is wider than the gap");
+		List<int[]> path = ground.plan(0, 0, 20, 0, 1.5, 6000);
+		for (int[] p : path) assertFalse(p[0] >= 8 && p[0] <= 13 && Math.abs(p[2]) < 30, "no squeezing through: " + p[0] + "," + p[2]);
+
+		World wide = new World();
+		wide.box(10, 64, -30, 11, 72, -4);                   // a 7-block gap: room enough
+		wide.box(10, 64, 4, 11, 72, 30);
+		GroundPlanner through = new GroundPlanner(wide);
+		List<int[]> straight = through.plan(0, 0, 20, 0, 1.5, 6000);
+		assertFalse(straight.isEmpty());
+		int[] end = straight.get(straight.size() - 1);
+		assertTrue(Math.hypot(end[0] - 20, end[2]) <= 1.5, "it walks through the wide gap");
+		for (int[] p : straight) assertTrue(Math.abs(p[2]) <= 3, "straight through, not round: " + p[2]);
+	}
+
+	@Test
+	void aLowStepFitsUnderTheBellyButAWallBesideItDoesNot() {
+		World w = new World();
+		w.box(2, 64, 0, 2, 64, 0);                           // a single block beside the feet
+		GroundPlanner ground = new GroundPlanner(w);
+		assertEquals(64, ground.stand(0, 0));
+		World post = new World();
+		post.box(2, 64, 0, 2, 66, 0);                        // a post where the body is
+		assertEquals(BlockGrid.NO_GROUND, new GroundPlanner(post).stand(0, 0));
+	}
+
+	@Test
 	void groundPathClimbsGentleStepsButNotCliffs() {
 		World w = new World();
 		w.box(5, 64, -20, 40, 64, 20);                       // one step up: fine

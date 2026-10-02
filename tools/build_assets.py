@@ -3,7 +3,7 @@
     python3 tools/build_assets.py
 
 Needs Pillow. Steps: build_wings.py (geometry + texture with the fan-wing slices), anims.py (all
-animations, the walk solved by IK), then copy into the resource roots:
+animations, the walk solved by IK), then copy into the resource roots, then heat.py (the breath's heat glow):
 
 * src/gecko4/resources  -- GeckoLib 4 (Minecraft 1.21.1): assets/<ns>/geo, assets/<ns>/animations
 * src/gecko5/resources  -- GeckoLib 5 (1.21.2+): assets/<ns>/geckolib/models, .../geckolib/animations
@@ -39,3 +39,5 @@ copy('ender_dragon.geo.json', 'src', 'gecko5', 'resources', 'assets', NS, 'gecko
 copy('ender_dragon.animation.json', 'src', 'gecko5', 'resources', 'assets', NS, 'geckolib', 'animations', 'entity', 'ender_dragon.animation.json')
 copy('ender_dragon.png', 'src', 'mc', 'shared', 'resources', 'assets', NS, 'textures', 'entity', 'ender_dragon.png')
 copy('ender_dragon_glowmask.png', 'src', 'mc', 'shared', 'resources', 'assets', NS, 'textures', 'entity', 'ender_dragon_glowmask.png')
+# the heat glow is baked from the copied model and texture
+subprocess.run([sys.executable, os.path.join(HERE, 'heat.py')], check=True, cwd=HERE)

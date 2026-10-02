@@ -20,6 +20,8 @@ public final class DragonData {
 	public static final EntityDataAccessor<Integer> VOICE;
 	/** Where the bite or tail strike playing is aimed, relative to the dragon's position (NaN: no aim). */
 	public static final EntityDataAccessor<Vector3f> STRIKE;
+	/** What the talons or jaws hold or reach for, and the prey's id ({@code body/Grip#encode}); 0: nothing. */
+	public static final EntityDataAccessor<Integer> GRIP;
 	public static final Vector3f NO_STRIKE = new Vector3f(Float.NaN, Float.NaN, Float.NaN);
 
 	static {
@@ -30,6 +32,7 @@ public final class DragonData {
 		LOOK = SynchedEntityData.defineId(EnderDragon.class, EntityDataSerializers.INT);
 		VOICE = SynchedEntityData.defineId(EnderDragon.class, EntityDataSerializers.INT);
 		STRIKE = SynchedEntityData.defineId(EnderDragon.class, EntityDataSerializers.VECTOR3);
+		GRIP = SynchedEntityData.defineId(EnderDragon.class, EntityDataSerializers.INT);
 		if (FLIGHT.id() <= vanilla.id()) throw new IllegalStateException("Dragonfall dragon data defined too early");
 	}
 

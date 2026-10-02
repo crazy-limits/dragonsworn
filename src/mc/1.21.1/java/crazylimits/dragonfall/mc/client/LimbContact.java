@@ -33,7 +33,7 @@ public final class LimbContact {
 	public static boolean enabled;
 
 	/** One tick's measurement: per limb, the lowest point's height over the ground under it (negative: sunk in) and that ground's height. */
-	public record Sample(int tick, String anim, double[] gap, double[] ground) {}
+	public record Sample(int tick, String anim, double[] gap, double[] ground, double[][] feet, boolean[] stepping, float yaw) {}
 
 	private static final List<Sample> SAMPLES = new ArrayList<>();
 
@@ -74,7 +74,14 @@ public final class LimbContact {
 			ground[i] = groundTop(dragon.level(), at[0], at[1] + 2.0, at[2]);
 		}
 		String anim = DragonfallDragon.brain(dragon).choice().anim().name().toLowerCase(Locale.ROOT);
-		SAMPLES.add(new Sample(dragon.tickCount, anim, gap, ground));
+		// where each foot (ankle, wrist claw) is drawn, and whether it is in a turn's step
+		double[][] feet = new double[ROOTS.length][];
+		boolean[] stepping = new boolean[ROOTS.length];
+		for (int i = 0; i < ROOTS.length; i++) {
+			feet[i] = LimbAnimator.footPoint(model, dragon, i, partialTick);
+			stepping[i] = LimbAnimator.stepping(dragon, i);
+		}
+		SAMPLES.add(new Sample(dragon.tickCount, anim, gap, ground, feet, stepping, (float) DragonfallDragon.brain(dragon).body.yaw(partialTick)));
 	}
 
 	private static void collect(GeoBone bone, List<GeoBone> out) {

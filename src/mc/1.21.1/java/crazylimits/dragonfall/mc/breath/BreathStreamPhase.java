@@ -47,6 +47,10 @@ public class BreathStreamPhase extends AbstractDragonSittingPhase {
 	private int lastStreamTick = Integer.MIN_VALUE / 2;
 	/** Server: where the stream is aimed (world), or null. */
 	private Vec3 aim;
+	/** Who the stream is poured at, when given ({@link #setTarget}); else the nearest player. */
+	private LivingEntity target;
+	/** The body is turning after a target that left the neck's reach. */
+	private boolean turning;
 
 	public BreathStreamPhase(EnderDragon dragon) {
 		super(dragon);
@@ -61,6 +65,8 @@ public class BreathStreamPhase extends AbstractDragonSittingPhase {
 	public void begin() {
 		ticks = 0;
 		aim = null;
+		target = null;
+		turning = false;
 		if (dragon.tickCount - lastStreamTick > NEW_LANDING_TICKS) streams = 0;
 		streams++;
 	}
@@ -80,6 +86,11 @@ public class BreathStreamPhase extends AbstractDragonSittingPhase {
 		return dragon.tickCount - lastStreamTick > NEW_LANDING_TICKS ? 0 : streams;
 	}
 
+	/** Pours the stream at {@code target} (any living thing) instead of the nearest player. */
+	public void setTarget(LivingEntity target) {
+		this.target = target;
+	}
+
 	/** Ticks since the phase began, on either side. */
 	public int ticks() {
 		return ticks;
@@ -88,10 +99,14 @@ public class BreathStreamPhase extends AbstractDragonSittingPhase {
 	@Override
 	public void doServerTick() {
 		ticks++;
-		LivingEntity target = dragon.level().getNearestPlayer(TARGETING, dragon, dragon.getX(), dragon.getY(), dragon.getZ());
+		LivingEntity target = this.target != null && this.target.isAlive() ? this.target
+				: dragon.level().getNearestPlayer(TARGETING, dragon, dragon.getX(), dragon.getY(), dragon.getZ());
 		if (target != null && ticks < BreathAttack.WINDUP_TICKS + BreathAttack.STREAM_TICKS) {
+			// the neck follows the target; the body only turns once the target leaves the neck's reach
+			double dx = target.getX() - dragon.getX(), dz = target.getZ() - dragon.getZ();
+			turning = BreathAttack.bodyTurns(BreathAttack.offFacing(dragon.getYRot(), dx, dz), turning);
 			float step = ticks < BreathAttack.WINDUP_TICKS ? BreathAttack.WINDUP_TURN : BreathAttack.STREAM_TURN;
-			dragon.setYRot(BreathAttack.turnToward(dragon.getYRot(), target.getX() - dragon.getX(), target.getZ() - dragon.getZ(), step));
+			if (turning) dragon.setYRot(BreathAttack.turnToward(dragon.getYRot(), dx, dz, step));
 			// the aim follows the target's body, a little above its feet; quick while inhaling, slow while pouring
 			Vec3 at = target.position().add(0.0, target.getBbHeight() * 0.3, 0.0);
 			double speed = ticks < BreathAttack.WINDUP_TICKS ? BreathAttack.AIM_SPEED * 3.0 : BreathAttack.AIM_SPEED;

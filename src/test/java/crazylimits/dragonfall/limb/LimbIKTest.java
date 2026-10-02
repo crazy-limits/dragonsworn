@@ -156,4 +156,46 @@ class LimbIKTest {
 		double[] back = Affine.apply(Affine.invertRigid(j.local()), p, new double[3]);
 		assertArrayEquals(new double[]{0, 10, -5}, back, 1e-9);
 	}
+
+	@Test
+	void aLegReachesSidewaysBySplayingAtTheHip() {
+		double[] parent = body();
+		Joint thigh = thigh(), shin = shin(), foot = foot();
+		double[] start = ankle(parent, thigh, shin, foot);
+		// a turn's step: the ankle 8 px out to the side and 6 px forward of where the animation has it
+		double[] target = {start[0] - 8, start[1] + 4, start[2] - 3};
+		double left = LimbIK.solveLegReach(parent, thigh, shin, foot, target);
+		assertTrue(left < 1e-6, "reached: " + left);
+		assertArrayEquals(target, ankle(parent, thigh, shin, foot), 1e-6);
+		assertTrue(Math.abs(thigh.rot[2]) > 1 && Math.abs(thigh.rot[2]) <= LimbIK.MAX_SPLAY, "splayed: " + thigh.rot[2]);
+		// and the animated pose is still a fixed point
+		Joint t2 = thigh(), s2 = shin(), f2 = foot();
+		LimbIK.solveLegReach(parent, t2, s2, f2, start);
+		assertEquals(0.0, t2.rot[2], 1e-6);
+		assertEquals(-20, t2.rot[0], 1e-6);
+	}
+
+	@Test
+	void aPlantedWristStaysPutWhateverWayTheBodyTurns() {
+		double[] parent = body();
+		// the left arm as built (file x negated): shoulder, the elbow hinge 56 px out, the claw beyond it
+		double[] contact = {-140, 50, -60};
+		Joint shoulder0 = joint(-12, 65, -22, -40, -12, -25), elbow0 = joint(-68, 65, -22, 0, 0, -106);
+		double[] start = Affine.apply(Affine.mul(Affine.mul(parent, shoulder0.local()), elbow0.local()), contact, new double[3]);
+		// the body turned over the wrist: it must now be found forward, back, in or out of where it was
+		double[][] moves = {{0, 0, -12}, {0, 0, 12}, {10, 0, 0}, {-10, 0, 0}, {7, 4, -7}};
+		for (double[] mv : moves) {
+			Joint shoulder = joint(-12, 65, -22, -40, -12, -25), elbow = joint(-68, 65, -22, 0, 0, -106);
+			double[] target = {start[0] + mv[0], start[1] + mv[1], start[2] + mv[2]};
+			double left = LimbIK.solveArmReach(parent, shoulder, elbow, contact, target);
+			double[] got = Affine.apply(Affine.mul(Affine.mul(parent, shoulder.local()), elbow.local()), contact, new double[3]);
+			assertArrayEquals(target, got, 1e-2, "moved " + java.util.Arrays.toString(mv) + " (left " + left + ")");
+			assertEquals(0.0, elbow.rot[0], 0.0, "the elbow only turns about Z");
+			assertEquals(0.0, elbow.rot[1], 0.0);
+		}
+		Joint shoulder = joint(-12, 65, -22, -40, -12, -25), elbow = joint(-68, 65, -22, 0, 0, -106);
+		LimbIK.solveArmReach(parent, shoulder, elbow, contact, start);
+		assertArrayEquals(new double[]{-40, -12, -25}, shoulder.rot, 1e-6, "the animated pose is a fixed point");
+		assertEquals(-106, elbow.rot[2], 1e-6);
+	}
 }

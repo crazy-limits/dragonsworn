@@ -1,8 +1,14 @@
 {
 	"textures": [
-		"dragonfall:void_flame_0",
-		"dragonfall:void_flame_1",
-		"dragonfall:void_flame_2",
-		"dragonfall:void_flame_3"
+		"dragonfall:void_breath_0",
+		"dragonfall:void_breath_1",
+		"dragonfall:void_breath_2",
+		"dragonfall:void_breath_3",
+		"dragonfall:void_breath_4",
+		"dragonfall:void_breath_5",
+		"dragonfall:void_breath_6",
+		"dragonfall:void_breath_7",
+		"dragonfall:void_breath_8",
+		"dragonfall:void_breath_9"
 	]
 }

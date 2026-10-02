@@ -13,5 +13,6 @@ public final class DragonfallCommon {
 		// phase ids are handed out in registration order: keep this order identical on every side
 		DragonPhases.register();
 		BreathStreamPhase.register();
+		DragonPhases.registerLate();
 	}
 }

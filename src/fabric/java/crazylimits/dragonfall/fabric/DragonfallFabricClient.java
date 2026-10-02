@@ -4,6 +4,7 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import crazylimits.dragonfall.anim.DragonCommand;
 import crazylimits.dragonfall.mc.breath.BreathParticles;
 import crazylimits.dragonfall.mc.breath.client.VoidFlameParticle;
+import crazylimits.dragonfall.mc.client.ArenaTour;
 import crazylimits.dragonfall.mc.client.DragonRenderer;
 import crazylimits.dragonfall.mc.client.Showcase;
 import net.fabricmc.api.ClientModInitializer;
@@ -23,6 +24,7 @@ public final class DragonfallFabricClient implements ClientModInitializer {
 		ParticleFactoryRegistry.getInstance().register(BreathParticles.VOID_BREATH, VoidFlameParticle.Breath::new);
 		ParticleFactoryRegistry.getInstance().register(BreathParticles.VOID_FLAME, VoidFlameParticle.Cloud::new);
 		if (Showcase.ENABLED) ClientTickEvents.END_CLIENT_TICK.register(Showcase::tick);
+		if (ArenaTour.ENABLED) ClientTickEvents.END_CLIENT_TICK.register(ArenaTour::tick);
 
 		ClientCommandRegistrationCallback.EVENT.register((dispatcher, registry) -> dispatcher.register(
 				ClientCommandManager.literal("dragonfall").then(ClientCommandManager.literal("anim")

@@ -64,8 +64,17 @@ class DragonVoiceTest {
 
 	@Test
 	void theTakeoffPushesWithLegsAndWings() {
-		assertEquals(1, cues(DragonAnim.TAKEOFF, 1.4, DragonVoice.Cue.WING).size());
-		assertEquals(1, cues(DragonAnim.TAKEOFF, 1.4, DragonVoice.Cue.STEP_HIND).size());
+		assertEquals(1, cues(DragonAnim.TAKEOFF, DragonAnim.TAKEOFF_SECONDS, DragonVoice.Cue.WING).size());
+		assertEquals(1, cues(DragonAnim.TAKEOFF, DragonAnim.TAKEOFF_SECONDS, DragonVoice.Cue.STEP_HIND).size());
+	}
+
+	@Test
+	void theLandingBrakesStrikesAndPlantsItsHands() {
+		assertEquals(1, cues(DragonAnim.LAND, DragonAnim.LAND_SECONDS + 0.5, DragonVoice.Cue.WING).size());
+		List<double[]> strike = cues(DragonAnim.LAND, DragonAnim.LAND_SECONDS + 0.5, DragonVoice.Cue.STEP_HIND);
+		assertEquals(1, strike.size());
+		assertEquals(DragonAnim.LAND_TOUCH_SECONDS + DragonAnim.BLEND_TICKS / 20.0, strike.get(0)[0], 0.051, "with the feet");
+		assertEquals(1, cues(DragonAnim.LAND, DragonAnim.LAND_SECONDS + 0.5, DragonVoice.Cue.STEP_FRONT).size());
 	}
 
 	@Test

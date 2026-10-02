@@ -8,6 +8,7 @@ import crazylimits.dragonfall.anim.DragonAnimSelector;
 import crazylimits.dragonfall.anim.DragonAnimSelector.Kind;
 import crazylimits.dragonfall.anim.DragonVoice;
 import crazylimits.dragonfall.body.DragonBody;
+import crazylimits.dragonfall.body.Grip;
 import crazylimits.dragonfall.body.PartSolver;
 import crazylimits.dragonfall.body.PoseTrack;
 import crazylimits.dragonfall.body.Strike;
@@ -19,6 +20,7 @@ import crazylimits.dragonfall.mc.breath.BreathStreamPhase;
 import crazylimits.dragonfall.mc.phase.DragonfallPhase;
 import crazylimits.dragonfall.mc.phase.GroundApproachPhase;
 import crazylimits.dragonfall.mc.phase.RoamPhase;
+import crazylimits.dragonfall.mc.phase.SnatchPhase;
 import crazylimits.dragonfall.nav.AirPlanner;
 import crazylimits.dragonfall.nav.BlockGrid;
 import crazylimits.dragonfall.nav.LandingSite;
@@ -76,6 +78,20 @@ public final class DragonBrain {
 	static final double HOVER_GRAVITY = 0.01, HOVER_LIFT = HOVER_GRAVITY / (0.4 * 2 / Math.PI);
 	/** Parts that make up the solid hull: head, both necks, chest, hips, tail root. */
 	private static final int[] HULL = {0, 1, 8, 2, 9, 3};
+	/** Walking: the hull without the tail root (the tail lays itself round blocks, {@link Tail}). */
+	private static final int[] WALK_HULL = {0, 1, 8, 2, 9};
+	/** Standing: what is pushed out of a wall it turned into (the head and neck bend away by themselves). */
+	private static final int[] GROUND_CORE = {8, 2, 9};
+	/** How far a hull caught in a block is pushed out per tick, at most (blocks; tried smallest first). */
+	private static final double[] PUSH_OUT = {0.15, 0.4, 0.8};
+	/** Ticks wedged in terrain (nothing frees it) before it may move through it to get out. */
+	private static final int ESCAPE_TICKS = 60;
+	/** Flight: how far ahead (ticks of its velocity) it looks for what it is about to fly into. */
+	private static final double LOOKAHEAD_TICKS = 14.0;
+	/** Ticks between checks that the way ahead is still clear, and between full replans of a route. */
+	private static final int CHECK_TICKS = 5, REPLAN_TICKS = 40;
+	/** Rise over run past which flight cannot climb to a waypoint: it hovers up instead. */
+	private static final double STEEP = 0.8;
 	private static final int MAX_BREAKS_PER_TICK = 64;
 	private static final TargetingConditions HUNT = TargetingConditions.forCombat().range(48.0);
 	private static final TargetingConditions ARENA_TARGET = TargetingConditions.forCombat().range(150.0);
@@ -89,6 +105,8 @@ public final class DragonBrain {
 	public final Strike strike = new Strike();
 	/** Hits taken (server): too many at once and a landed dragon takes off. */
 	public final HitTally hits = new HitTally();
+	/** What its talons or jaws hold (both sides, from {@link DragonData#GRIP}). */
+	public final PreyHold prey;
 	private final double[] groundHeights = new double[4];
 	private final FlightModel flight = new FlightModel();
 	private final PartSolver solver = new PartSolver();
@@ -113,11 +131,15 @@ public final class DragonBrain {
 	private int routeIndex;
 	private boolean routeClimb;
 	private Vec3 routeGoal;
-	private long routeCheckedAt = Long.MIN_VALUE;
-	private int stuckTicks;
+	private long routeCheckedAt = Long.MIN_VALUE, replanAt = Long.MIN_VALUE;
+	/** A swerve away from what is straight ahead, held until {@link #evadeUntil}. */
+	private Vec3 evade;
+	private long evadeUntil = Long.MIN_VALUE;
+	private int stuckTicks, wedgedTicks;
 
 	public DragonBrain(EnderDragon dragon) {
 		this.dragon = dragon;
+		this.prey = new PreyHold(dragon, this);
 	}
 
 	public EnderDragon dragon() {
@@ -164,11 +186,12 @@ public final class DragonBrain {
 		return Math.hypot(dragon.getX() - dragon.xo, dragon.getZ() - dragon.zo);
 	}
 
-	/** In a phase that attacks (the charge, the strafe, the perched breath): no roaring through it. */
+	/** In a phase that attacks (the charge, the strafe, the perched breath, the snatch, a hold): no roaring through it. */
 	public boolean attacking() {
 		EnderDragonPhase<?> phase = dragon.getPhaseManager().getCurrentPhase().getPhase();
 		return phase == EnderDragonPhase.CHARGING_PLAYER || phase == EnderDragonPhase.STRAFE_PLAYER
-				|| phase == EnderDragonPhase.SITTING_FLAMING || kind() == Kind.PERCH_BREATH;
+				|| phase == EnderDragonPhase.SITTING_FLAMING || kind() == Kind.PERCH_BREATH
+				|| phase == DragonPhases.SNATCH || prey.hold() != Grip.Hold.NONE;
 	}
 
 	/** On its feet: landed to fight or rest. */
@@ -176,11 +199,28 @@ public final class DragonBrain {
 		return kind() == Kind.GROUND;
 	}
 
-	private DragonBody.Mode bodyMode() {
+	/**
+	 * Feet on the ground as the model shows it (both sides): standing or walking, perched, the takeoff
+	 * until the jump, a running landing from the strike of its feet.
+	 */
+	public boolean footing() {
 		Kind kind = kind();
-		if (kind != Kind.AIR) return DragonBody.Mode.GROUND;
-		if (action() == DragonAnim.TAKEOFF) {
-			return clock.seconds() < DragonAnim.TAKEOFF_JUMP_SECONDS ? DragonBody.Mode.GROUND : DragonBody.Mode.HOVER;
+		if (kind == Kind.DYING) return false;
+		if (kind != Kind.AIR) return true;
+		DragonAnim action = action();
+		if (action == DragonAnim.TAKEOFF) return clock.anim() == DragonAnim.TAKEOFF && clock.seconds() < DragonAnim.TAKEOFF_JUMP_SECONDS;
+		// the model (and the runway's path) strike the ground after the blend into the landing
+		return action == DragonAnim.LAND && clock.anim() == DragonAnim.LAND
+				&& clock.seconds() >= DragonAnim.LAND_TOUCH_SECONDS + DragonAnim.BLEND_TICKS / 20.0;
+	}
+
+	private DragonBody.Mode bodyMode() {
+		if (footing()) return DragonBody.Mode.GROUND;
+		DragonAnim action = action();
+		if (action == DragonAnim.TAKEOFF) return DragonBody.Mode.HOVER;
+		// the flare of a running landing: no more banking, leaning into the braking
+		if (action == DragonAnim.LAND && clock.seconds() >= DragonAnim.LAND_FLARE_SECONDS + DragonAnim.BLEND_TICKS / 20.0) {
+			return DragonBody.Mode.HOVER;
 		}
 		return flightPlan().mode() == FlightModel.Mode.HOVER ? DragonBody.Mode.HOVER : DragonBody.Mode.FLIGHT;
 	}
@@ -216,10 +256,11 @@ public final class DragonBrain {
 	private void tickBody() {
 		if (bodyTickedAt == dragon.tickCount) return;
 		bodyTickedAt = dragon.tickCount;
+		body.setShaking(prey.hold() == Grip.Hold.JAW);
 		body.tick(dragon.getYRot(), dragon.getX(), dragon.getY(), dragon.getZ(), bodyMode());
 		clock.tick(choice(), flightPlan(), horizontalSpeed());
 		updateStrike();
-		boolean standing = kind() != Kind.AIR && kind() != Kind.DYING;
+		boolean standing = footing();
 		if (standing) sampleGround();
 		body.ground.tick(standing, groundHeights, dragon.getY());
 	}
@@ -264,8 +305,57 @@ public final class DragonBrain {
 			parts[i].setPos(dragon.getX() + offsets[i * 3], dragon.getY() + offsets[i * 3 + 1] - parts[i].getBbHeight() / 2.0,
 					dragon.getZ() + offsets[i * 3 + 2]);
 		}
-		if (!dragon.level().isClientSide) breakSoftBlocks(parts);
+		if (!dragon.level().isClientSide) {
+			breakSoftBlocks(parts);
+			pushOut(parts);
+		}
 	}
+
+	/**
+	 * The pose just placed may have turned or swung the hull into a wall (a turn swings the head and
+	 * hips, a wingbeat heaves the body): the dragon is pushed back out, a little per tick, the way that
+	 * frees the most. On its feet only sideways (its height is the ground's).
+	 */
+	private void pushOut(EnderDragonPart[] parts) {
+		boolean ground = onGround();
+		if (!ground && !collides(dragon.getPhaseManager().getCurrentPhase())) {
+			wedgedTicks = 0;
+			return;
+		}
+		BlockGrid grid = grid();
+		AABB[] hull = hull(ground ? GROUND_CORE : HULL);
+		int inside = overlap(grid, hull, Vec3.ZERO);
+		if (inside == 0) {
+			wedgedTicks = 0;
+			return;
+		}
+		Vec3 best = null;
+		int least = inside;
+		for (double d : PUSH_OUT) {
+			for (Vec3 dir : ground ? SIDEWAYS : AROUND) {
+				Vec3 shift = dir.scale(d);
+				int n = overlap(grid, hull, shift);
+				if (n < least) {
+					least = n;
+					best = shift;
+				}
+			}
+			if (least == 0) break;
+		}
+		if (best == null) {
+			wedgedTicks++;
+			return;
+		}
+		wedgedTicks = 0;
+		dragon.setPos(dragon.getX() + best.x, dragon.getY() + best.y, dragon.getZ() + best.z);
+		for (EnderDragonPart part : parts) part.setPos(part.getX() + best.x, part.getY() + best.y, part.getZ() + best.z);
+	}
+
+	private static final Vec3[] SIDEWAYS = {new Vec3(1, 0, 0), new Vec3(-1, 0, 0), new Vec3(0, 0, 1), new Vec3(0, 0, -1),
+			new Vec3(0.7071, 0, 0.7071), new Vec3(-0.7071, 0, 0.7071), new Vec3(0.7071, 0, -0.7071), new Vec3(-0.7071, 0, -0.7071)};
+	/** Up first: out of a ceiling or off the ground is the likelier way out in flight. */
+	private static final Vec3[] AROUND = {new Vec3(0, 1, 0), SIDEWAYS[0], SIDEWAYS[1], SIDEWAYS[2], SIDEWAYS[3],
+			SIDEWAYS[4], SIDEWAYS[5], SIDEWAYS[6], SIDEWAYS[7], new Vec3(0, -1, 0)};
 
 	/** World position of a part's center. */
 	public Vec3 partCenter(int part) {
@@ -299,21 +389,33 @@ public final class DragonBrain {
 	}
 
 	private static boolean blocked(BlockGrid grid, AABB box) {
+		return overlap(grid, box, false) > 0;
+	}
+
+	/** How many solid, unbreakable blocks {@code box} is in (stops at the first when {@code all} is false). */
+	private static int overlap(BlockGrid grid, AABB box, boolean all) {
+		int n = 0;
 		for (int x = Mth.floor(box.minX); x <= Mth.floor(box.maxX - 1e-7); x++) {
 			for (int y = Mth.floor(box.minY); y <= Mth.floor(box.maxY - 1e-7); y++) {
 				for (int z = Mth.floor(box.minZ); z <= Mth.floor(box.maxZ - 1e-7); z++) {
-					if (grid.blocked(x, y, z)) return true;
+					if (!grid.blocked(x, y, z)) continue;
+					if (!all) return 1;
+					n++;
 				}
 			}
 		}
-		return false;
+		return n;
 	}
 
 	// ---------------------------------------------------------------- end of tick
 
 	public void tickEnd() {
 		tickBody();     // dragons whose AI is off (or dying) still need a body for the renderer
-		if (dragon.level().isClientSide || dragon.isNoAi() || dragon.isDeadOrDying()) return;
+		if (dragon.level().isClientSide) return;
+		// a dying dragon lets go of what it holds
+		if (dragon.isDeadOrDying() && prey.hold() != Grip.Hold.NONE) prey.release(null);
+		prey.tick();
+		if (dragon.isNoAi() || dragon.isDeadOrDying()) return;
 		updateContext();
 		roarTick();
 		if (context == Context.WILD) wildTick();
@@ -328,6 +430,11 @@ public final class DragonBrain {
 		if (kind() != Kind.AIR || action() != null || attacking()) return;
 		if (--roarIn > 0) return;
 		roarIn = DragonVoice.AIR_ROAR_MIN_TICKS + dragon.getRandom().nextInt(DragonVoice.AIR_ROAR_SPREAD_TICKS);
+		roar();
+	}
+
+	/** A roar now, in flight (the jaw opens with it on every client). */
+	public void roar() {
 		dragon.getEntityData().set(DragonData.VOICE, dragon.getEntityData().get(DragonData.VOICE) + 1);
 	}
 
@@ -420,6 +527,7 @@ public final class DragonBrain {
 	/** One attack on a target from the wild circuit. */
 	private void attack(RoamPhase roam, LivingEntity target) {
 		double r = ThreadLocalRandom.current().nextDouble();
+		if (r < 0.15 && SnatchPhase.start(dragon, target)) return;
 		if (r < 0.4 && target.onGround() && tryGroundAssault(target)) return;
 		if (r < 0.7) {
 			roam.startPass(target);
@@ -441,6 +549,11 @@ public final class DragonBrain {
 		BlockPos origin = dragon.getFightOrigin();
 		Player player = dragon.level().getNearestPlayer(ARENA_TARGET, dragon, origin.getX(), origin.getY(), origin.getZ());
 		if (player == null || !player.onGround() || player.distanceToSqr(Vec3.atCenterOf(origin)) > 100 * 100) return;
+		// now and then a snatch instead of a landing
+		if (ThreadLocalRandom.current().nextDouble() < 0.3 && SnatchPhase.start(dragon, player)) {
+			groundCooldown = ThreadLocalRandom.current().nextInt(500, 900);
+			return;
+		}
 		if (tryGroundAssault(player)) {
 			boolean crystals = dragon.getDragonFight() != null && dragon.getDragonFight().getCrystalsAlive() > 0;
 			groundCooldown = crystals ? ThreadLocalRandom.current().nextInt(900, 1500) : ThreadLocalRandom.current().nextInt(400, 800);
@@ -455,8 +568,15 @@ public final class DragonBrain {
 		return true;
 	}
 
-	public void hurtBy(DamageSource source) {
+	/** A blow at part {@code part} (index into the parts; -1: the dragon itself), whether it hurts or not (server). */
+	public void hurtBy(DamageSource source, int part) {
 		if (source.getEntity() instanceof LivingEntity attacker && attacker != dragon) lastAttacker = attacker;
+		// someone else going for the head makes it drop what it holds in its jaws
+		boolean head = part == 0 || part == 1 || part == 8;
+		Entity by = source.getEntity();
+		if (head && !dragon.level().isClientSide && by != null && by != dragon && prey.hold() == Grip.Hold.JAW && by != prey.prey()) {
+			prey.release(new Vec3(0.0, 0.1, 0.0));
+		}
 	}
 
 	/** A hit that took health off (server). */
@@ -486,19 +606,31 @@ public final class DragonBrain {
 		Vec3 aim = collide ? route(target, tick) : target;
 		Vec3 v = dragon.getDeltaMovement();
 		FlightModel.Plan before = flight.plan();
-		FlightModel.Plan plan = flight.update(tick, v.y, dragon.yRotA * 0.1, v.horizontalDistance(), force(phase, target),
+		FlightModel.Force force = force(phase, target);
+		// a way round terrain that goes steeply up (over a wall it is facing): it rises on its wings,
+		// hovering; a steep climb the phase asked for itself (the snatch's) is flown
+		if (collide && force == FlightModel.Force.NONE && (aim != target || dragon.horizontalCollision) && steep(aim)) {
+			force = FlightModel.Force.HOVER;
+		}
+		FlightModel.Plan plan = flight.update(tick, v.y, dragon.yRotA * 0.1, v.horizontalDistance(), force,
 				ThreadLocalRandom.current());
 		if (plan != before) dragon.getEntityData().set(DragonData.FLIGHT, plan.encode());
 		if (plan.mode() == FlightModel.Mode.HOVER) hoverStep(phase, aim, tick, collide);
 		else flightStep(phase, aim, tick, collide);
 	}
 
-	/** Forces the wings into a mode outside of {@link #fly} (the jump of a takeoff). */
-	public void forceFlight(FlightModel.Force force) {
+	/**
+	 * Forces the wings into a mode outside of {@link #fly} (the jump of a takeoff), its beat already at
+	 * phase {@code u} (the takeoff's power stroke carries on into the hover's beat).
+	 */
+	public void forceFlight(FlightModel.Force force, double u) {
 		long tick = dragon.level().getGameTime();
 		FlightModel.Plan before = flight.plan();
 		FlightModel.Plan plan = flight.update(tick, 0, 0, 0, force, ThreadLocalRandom.current());
-		if (plan != before) dragon.getEntityData().set(DragonData.FLIGHT, plan.encode());
+		if (plan != before) {
+			flight.startAtPhase(tick, u);
+			dragon.getEntityData().set(DragonData.FLIGHT, plan.encode());
+		}
 	}
 
 	private FlightModel.Force force(DragonPhaseInstance phase, Vec3 target) {
@@ -511,6 +643,15 @@ public final class DragonBrain {
 		}
 		if (id == EnderDragonPhase.TAKEOFF || id == EnderDragonPhase.CHARGING_PLAYER) return FlightModel.Force.FLY;
 		return FlightModel.Force.NONE;
+	}
+
+	/**
+	 * Whether {@code aim} is too steeply above for flight to climb to ({@link #STEEP}), or the dragon is
+	 * pressed against a wall below it: flying on, it would only scrape up the face.
+	 */
+	private boolean steep(Vec3 aim) {
+		double dy = aim.y - dragon.getY(), horizontal = Math.hypot(aim.x - dragon.getX(), aim.z - dragon.getZ());
+		return dy > 4.0 && (dy > horizontal * STEEP || dragon.horizontalCollision);
 	}
 
 	/** Vanilla's portal landing, takeoff and death fly through the podium as before. */
@@ -588,7 +729,9 @@ public final class DragonBrain {
 	/**
 	 * Moves by {@code delta}, the hull stopped by solid blocks: blocked axes are dropped (slides along
 	 * walls), the vanilla collision flags are set (vanilla phases pick a new target on them) and the
-	 * route is replanned. A hull already stuck inside terrain moves freely so it can get out.
+	 * route is replanned. A hull already caught in a block (the pose swung it there) may move in any way
+	 * that does not take it deeper, so it never passes through; only one wedged for
+	 * {@link #ESCAPE_TICKS} (nothing pushes it out) moves freely to get out.
 	 */
 	public void move(Vec3 delta, boolean collide) {
 		if (!collide) {
@@ -596,21 +739,22 @@ public final class DragonBrain {
 			return;
 		}
 		BlockGrid grid = grid();
-		AABB[] hull = hull();
-		if (anyBlocked(grid, hull, Vec3.ZERO)) {
+		AABB[] hull = hull(HULL);
+		int inside = overlap(grid, hull, Vec3.ZERO);
+		if (inside > 0 && wedgedTicks > ESCAPE_TICKS) {
 			dragon.move(MoverType.SELF, delta.add(0.0, 0.08, 0.0));
 			stuck();
 			return;
 		}
-		if (!anyBlocked(grid, hull, delta)) {
+		if (overlap(grid, hull, delta) <= inside) {
 			dragon.move(MoverType.SELF, delta);
 			dragon.horizontalCollision = dragon.verticalCollision = false;
 			if (stuckTicks > 0) stuckTicks--;
 			return;
 		}
-		double my = anyBlocked(grid, hull, new Vec3(0.0, delta.y, 0.0)) ? 0.0 : delta.y;
-		double mx = anyBlocked(grid, hull, new Vec3(delta.x, my, 0.0)) ? 0.0 : delta.x;
-		double mz = anyBlocked(grid, hull, new Vec3(mx, my, delta.z)) ? 0.0 : delta.z;
+		double my = overlap(grid, hull, new Vec3(0.0, delta.y, 0.0)) > inside ? 0.0 : delta.y;
+		double mx = overlap(grid, hull, new Vec3(delta.x, my, 0.0)) > inside ? 0.0 : delta.x;
+		double mz = overlap(grid, hull, new Vec3(mx, my, delta.z)) > inside ? 0.0 : delta.z;
 		dragon.move(MoverType.SELF, new Vec3(mx, my, mz));
 		dragon.horizontalCollision = mx != delta.x || mz != delta.z;
 		dragon.verticalCollision = my != delta.y;
@@ -619,57 +763,142 @@ public final class DragonBrain {
 		stuck();
 	}
 
+	/**
+	 * A step on its feet by dx, dz (server): the body (head to hips) is stopped by solid blocks the
+	 * same way, sliding along a wall. Returns false when it was stopped (wholly or along one axis).
+	 */
+	public boolean walk(double dx, double dz) {
+		BlockGrid grid = grid();
+		AABB[] hull = hull(WALK_HULL);
+		int inside = overlap(grid, hull, Vec3.ZERO);
+		Vec3 delta = new Vec3(dx, 0.0, dz);
+		double mx = dx, mz = dz;
+		if (overlap(grid, hull, delta) > inside) {
+			mx = overlap(grid, hull, new Vec3(dx, 0.0, 0.0)) > inside ? 0.0 : dx;
+			mz = overlap(grid, hull, new Vec3(mx, 0.0, dz)) > inside ? 0.0 : dz;
+		}
+		dragon.setPos(dragon.getX() + mx, dragon.getY(), dragon.getZ() + mz);
+		boolean free = mx == dx && mz == dz;
+		dragon.horizontalCollision = !free;
+		return free;
+	}
+
 	private void stuck() {
 		stuckTicks++;
-		routeCheckedAt = Long.MIN_VALUE;   // plan again now
+		replanAt = Long.MIN_VALUE;   // plan again now
 	}
 
 	public int stuckTicks() {
 		return stuckTicks;
 	}
 
-	private AABB[] hull() {
+	private AABB[] hull(int[] ids) {
 		EnderDragonPart[] parts = dragon.getSubEntities();
-		AABB[] out = new AABB[HULL.length];
-		for (int i = 0; i < HULL.length; i++) out[i] = parts[HULL[i]].getBoundingBox().deflate(0.15);
+		AABB[] out = new AABB[ids.length];
+		for (int i = 0; i < ids.length; i++) out[i] = parts[ids[i]].getBoundingBox().deflate(0.15);
 		return out;
 	}
 
-	private static boolean anyBlocked(BlockGrid grid, AABB[] hull, Vec3 delta) {
-		for (AABB box : hull) {
-			if (blocked(grid, box.move(delta))) return true;
-		}
-		return false;
+	/** Solid blocks the hull, moved by {@code delta}, is in (counted per box). */
+	private static int overlap(BlockGrid grid, AABB[] hull, Vec3 delta) {
+		int n = 0;
+		for (AABB box : hull) n += overlap(grid, box.move(delta), true);
+		return n;
 	}
 
 	/**
 	 * Where to steer for {@code target}: straight at it when the way is clear (checked 48 blocks ahead),
-	 * else the next waypoint of a planned route around what is in the way; climbing when no route is found.
+	 * else the next waypoint of a planned route around what is in the way ({@link AirPlanner}); climbing
+	 * when no route is found. Between replans the route is kept while its next leg is clear, waypoints
+	 * already in straight view are skipped, and whatever its momentum is carrying it into within
+	 * {@link #LOOKAHEAD_TICKS} makes it swerve at once ({@link #swerve}) and plan again.
 	 */
 	private Vec3 route(Vec3 target, long tick) {
 		Vec3 center = dragon.position().add(0.0, BODY_CENTER, 0.0);
-		if (routeGoal == null || routeGoal.distanceToSqr(target) > 36.0 || tick - routeCheckedAt >= 10) {
+		double[] from = {center.x, center.y, center.z};
+		AirPlanner planner = null;
+		boolean replan = routeGoal == null || routeGoal.distanceToSqr(target) > 36.0 || tick >= replanAt;
+		if (!replan && tick - routeCheckedAt >= CHECK_TICKS) {
+			routeCheckedAt = tick;
+			planner = new AirPlanner(grid());
+			Vec3 ahead = center.add(dragon.getDeltaMovement().scale(LOOKAHEAD_TICKS));
+			if (!planner.lineClear(from, new double[]{ahead.x, ahead.y, ahead.z})) {
+				replan = true;
+			} else if (routeIndex < route.size() && !planner.lineClear(from, route.get(routeIndex))) {
+				replan = true;
+			}
+		}
+		if (replan) {
 			routeCheckedAt = tick;
 			routeGoal = target;
-			AirPlanner planner = new AirPlanner(grid());
-			double[] from = {center.x, center.y, center.z};
+			if (planner == null) planner = new AirPlanner(grid());
 			Vec3 goal = target.add(0.0, BODY_CENTER, 0.0);
-			Vec3 ahead = goal.subtract(center);
-			Vec3 probe = ahead.length() > 48.0 ? center.add(ahead.normalize().scale(48.0)) : goal;
+			Vec3 toGoal = goal.subtract(center);
+			Vec3 probe = toGoal.length() > 48.0 ? center.add(toGoal.normalize().scale(48.0)) : goal;
 			if (planner.lineClear(from, new double[]{probe.x, probe.y, probe.z})) {
 				route = List.of();
 				routeClimb = false;
+				replanAt = tick + CHECK_TICKS * 2;
 			} else {
-				route = planner.plan(from, new double[]{goal.x, goal.y, goal.z}, 700);
+				route = planner.plan(from, new double[]{goal.x, goal.y, goal.z}, 1500);
 				routeIndex = 0;
 				routeClimb = route.isEmpty();
+				replanAt = tick + REPLAN_TICKS;
+			}
+			// still carried toward a wall the new plan steers away from: swerve until it can turn
+			Vec3 v = dragon.getDeltaMovement();
+			Vec3 ahead = center.add(v.scale(LOOKAHEAD_TICKS));
+			if (v.lengthSqr() > 0.01 && !planner.lineClear(from, new double[]{ahead.x, ahead.y, ahead.z})) {
+				Vec3 next = routeClimb ? center.add(0.0, 12.0, 0.0)
+						: routeIndex < route.size() ? new Vec3(route.get(routeIndex)[0], route.get(routeIndex)[1], route.get(routeIndex)[2]) : goal;
+				evade = swerve(planner, center, v, next);
+				evadeUntil = evade == null ? Long.MIN_VALUE : tick + CHECK_TICKS * 2;
 			}
 		}
+		if (evade != null && tick < evadeUntil) return evade.subtract(0.0, BODY_CENTER, 0.0);
+		evade = null;
 		if (routeClimb) return dragon.position().add(dragon.getLookAngle().scale(-6.0)).add(0.0, 12.0, 0.0);
 		while (routeIndex < route.size() && distanceSq(center, route.get(routeIndex)) < 36.0) routeIndex++;
+		// a later waypoint already in straight view: cut the corner
+		if (planner != null) {
+			while (routeIndex + 1 < route.size() && planner.lineClear(from, route.get(routeIndex + 1))) routeIndex++;
+		}
 		if (routeIndex >= route.size()) return target;
 		double[] p = route.get(routeIndex);
 		return new Vec3(p[0], p[1] - BODY_CENTER, p[2]);
+	}
+
+	/**
+	 * A point to swerve to when its momentum carries it into terrain: the clear direction (turned up to
+	 * 90 degrees either way, pitched up or down, or straight up) nearest to where it wants to go next,
+	 * or null when none is clear.
+	 */
+	private static Vec3 swerve(AirPlanner planner, Vec3 center, Vec3 velocity, Vec3 next) {
+		double reach = Math.max(10.0, velocity.length() * LOOKAHEAD_TICKS);
+		Vec3 forward = velocity.normalize();
+		Vec3 want = next.subtract(center).normalize();
+		double[] from = {center.x, center.y, center.z};
+		Vec3 best = null;
+		double bestScore = -Double.MAX_VALUE;
+		for (int yaw = -90; yaw <= 90; yaw += 30) {
+			for (int pitch : new int[]{0, 35, -25, 70}) {
+				Vec3 dir = forward.yRot(yaw * Mth.DEG_TO_RAD);
+				double horizontal = Math.max(1e-3, dir.horizontalDistance());
+				double up = Math.tan(pitch * Mth.DEG_TO_RAD) * horizontal;
+				dir = new Vec3(dir.x, Mth.clamp(dir.y + up, -0.9, 3.0), dir.z).normalize();
+				Vec3 to = center.add(dir.scale(reach));
+				if (!planner.lineClear(from, new double[]{to.x, to.y, to.z})) continue;
+				// toward the next waypoint, and as little of a swerve as will do
+				double score = dir.dot(want) + 0.5 * dir.dot(forward);
+				if (score > bestScore) {
+					bestScore = score;
+					best = to;
+				}
+			}
+		}
+		if (best != null) return best;
+		Vec3 up = center.add(0.0, reach, 0.0);
+		return planner.lineClear(from, new double[]{up.x, up.y, up.z}) ? up : null;
 	}
 
 	private static double distanceSq(Vec3 a, double[] b) {

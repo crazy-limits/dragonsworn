@@ -83,6 +83,17 @@ loom {
 	if (providers.gradleProperty("dragonfall.showcase").isPresent) {
 		runs.named("client") {
 			vmArgs("-Ddragonfall.showcase=true")
+			// `-Pdragonfall.showcase=<stage>` runs only that stage (see Showcase.ONLY)
+			val only = providers.gradleProperty("dragonfall.showcase").get()
+			if (only.isNotBlank() && only != "true") vmArgs("-Ddragonfall.showcase.only=$only")
+			programArgs("--width", "1600", "--height", "900")
+		}
+	}
+	// `-Pdragonfall.arena`: a tour of the End's monoliths, photographed, then a dragon respawn that must
+	// rebuild them exactly (see ArenaTour.java).
+	if (providers.gradleProperty("dragonfall.arena").isPresent) {
+		runs.named("client") {
+			vmArgs("-Ddragonfall.arena=true")
 			programArgs("--width", "1600", "--height", "900")
 		}
 	}

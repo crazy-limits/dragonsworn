@@ -4,6 +4,7 @@ import crazylimits.dragonfall.Dragonfall;
 import crazylimits.dragonfall.anim.DragonAnim;
 import crazylimits.dragonfall.anim.DragonDebug;
 import crazylimits.dragonfall.body.DragonBody;
+import crazylimits.dragonfall.body.Grip;
 import crazylimits.dragonfall.body.PoseTrack;
 import crazylimits.dragonfall.body.Tail;
 import crazylimits.dragonfall.body.TailMotion;
@@ -24,8 +25,9 @@ import java.util.Arrays;
  * assets/dragonfall/{geo,animations,textures}/entity/ender_dragon.*
  *
  * <p>On top of the keyframes it bends the neck through turns, the head first ({@link DragonBody#bends}),
- * holds the head nearer level than a banked body, and turns the wings against the body's pitch
- * ({@link DragonBody#wingCounter}). The server places the hitboxes with the same numbers. Then
+ * holds the head nearer level than a banked body, turns the wings against the body's pitch
+ * ({@link DragonBody#wingCounter}) and into the turn ({@link DragonBody#wingTurn}: looks only, a few
+ * degrees the wing hitboxes leave out). The server places the hitboxes with the same numbers. Then
  * {@link LimbAnimator} plants the feet on the ground and turns the head. Last the tail, keyed straight in
  * every animation: its whole pose is procedural ({@link TailMotion}: the animation's motion, laid on the
  * real ground, trailing turns, swinging against the head, whipped by a strike) and kept out of blocks
@@ -41,6 +43,7 @@ public final class DragonModel extends DefaultedEntityGeoModel<ReplacedEnderDrag
 	private final double[] aimNeckX = new double[NECK.length + 1], aimNeckY = new double[NECK.length + 1];
 	private final double[] aimTailX = new double[TAIL.length], aimTailY = new double[TAIL.length];
 	private final double[] finalTailX = new double[TAIL.length], finalTailY = new double[TAIL.length];
+	private final double[] wingTurn = new double[6];
 
 	public DragonModel() {
 		super(ResourceLocation.fromNamespaceAndPath(Dragonfall.MOD_ID, "ender_dragon"));
@@ -74,10 +77,18 @@ public final class DragonModel extends DefaultedEntityGeoModel<ReplacedEnderDrag
 			add("left_wing", counter, 0.0, 0.0);
 			add("right_wing", counter, 0.0, 0.0);
 		}
+		// the wings' share of a turn: inside one swept back, outside one forward, twisted against the roll
+		body.wingTurn(partialTick, wingTurn);
+		add("left_wing", wingTurn[2], wingTurn[0], 0.0);
+		add("left_wing_tip", 0.0, 0.0, -wingTurn[1]);
+		add("right_wing", wingTurn[5], -wingTurn[3], 0.0);
+		add("right_wing_tip", 0.0, 0.0, wingTurn[4]);
 		// the feet planted on the ground by IK, the head turned to what the dragon watches (LimbAnimator)
 		LimbAnimator.apply(this, dragon, partialTick);
 		// a roar in flight opens the jaw with the sound (-X opens it)
 		add("jaw_group", -DragonfallDragon.brain(dragon).roar.jaw(dragon.tickCount + partialTick), 0.0, 0.0);
+		// prey in the jaws holds them a little open
+		if (brain.prey.hold() == Grip.Hold.JAW) add("jaw_group", -Grip.JAW_OPEN, 0.0, 0.0);
 
 		// the tail: trailing the turn, the strike's whip, swinging against the head's turn
 		double look = LimbAnimator.tailYaw(dragon);

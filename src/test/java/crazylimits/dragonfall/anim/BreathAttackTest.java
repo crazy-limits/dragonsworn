@@ -20,7 +20,20 @@ class BreathAttackTest {
 		assertFalse(streaming(WINDUP_TICKS + STREAM_TICKS));
 		assertFalse(glowing(0));
 		assertTrue(glowing(WINDUP_TICKS - 1));
-		assertEquals(96, TOTAL_TICKS);
+		assertEquals(116, TOTAL_TICKS);
+	}
+
+	@Test
+	void heatClimbsOverTheInhaleAndCoolsAfterTheStream() {
+		assertEquals(0.0, heat(0), EPS);
+		assertEquals(0.5, heat(WINDUP_TICKS / 2.0), EPS);
+		assertEquals(1.0, heat(WINDUP_TICKS), EPS);
+		assertEquals(1.0, heat(TOTAL_TICKS), EPS);
+		assertEquals(1.0, heatBrightness(WINDUP_TICKS - 1), EPS);
+		for (int t = WINDUP_TICKS; t < WINDUP_TICKS + STREAM_TICKS; t++) {
+			assertTrue(heatBrightness(t) > 0.75 && heatBrightness(t) <= 1.0);
+		}
+		assertEquals(0.0, heatBrightness(TOTAL_TICKS), EPS);
 	}
 
 	@Test
@@ -78,5 +91,17 @@ class BreathAttackTest {
 		assertTrue(chooseStream(0.0, 0));
 		assertFalse(chooseStream(0.99, 0));
 		assertFalse(chooseStream(0.0, MAX_STREAMS));
+	}
+
+	@Test
+	void bodyTurnsOnlyWhenTheNeckCannotReach() {
+		assertFalse(bodyTurns(NECK_ARC - 1.0, false), "the neck covers it: the body stays");
+		assertFalse(bodyTurns(-(NECK_ARC - 1.0), false));
+		assertTrue(bodyTurns(NECK_ARC + 1.0, false), "out of the neck's reach: the body turns");
+		assertTrue(bodyTurns(-(NECK_ARC + 1.0), false));
+		assertTrue(bodyTurns(SETTLED_ARC + 1.0, true), "once turning it keeps on until nearly faced");
+		assertFalse(bodyTurns(SETTLED_ARC - 1.0, true));
+		assertEquals(90.0F, offFacing(0, 1, 0), 1e-4);
+		assertEquals(-90.0F, offFacing(0, -1, 0), 1e-4);
 	}
 }

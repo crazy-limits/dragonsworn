@@ -1,5 +1,6 @@
 package crazylimits.dragonfall.flight;
 
+import crazylimits.dragonfall.anim.DragonAnim;
 import crazylimits.dragonfall.flight.FlightModel.Force;
 import crazylimits.dragonfall.flight.FlightModel.Mode;
 import org.junit.jupiter.api.Test;
@@ -72,7 +73,8 @@ class FlightModelTest {
 			max = Math.max(max, thrust);
 			if (thrust == 0) zero++;
 		}
-		assertTrue(zero > FlightModel.BEAT_TICKS / 2, "the upstroke gives nothing");
+		double upstroke = 1.0 - (DragonAnim.DOWNSTROKE_END - DragonAnim.DOWNSTROKE_START);
+		assertTrue(zero >= Math.floor(FlightModel.BEAT_TICKS * upstroke), "the upstroke gives nothing: " + zero);
 		assertEquals(FlightModel.FLY_THRUST, max, 0.01);
 		assertTrue(total > 0.15, "a beat accelerates");
 		FlightModel glide = new FlightModel();

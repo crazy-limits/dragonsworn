@@ -125,12 +125,17 @@ public final class FlightModel {
 		return switch (plan.mode) {
 			case GLIDE -> -1.0;
 			case FLY, HOVER -> (elapsed % BEAT_TICKS) / BEAT_TICKS;
-			case PUSH -> {
-				double inPush = elapsed % PUSH_TICKS;
-				// each push is the beat up to 0.8 (wings down) then settling; no thrust once gliding
-				yield elapsed >= plan.flaps * PUSH_TICKS || inPush / BEAT_TICKS > 0.8 ? -1.0 : inPush / BEAT_TICKS;
-			}
+			// each push is one whole beat out of the glide and back into it; no thrust once gliding
+			case PUSH -> elapsed >= plan.flaps * PUSH_TICKS ? -1.0 : (elapsed % PUSH_TICKS) / BEAT_TICKS;
 		};
+	}
+
+	/**
+	 * Puts the beat that just started at phase {@code u} instead of its start (the takeoff's hover picks up
+	 * the beat its power stroke is already in: {@link DragonAnim#TAKEOFF_PHASE}).
+	 */
+	public void startAtPhase(long tick, double u) {
+		start = tick - Math.round(u * BEAT_TICKS);
 	}
 
 	/** Downstroke strength now, 0..1. */

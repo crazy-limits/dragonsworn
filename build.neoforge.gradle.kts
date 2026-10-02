@@ -68,6 +68,13 @@ neoForge {
 			// animation, photograph it and quit -- the NeoForge half of the in-game test.
 			if (providers.gradleProperty("dragonfall.showcase").isPresent) {
 				jvmArgument("-Ddragonfall.showcase=true")
+				val only = providers.gradleProperty("dragonfall.showcase").get()
+				if (only.isNotBlank() && only != "true") jvmArgument("-Ddragonfall.showcase.only=$only")
+				programArguments.addAll("--width", "1600", "--height", "900")
+			}
+			// `-Pdragonfall.arena`: a tour of the End's monoliths (see ArenaTour.java)
+			if (providers.gradleProperty("dragonfall.arena").isPresent) {
+				jvmArgument("-Ddragonfall.arena=true")
 				programArguments.addAll("--width", "1600", "--height", "900")
 			}
 		}

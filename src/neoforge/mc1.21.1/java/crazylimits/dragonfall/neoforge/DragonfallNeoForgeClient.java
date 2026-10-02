@@ -5,6 +5,7 @@ import crazylimits.dragonfall.Dragonfall;
 import crazylimits.dragonfall.anim.DragonCommand;
 import crazylimits.dragonfall.mc.breath.BreathParticles;
 import crazylimits.dragonfall.mc.breath.client.VoidFlameParticle;
+import crazylimits.dragonfall.mc.client.ArenaTour;
 import crazylimits.dragonfall.mc.client.DragonRenderer;
 import crazylimits.dragonfall.mc.client.Showcase;
 import net.minecraft.client.Minecraft;
@@ -42,6 +43,7 @@ public final class DragonfallNeoForgeClient {
 		@SubscribeEvent
 		public static void tick(ClientTickEvent.Post event) {
 			if (Showcase.ENABLED) Showcase.tick(Minecraft.getInstance());
+			if (ArenaTour.ENABLED) ArenaTour.tick(Minecraft.getInstance());
 		}
 
 		@SubscribeEvent
