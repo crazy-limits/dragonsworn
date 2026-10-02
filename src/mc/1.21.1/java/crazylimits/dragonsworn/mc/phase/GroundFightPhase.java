@@ -14,6 +14,7 @@ import crazylimits.dragonsworn.mc.DragonPhases;
 import crazylimits.dragonsworn.mc.DragonSounds;
 import crazylimits.dragonsworn.mc.DragonswornDragon;
 import crazylimits.dragonsworn.mc.PreyHold;
+import crazylimits.dragonsworn.mc.Targets;
 import crazylimits.dragonsworn.nav.BlockGrid;
 import crazylimits.dragonsworn.nav.GroundPlanner;
 import net.minecraft.core.BlockPos;
@@ -35,12 +36,9 @@ import net.minecraft.world.entity.ai.targeting.TargetingConditions;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.boss.enderdragon.phases.AbstractDragonPhaseInstance;
 import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.random.RandomGenerator;
 
@@ -78,10 +76,6 @@ import java.util.random.RandomGenerator;
  * and neck no longer hurt by touch; the bite does.
  */
 public class GroundFightPhase extends AbstractDragonPhaseInstance implements DragonswornPhase {
-	/** Walking speed, blocks per tick (the walk animation speeds up to match). */
-	static final double WALK_SPEED = 0.11;
-	/** Degrees per tick it can turn: slowly enough for its feet to step round after it ({@code TurnSteps}). */
-	static final float TURN_SPEED = 3.0F;
 	/** Only targets this close are worth asking the IK whether a blow reaches. */
 	static final double STRIKE_RANGE = 14.0;
 	/** A narrow foothold: how long it stays up there with nobody to fight (ticks). */
@@ -112,16 +106,15 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 	private Vec3 aim;
 	/** Asks whether a blow would reach, without touching the dragon's own aim. */
 	private final Strike probe = new Strike();
-	private List<int[]> path = List.of();
-	private int pathIndex, repathAt, blockedTicks;
-	/** The path bends (more than one straight leg): a way round something. */
-	private boolean detour;
+	/** Its steps on the ground: turning, and walking a path round what is in the way. */
+	private final GroundWalker walker;
 	@Nullable
 	private int[] wander;
 	private double lastX, lastZ;
 
 	public GroundFightPhase(EnderDragon dragon) {
 		super(dragon);
+		walker = new GroundWalker(dragon);
 	}
 
 	/** Lands (the dragon is on the ground already) and fights {@code target}, or rests when null. */
@@ -174,7 +167,7 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 		pauseTicks = Roaming.pause(ThreadLocalRandom.current());
 		walkHeading = Roaming.headingOfYaw(dragon.getYRot());
 		action = null;
-		path = List.of();
+		walker.forgetPath();
 		wander = null;
 		attackReadyAt = 20;
 		seizing = seizeNext = false;
@@ -241,12 +234,12 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 			takeOff();
 			return;
 		}
-		if (target != null && (!target.isAlive() || target instanceof Player p && (p.isCreative() || p.isSpectator()))) target = null;
+		if (target != null && (!target.isAlive() || Targets.untouchable(target))) target = null;
 		// whoever is hurting it now (from a blind spot, while it watched another) becomes the target
 		int provoked = DragonConfig.PROVOKED_TICKS.get();
-		LivingEntity attacker = brain().recentAttacker(provoked / 2);
+		LivingEntity attacker = brain().combat.recentAttacker(provoked / 2);
 		if (attacker != null && attacker != target && attacker.distanceToSqr(dragon) < 24.0 * 24.0
-				&& !(target != null && brain().hurtRecentlyBy(target, provoked))) target = attacker;
+				&& !(target != null && brain().combat.hurtRecentlyBy(target, provoked))) target = attacker;
 		if (target == null) {
 			rest();
 			return;
@@ -273,7 +266,7 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 		boolean bite = DragonConfig.BITE.get();
 		GroundTactics.Decision decision = GroundTactics.decide(foothold, distance, bearing,
 				near && biteReaches && bite, near && !narrow && DragonConfig.TAIL_STRIKE.get() && reaches(DragonAnim.TAIL_SWEEP, at), ready,
-				DragonConfig.ROAR.get() && ticks >= roarReadyAt, brain().hurtRecentlyBy(target, provoked), ThreadLocalRandom.current().nextDouble());
+				DragonConfig.ROAR.get() && ticks >= roarReadyAt, brain().combat.hurtRecentlyBy(target, provoked), ThreadLocalRandom.current().nextDouble());
 		switch (decision.action()) {
 			case BITE -> {
 				startAction(bite());
@@ -285,8 +278,8 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 			case ROAR -> startAction(DragonAnim.ROAR);
 			case NONE -> {
 				// on a way round something it keeps walking, even where that leads away from the target
-				if (decision.walk() || detouring()) walkToward(target.getX(), target.getZ(), GroundTactics.CLOSE_IN);
-				else if (decision.turn()) turnToward(target.getX(), target.getZ());
+				if (decision.walk() || walker.detouring()) walker.walkToward(target.getX(), target.getZ(), GroundTactics.CLOSE_IN, ticks);
+				else if (decision.turn()) walker.turnToward(target.getX(), target.getZ());
 			}
 		}
 	}
@@ -308,7 +301,7 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 		}
 		if (wander != null) {
 			// arrived, no way there, or taking too long: stop and look around a while
-			if (++wanderTicks < 400 && walkToward(wander[0] + 0.5, wander[2] + 0.5, 1.5)) return;
+			if (++wanderTicks < 400 && walker.walkToward(wander[0] + 0.5, wander[2] + 0.5, 1.5, ticks)) return;
 			wander = null;
 			pauseTicks = Roaming.pause(ThreadLocalRandom.current());
 			return;
@@ -338,59 +331,6 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 
 	// ---------------------------------------------------------------- moving on the ground
 
-	/** Turns toward x, z by at most {@link #TURN_SPEED}; the head leads (the procedural body). */
-	private boolean turnToward(double x, double z) {
-		float want = (float) Math.toDegrees(Math.atan2(x - dragon.getX(), -(z - dragon.getZ())));
-		float turn = Mth.clamp(Mth.wrapDegrees(want - dragon.getYRot()), -TURN_SPEED, TURN_SPEED);
-		dragon.setYRot(dragon.getYRot() + turn);
-		dragon.yRotA = 0.0F;
-		return Math.abs(Mth.wrapDegrees(want - dragon.getYRot())) < 20.0F;
-	}
-
-	/**
-	 * One step along a path toward x, z, stopping {@code reach} blocks short. Returns false when there
-	 * is nowhere to go (arrived, or no path).
-	 */
-	private boolean walkToward(double x, double z, double reach) {
-		if (Math.hypot(x - dragon.getX(), z - dragon.getZ()) <= reach) return false;
-		if (path.isEmpty() || pathIndex >= path.size() || ticks >= repathAt) {
-			repathAt = ticks + 20;
-			path = new GroundPlanner(brain().grid()).plan(Mth.floor(dragon.getX()), Mth.floor(dragon.getZ()), Mth.floor(x), Mth.floor(z), reach, 1500);
-			pathIndex = 0;
-			detour = path.size() > 1;
-			if (path.isEmpty()) {
-				turnToward(x, z);
-				return false;
-			}
-		}
-		int[] next = path.get(pathIndex);
-		double nx = next[0] + 0.5, nz = next[2] + 0.5;
-		if (Math.hypot(nx - dragon.getX(), nz - dragon.getZ()) < 1.0) {
-			pathIndex++;
-			return pathIndex < path.size();
-		}
-		if (!turnToward(nx, nz)) return true;          // face the way first, then walk
-		float yaw = dragon.getYRot() * Mth.DEG_TO_RAD;
-		double step = Math.min(WALK_SPEED, Math.hypot(nx - dragon.getX(), nz - dragon.getZ()));
-		// the body bumps into what the path squeezed past: slide along it and look for another way
-		if (brain().walk(Mth.sin(yaw) * step, -Mth.cos(yaw) * step)) {
-			blockedTicks = 0;
-		} else if (++blockedTicks % 10 == 0) {
-			repathAt = ticks;
-			if (blockedTicks >= 60) {
-				blockedTicks = 0;
-				path = List.of();
-				return false;
-			}
-		}
-		return true;
-	}
-
-	/** Walking a path round something, its last leg not yet begun. */
-	private boolean detouring() {
-		return detour && pathIndex < path.size() - 1;
-	}
-
 	/**
 	 * Keeps the feet on the terrain under the body: the highest ground under the hips and wrists. A
 	 * wall the wrists are against is not ground to climb: only ground within a step of its feet counts
@@ -398,8 +338,8 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 	 */
 	private void followGround() {
 		BlockGrid grid = brain().grid();
-		float yaw = dragon.getYRot() * Mth.DEG_TO_RAD;
-		double fx = Mth.sin(yaw), fz = -Mth.cos(yaw);
+		Vec3 facing = Targets.facing(dragon.getYRot());
+		double fx = facing.x, fz = facing.z;
 		int best = grid.ground(Mth.floor(dragon.getX()), Mth.floor(dragon.getZ()));
 		// sat up, it stands on its hind feet alone, right under it
 		double[][] feet = foothold.narrow() ? new double[0][] : new double[][]{{fx * 3.5, fz * 3.5}, {-fx * 1.5, -fz * 1.5}};
@@ -486,7 +426,7 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 			aim = strikePoint(target);
 			brain().aimStrike(aim);
 			// a bite turns the body after it while the neck coils
-			if (action.bites()) turnToward(target.getX(), target.getZ());
+			if (action.bites()) walker.turnToward(target.getX(), target.getZ());
 		}
 		if (!actionHit && seconds >= hitAt) {
 			actionHit = true;
@@ -511,11 +451,7 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 	 */
 	private void blow(DragonAnim anim) {
 		if (aim == null) return;
-		probe.aim(anim, aim.x - dragon.getX(), aim.y - dragon.getY(), aim.z - dragon.getZ());
-		probe.solve(brain().body, 1.0F);
-		double[] end = new double[3];
-		probe.blow(brain().body, 1.0F, end);
-		Vec3 point = dragon.position().add(end[0], end[1], end[2]);
+		Vec3 point = JawBlow.landing(dragon, probe, anim, aim);
 		boolean bite = anim.bites();
 		boolean seize = bite && seizing;
 		seizing = false;
@@ -523,8 +459,7 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 		else dragon.playSound(SoundEvents.PLAYER_ATTACK_SWEEP, 4.0F, 0.5F);
 		double radius = Strike.hitRadius(anim);
 		DamageSource source = dragon.damageSources().mobAttack(dragon);
-		for (Entity e : dragon.level().getEntities(dragon, new AABB(point, point).inflate(radius + 2.0), EntitySelector.NO_CREATIVE_OR_SPECTATOR)) {
-			if (!(e instanceof LivingEntity living) || !e.getBoundingBox().inflate(radius).contains(point)) continue;
+		for (LivingEntity living : JawBlow.struck(dragon, point, radius)) {
 			// the seize: the jaws close on the target and keep it
 			if (seize && living == target && living.hurt(source, DragonConfig.SEIZE_DAMAGE.f()) && living.isAlive() && seize(living)) {
 				seize = false;
@@ -532,7 +467,7 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 			}
 			if (!living.hurt(source, bite ? DragonConfig.BITE_DAMAGE.f() : DragonConfig.TAIL_DAMAGE.f()) || bite) continue;
 			// the tail flings what it hits away from the dragon
-			Vec3 push = e.position().subtract(dragon.position()).multiply(1, 0, 1).normalize().scale(1.8);
+			Vec3 push = living.position().subtract(dragon.position()).multiply(1, 0, 1).normalize().scale(1.8);
 			living.push(push.x, 0.45, push.z);
 			living.hurtMarked = true;
 		}

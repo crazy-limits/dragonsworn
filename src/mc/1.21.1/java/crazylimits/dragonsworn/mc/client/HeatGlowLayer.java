@@ -61,7 +61,7 @@ final class HeatGlowLayer extends GeoRenderLayer<ReplacedEnderDragon> {
 			brightness = BreathPass.heatBrightness(pass);
 			heat = BreathPass.heat(pass);
 		} else {
-			double tick = DragonswornDragon.brain(dragon).fireballGlowTicks(partialTick);
+			double tick = DragonswornDragon.brain(dragon).fireballs.glowTicks(partialTick);
 			if (tick > BreathAttack.FIREBALL_WINDUP_TICKS + BreathAttack.FIREBALL_COOL_TICKS) return;
 			brightness = BreathAttack.fireballHeatBrightness(tick);
 			heat = BreathAttack.fireballHeat(tick);

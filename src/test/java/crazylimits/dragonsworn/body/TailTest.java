@@ -284,6 +284,6 @@ class TailTest {
 		double[] out = new double[PoseTrack.PARTS * 3];
 		solver.solve(DragonAnim.IDLE, 0, body, null, 1.0F, null, new Tail.World().set(wall, body, 1.0F, 0.5, 64, 0.5, 0), out);
 		// the tip's hitbox stays in front of the wall
-		assertTrue(out[Strike.TAIL_TIP_PART * 3 + 2] + 0.5 < 7.0, "tip at z = " + (out[Strike.TAIL_TIP_PART * 3 + 2] + 0.5));
+		assertTrue(out[Parts.TAIL_TIP * 3 + 2] + 0.5 < 7.0, "tip at z = " + (out[Parts.TAIL_TIP * 3 + 2] + 0.5));
 	}
 }

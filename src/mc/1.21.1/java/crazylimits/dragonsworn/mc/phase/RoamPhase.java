@@ -6,6 +6,7 @@ import crazylimits.dragonsworn.flight.FlightModel;
 import crazylimits.dragonsworn.mc.DragonBrain;
 import crazylimits.dragonsworn.mc.DragonPhases;
 import crazylimits.dragonsworn.mc.DragonswornDragon;
+import crazylimits.dragonsworn.mc.Targets;
 import crazylimits.dragonsworn.nav.BlockGrid;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
@@ -114,7 +115,7 @@ public class RoamPhase extends AbstractDragonPhaseInstance implements Dragonswor
 	@Override
 	public void doServerTick() {
 		if (hunt != Hunt.NONE && (target == null || !target.isAlive() || ++huntTicks > 600
-				|| target instanceof Player p && (p.isCreative() || p.isSpectator()))) {
+				|| Targets.untouchable(target))) {
 			hunt = Hunt.NONE;
 			waypoint = null;
 		}
@@ -167,8 +168,7 @@ public class RoamPhase extends AbstractDragonPhaseInstance implements Dragonswor
 		if (distance < 64 && dragon.hasLineOfSight(target)) {
 			charge++;
 			Vec3 to = new Vec3(dx, 0, dz).normalize();
-			float yaw = dragon.getYRot() * Mth.DEG_TO_RAD;
-			Vec3 facing = new Vec3(Mth.sin(yaw), 0, -Mth.cos(yaw));
+			Vec3 facing = Targets.facing(dragon.getYRot());
 			if (charge >= 5 && facing.dot(to) > Math.cos(Math.toRadians(10))) {
 				fireball();
 				hunt = Hunt.NONE;
@@ -186,8 +186,7 @@ public class RoamPhase extends AbstractDragonPhaseInstance implements Dragonswor
 		if (standoff.distanceToSqr(dragon.position()) > 10 * 10 || !dragon.hasLineOfSight(target)) return;
 		if (huntTicks % DragonConfig.BARRAGE_INTERVAL.get() == 0) {
 			Vec3 to = target.position().subtract(dragon.position()).multiply(1, 0, 1).normalize();
-			float yaw = dragon.getYRot() * Mth.DEG_TO_RAD;
-			if (new Vec3(Mth.sin(yaw), 0, -Mth.cos(yaw)).dot(to) > Math.cos(Math.toRadians(25))) {
+			if (Targets.facing(dragon.getYRot()).dot(to) > Math.cos(Math.toRadians(25))) {
 				fireball();
 				if (++shots >= DragonConfig.BARRAGE_SHOTS.get()) {
 					hunt = Hunt.NONE;
@@ -199,7 +198,7 @@ public class RoamPhase extends AbstractDragonPhaseInstance implements Dragonswor
 
 	/** Heats up, then fires (the brain times the shot). */
 	private void fireball() {
-		brain().chargeFireball(target);
+		brain().fireballs.charge(target);
 	}
 
 	@Nullable

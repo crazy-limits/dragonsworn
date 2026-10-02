@@ -161,7 +161,7 @@ public class GroundApproachPhase extends AbstractDragonPhaseInstance implements 
 		}
 		motion = lastPos == null ? dragon.getDeltaMovement() : dragon.position().subtract(lastPos);
 		lastPos = dragon.position();
-		if (site == null || ++ticks > GIVE_UP || brain().stuckTicks() > 80) {
+		if (site == null || ++ticks > GIVE_UP || brain().hull.stuckTicks() > 80) {
 			giveUp();
 			return;
 		}

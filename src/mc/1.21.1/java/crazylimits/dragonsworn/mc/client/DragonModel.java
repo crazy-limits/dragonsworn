@@ -126,7 +126,7 @@ public final class DragonModel extends DefaultedEntityGeoModel<ReplacedEnderDrag
 		GeoBone torso = getAnimationProcessor().getBone("body");
 		if (torso == null) return;
 		DragonBody body = DragonswornDragon.brain(dragon).body;
-		limbs.chain.body(LimbAnimator.matrix(torso));
+		limbs.chain.body(GeoBones.matrix(torso));
 		limbs.world.set(new LevelGrid(dragon.level()), body, partialTick, Mth.lerp(partialTick, dragon.xo, dragon.getX()),
 				Mth.lerp(partialTick, dragon.yo, dragon.getY()), Mth.lerp(partialTick, dragon.zo, dragon.getZ()), dragon.tickCount + partialTick);
 		limbs.tail.solve(limbs.chain, limbs.motion, bendX, bendY, limbs.world, finalTailX, finalTailY);

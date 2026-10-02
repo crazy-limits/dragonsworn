@@ -2,24 +2,18 @@ package crazylimits.dragonsworn.mc.phase;
 
 import crazylimits.dragonsworn.anim.DragonAnim;
 import crazylimits.dragonsworn.attack.BreathPass;
-import crazylimits.dragonsworn.body.Strike;
 import crazylimits.dragonsworn.config.DragonConfig;
 import crazylimits.dragonsworn.flight.FlightModel;
 import crazylimits.dragonsworn.mc.DragonBrain;
 import crazylimits.dragonsworn.mc.DragonData;
 import crazylimits.dragonsworn.mc.DragonPhases;
 import crazylimits.dragonsworn.mc.DragonswornDragon;
-import crazylimits.dragonsworn.mc.breath.BreathStreamPhase;
 import crazylimits.dragonsworn.nav.BlockGrid;
-import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
-import net.minecraft.world.entity.boss.enderdragon.phases.AbstractDragonPhaseInstance;
 import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
-import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3f;
 
 /**
@@ -32,19 +26,14 @@ import org.joml.Vector3f;
  * onto it ({@code body/Strike}) and the client pours the flames from the model's mouth at it
  * ({@code BreathRender}). What the stream touches burns (server).
  */
-public class BreathPassPhase extends AbstractDragonPhaseInstance implements DragonswornPhase {
+public class BreathPassPhase extends AirAttackPhase {
 	private enum Stage { RUN_UP, APPROACH, PASS, AWAY }
 
 	static final int RUN_UP_TICKS = 200, APPROACH_TICKS = 300, AWAY_TICKS = 50;
 
-	@Nullable
-	private LivingEntity target;
 	private Stage stage = Stage.RUN_UP;
-	private int ticks;
 	/** The run's direction across the ground (unit), fixed as it comes in. */
 	private Vec3 heading = Vec3.ZERO;
-	@Nullable
-	private Vec3 waypoint;
 	/** The aim's angles (off the facing, below level), degrees. */
 	private double[] aim = {0.0, BreathPass.PITCH_REST};
 	/** The height it passes at (world y), set as it comes in. */
@@ -54,25 +43,14 @@ public class BreathPassPhase extends AbstractDragonPhaseInstance implements Drag
 		super(dragon);
 	}
 
-	/** Starts a pass at {@code target} when it is in range and there is open sky over it to pour through. */
+	/**
+	 * Starts a pass at {@code target} when it is in range and there is open sky over it to pour through
+	 * (up to the pass's height: else the flames would only splash on a roof).
+	 */
 	public static boolean start(EnderDragon dragon, LivingEntity target) {
 		if (target.distanceToSqr(dragon) > BreathPass.MAX_RANGE * BreathPass.MAX_RANGE
-				|| !openAbove(DragonswornDragon.brain(dragon).grid(), target)) return false;
-		dragon.getPhaseManager().setPhase(DragonPhases.BREATH_PASS);
-		dragon.getPhaseManager().getPhase(DragonPhases.BREATH_PASS).target = target;
-		return true;
-	}
-
-	/** Nothing solid over the prey up to the pass's height: the flames would only splash on a roof. */
-	static boolean openAbove(BlockGrid grid, LivingEntity target) {
-		int x0 = target.getBlockX(), y0 = Mth.floor(target.getY() + target.getBbHeight()), z0 = target.getBlockZ();
-		for (int x = x0 - 1; x <= x0 + 1; x++) {
-			for (int z = z0 - 1; z <= z0 + 1; z++) {
-				for (int y = y0; y < y0 + BreathPass.HEIGHT; y++) {
-					if (grid.blocked(x, y, z)) return false;
-				}
-			}
-		}
+				|| !openAbove(DragonswornDragon.brain(dragon).grid(), target, BreathPass.HEIGHT)) return false;
+		begin(dragon, DragonPhases.BREATH_PASS, target);
 		return true;
 	}
 
@@ -81,16 +59,10 @@ public class BreathPassPhase extends AbstractDragonPhaseInstance implements Drag
 		return DragonPhases.BREATH_PASS;
 	}
 
-	private DragonBrain brain() {
-		return DragonswornDragon.brain(dragon);
-	}
-
 	@Override
 	public void begin() {
-		target = null;
+		super.begin();
 		stage = Stage.RUN_UP;
-		ticks = 0;
-		waypoint = null;
 		heading = Vec3.ZERO;
 		aim = new double[] {0.0, BreathPass.PITCH_REST};
 	}
@@ -110,16 +82,12 @@ public class BreathPassPhase extends AbstractDragonPhaseInstance implements Drag
 			case RUN_UP -> runUp();
 			case APPROACH -> approach();
 			case PASS -> pass();
-			case AWAY -> {
-				if (ticks > AWAY_TICKS) dragon.getPhaseManager().setPhase(EnderDragonPhase.HOLDING_PATTERN);
-			}
+			case AWAY -> leaveAfter(AWAY_TICKS);
 		}
 	}
 
 	private boolean lost() {
-		return target == null || !target.isAlive() || target.level() != dragon.level()
-				|| target.distanceToSqr(dragon) > 4 * BreathPass.MAX_RANGE * BreathPass.MAX_RANGE
-				|| target instanceof Player p && (p.isCreative() || p.isSpectator());
+		return lostBeyond(2 * BreathPass.MAX_RANGE);
 	}
 
 	/** The height it passes over {@code at}: over the prey's feet, or the ground there when that is higher. */
@@ -136,16 +104,9 @@ public class BreathPassPhase extends AbstractDragonPhaseInstance implements Drag
 			return;
 		}
 		brain().setLookTarget(target);
-		Vec3 out = dragon.position().subtract(target.position()).multiply(1, 0, 1);
-		double distance = out.length();
-		if (distance > BreathPass.RUN_UP - 4.0) {
+		if (runUp(BreathPass.RUN_UP, BreathPass.HEIGHT + 4.0)) {
 			stage = Stage.APPROACH;
 			ticks = 0;
-			return;
-		}
-		if (waypoint == null) {
-			Vec3 dir = distance > 1e-3 ? out.scale(1.0 / distance) : dragon.getLookAngle().multiply(-1, 0, -1).normalize();
-			waypoint = target.position().add(dir.scale(BreathPass.RUN_UP + 8.0)).add(0.0, BreathPass.HEIGHT + 4.0, 0.0);
 		}
 	}
 
@@ -204,17 +165,8 @@ public class BreathPassPhase extends AbstractDragonPhaseInstance implements Drag
 			Vec3 at = target.position().add(0.0, target.getBbHeight() * 0.3, 0.0).subtract(base);
 			prey = BreathPass.angles(yaw, at.x, at.y, at.z);
 		}
-		aim = BreathPass.chase(aim, prey, ticks < BreathPass.WINDUP_TICKS ? BreathPass.WINDUP_TURN : BreathPass.STREAM_TURN);
-		double[] d = BreathPass.direction(yaw, aim);
-		Vec3 dir = new Vec3(d[0], d[1], d[2]);
-		Vec3 point = ticks < BreathPass.WINDUP_TICKS + BreathPass.STREAM_TICKS
-				? BreathStreamPhase.stream(dragon, base, dir, BreathPass.RANGE).getLocation() : null;
-		brain.aimStrike(point);
-		if (BreathPass.streaming(ticks) && (ticks - BreathPass.WINDUP_TICKS) % BreathPass.DAMAGE_INTERVAL == 0) {
-			Vec3 mouth = brain.partCenter(Strike.HEAD_PART);
-			Vec3 to = point.subtract(mouth);
-			if (to.lengthSqr() > 1e-4) BreathStreamPhase.burn(dragon, mouth, to.normalize(), BreathPass.RANGE, DragonConfig.PASS_DAMAGE.f());
-		}
+		aim = FlyingBreath.tick(dragon, ticks, base, aim, prey, BreathPass.WINDUP_TURN, BreathPass.STREAM_TURN,
+				BreathPass.RANGE, DragonConfig.PASS_DAMAGE.f());
 	}
 
 	private void away() {
@@ -223,13 +175,7 @@ public class BreathPassPhase extends AbstractDragonPhaseInstance implements Drag
 		brain.setLookTarget(null);
 		stage = Stage.AWAY;
 		ticks = 0;
-		float yaw = dragon.getYRot() * Mth.DEG_TO_RAD;
-		waypoint = dragon.position().add(Mth.sin(yaw) * 40.0, 10.0, -Mth.cos(yaw) * 40.0);
-	}
-
-	/** Server: whether it is gliding over the prey with the breath playing. */
-	public boolean passing() {
-		return stage == Stage.PASS;
+		waypoint = onAhead(40.0, 10.0);
 	}
 
 	// ---------------------------------------------------------------- both sides: what the breath shows
@@ -254,17 +200,7 @@ public class BreathPassPhase extends AbstractDragonPhaseInstance implements Drag
 
 	@Override
 	public void doClientTick() {
-		double ticks = breathTicks(dragon, 0.0F);
-		if (Double.isNaN(ticks)) return;
-		int tick = (int) Math.round(ticks);
-		if (tick == BreathPass.WINDUP_TICKS) {
-			dragon.level().playLocalSound(dragon.getX(), dragon.getY(), dragon.getZ(), SoundEvents.ENDER_DRAGON_SHOOT,
-					dragon.getSoundSource(), 4.0F, 0.7F, false);
-		}
-		if (BreathPass.streaming(tick) && tick % 5 == 0) {
-			dragon.level().playLocalSound(dragon.getX(), dragon.getY(), dragon.getZ(), SoundEvents.BLAZE_SHOOT,
-					dragon.getSoundSource(), 3.0F, 0.45F + dragon.getRandom().nextFloat() * 0.1F, false);
-		}
+		FlyingBreath.sounds(dragon);
 	}
 
 	@Override
@@ -275,11 +211,5 @@ public class BreathPassPhase extends AbstractDragonPhaseInstance implements Drag
 	@Override
 	public float getFlySpeed() {
 		return stage == Stage.PASS ? 0.9F : 1.1F;
-	}
-
-	@Nullable
-	@Override
-	public Vec3 getFlyTargetLocation() {
-		return waypoint;
 	}
 }

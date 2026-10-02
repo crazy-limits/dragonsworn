@@ -83,7 +83,7 @@ public class LiftoffPhase extends AbstractDragonPhaseInstance implements Dragons
 	 */
 	private void jump() {
 		// off a perch: the next downstroke at once (clinging, the wings were beating already)
-		brain().forceFlight(FlightModel.Force.HOVER, narrow ? Wingbeat.DOWNSTROKE_START : DragonAnim.TAKEOFF_PHASE);
+		brain().flight.forceFlight(FlightModel.Force.HOVER, narrow ? Wingbeat.DOWNSTROKE_START : DragonAnim.TAKEOFF_PHASE);
 		dragon.setDeltaMovement(0.0, narrow ? 0.4 : 0.55, 0.0);
 		if (dragon.level() instanceof ServerLevel level) {
 			BlockPos below = BlockPos.containing(dragon.getX(), dragon.getY() - 0.5, dragon.getZ());

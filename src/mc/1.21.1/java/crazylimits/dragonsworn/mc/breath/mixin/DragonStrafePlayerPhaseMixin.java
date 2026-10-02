@@ -40,7 +40,7 @@ public abstract class DragonStrafePlayerPhaseMixin extends AbstractDragonPhaseIn
 	@WrapOperation(method = "doServerTick", at = @At(value = "INVOKE",
 			target = "Lnet/minecraft/world/level/Level;addFreshEntity(Lnet/minecraft/world/entity/Entity;)Z"))
 	private boolean dragonsworn$chargeFireball(Level level, Entity fireball, Operation<Boolean> original) {
-		DragonswornDragon.brain(dragon).chargeFireball(attackTarget);
+		DragonswornDragon.brain(dragon).fireballs.charge(attackTarget);
 		return true;
 	}
 }

@@ -116,7 +116,7 @@ public abstract class EnderDragonMixin extends Mob implements DragonswornDragon 
 	private Vec3 dragonsworn$fly(DragonPhaseInstance phase, Operation<Vec3> original) {
 		Vec3 target = original.call(phase);
 		if (target == null) return null;
-		dragonsworn$brain().fly(phase, target);
+		dragonsworn$brain().flight.fly(phase, target);
 		return null;
 	}
 
@@ -166,19 +166,19 @@ public abstract class EnderDragonMixin extends Mob implements DragonswornDragon 
 	/** Breaks only soft blocks; anything else just counts as being in a wall. */
 	@Inject(method = "checkWalls", at = @At("HEAD"), cancellable = true)
 	private void dragonsworn$checkWalls(AABB box, CallbackInfoReturnable<Boolean> cir) {
-		cir.setReturnValue(dragonsworn$brain().inWall(box));
+		cir.setReturnValue(dragonsworn$brain().hull.inWall(box));
 	}
 
 	@Inject(method = "hurt(Lnet/minecraft/world/entity/boss/EnderDragonPart;Lnet/minecraft/world/damagesource/DamageSource;F)Z", at = @At("HEAD"))
 	private void dragonsworn$hurtBy(EnderDragonPart part, DamageSource source, float amount, CallbackInfoReturnable<Boolean> cir) {
 		dragonsworn$healthBefore = getHealth();
-		dragonsworn$brain().hurtBy(source, Arrays.asList(subEntities).indexOf(part));
+		dragonsworn$brain().combat.hurtBy(source, Arrays.asList(subEntities).indexOf(part));
 	}
 
 	/** A hit that took health off (not one the dragon shrugged off, or met while still flashing red). */
 	@Inject(method = "hurt(Lnet/minecraft/world/entity/boss/EnderDragonPart;Lnet/minecraft/world/damagesource/DamageSource;F)Z", at = @At("RETURN"))
 	private void dragonsworn$hit(EnderDragonPart part, DamageSource source, float amount, CallbackInfoReturnable<Boolean> cir) {
-		if (getHealth() < dragonsworn$healthBefore) dragonsworn$brain().hit(source, dragonsworn$healthBefore - getHealth());
+		if (getHealth() < dragonsworn$healthBefore) dragonsworn$brain().combat.hit(source, dragonsworn$healthBefore - getHealth());
 	}
 
 	@Inject(method = "addAdditionalSaveData", at = @At("TAIL"))

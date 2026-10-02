@@ -2,7 +2,6 @@ package crazylimits.dragonsworn.mc;
 
 import com.mojang.logging.LogUtils;
 import crazylimits.dragonsworn.config.DragonConfig;
-import crazylimits.dragonsworn.mc.breath.BreathStreamPhase;
 import org.slf4j.Logger;
 
 import java.nio.file.Path;
@@ -18,10 +17,7 @@ public final class DragonswornCommon {
 		// Entities size their synced data when they are created, before defineSynchedData runs: the
 		// dragon's extra data must be defined before the first dragon exists.
 		DragonData.init();
-		// phase ids are handed out in registration order: keep this order identical on every side
 		DragonPhases.register();
-		BreathStreamPhase.register();
-		DragonPhases.registerLate();
 	}
 
 	/**

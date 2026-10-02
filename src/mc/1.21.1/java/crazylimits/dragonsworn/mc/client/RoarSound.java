@@ -1,6 +1,7 @@
 package crazylimits.dragonsworn.mc.client;
 
 import crazylimits.dragonsworn.anim.DragonVoice;
+import crazylimits.dragonsworn.body.Parts;
 import crazylimits.dragonsworn.mc.DragonSounds;
 import crazylimits.dragonsworn.mc.DragonswornDragon;
 import net.minecraft.client.resources.sounds.AbstractTickableSoundInstance;
@@ -41,7 +42,7 @@ final class RoarSound extends AbstractTickableSoundInstance {
 	}
 
 	private void follow() {
-		Vec3 head = DragonswornDragon.brain(dragon).partCenter(0);
+		Vec3 head = DragonswornDragon.brain(dragon).partCenter(Parts.HEAD);
 		x = head.x;
 		y = head.y;
 		z = head.z;

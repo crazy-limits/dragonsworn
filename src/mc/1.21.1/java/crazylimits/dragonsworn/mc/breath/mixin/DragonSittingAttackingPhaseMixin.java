@@ -1,6 +1,7 @@
 package crazylimits.dragonsworn.mc.breath.mixin;
 
 import crazylimits.dragonsworn.attack.BreathAttack;
+import crazylimits.dragonsworn.mc.DragonPhases;
 import crazylimits.dragonsworn.mc.breath.BreathStreamPhase;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.boss.enderdragon.phases.AbstractDragonSittingPhase;
@@ -27,9 +28,9 @@ public abstract class DragonSittingAttackingPhaseMixin extends AbstractDragonSit
 			target = "Lnet/minecraft/world/entity/boss/enderdragon/phases/EnderDragonPhaseManager;setPhase(Lnet/minecraft/world/entity/boss/enderdragon/phases/EnderDragonPhase;)V"))
 	private EnderDragonPhase<?> dragonsworn$maybeStream(EnderDragonPhase<?> next) {
 		if (next != EnderDragonPhase.SITTING_FLAMING) return next;
-		BreathStreamPhase stream = this.dragon.getPhaseManager().getPhase(BreathStreamPhase.PHASE);
+		BreathStreamPhase stream = this.dragon.getPhaseManager().getPhase(DragonPhases.BREATH_STREAM);
 		return BreathAttack.chooseStream(this.dragon.getRandom().nextDouble(), stream.streamsThisLanding())
-				? BreathStreamPhase.PHASE : next;
+				? DragonPhases.BREATH_STREAM : next;
 	}
 
 	@Inject(method = "doClientTick", at = @At("HEAD"), cancellable = true)

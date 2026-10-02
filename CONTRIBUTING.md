@@ -73,6 +73,27 @@ redistribute them outside this repository.
   (`biteMissesWhenTheTargetDodges`).
 - **Docs.** When you change how a system works, update its section in CLAUDE.md in the same PR.
 
+## Common changes
+
+**A new air attack** (see the fly-by bite for a complete example):
+
+1. Core: put its geometry and timing in `attack/` (e.g. `attack/FlybyBite`) with tests. Add the `AirTactics.Attack`
+   entry and its config switch, and give it a line in `AirTactics.REPERTOIRES` for each reach where it applies.
+   Put its knobs (flag, weights, damage…) in `config/DragonConfig`.
+2. Animation: add a pose in `tools/anims.py` and its `DragonAnim` entry, then rebuild the assets. If the IK aims the
+   attack, add it to `body/Strike`.
+3. Bridge: write a phase that extends `mc/phase/AirAttackPhase` (`JawBlow` and `FlyingBreath` cover bites and
+   breath). Register it at the **end** of `DragonPhases.register()`, and add its case to the switch in
+   `Tactics.start`. The compiler flags that switch when it is missing.
+4. Test it in game: add a showcase stage, or a case in `AirStage`.
+
+**A new showcase stage:** write a class in `mc/client/showcase` whose `static void build…(int x, int y, int z)`
+queues steps through `Script` (`command`, `server`, `shoot`, `check`…). Add it to `Stages.SOLO`, and to
+`Stages.full` on a plot that no other stage uses. List its name under "Building and testing" above.
+
+**A new config option:** declare one constant in `config/DragonConfig` (`num(...)` or `flag(...)`) and read it
+where it is used (`MY_OPTION.get()`). The file, the reload and the three config screens all pick it up.
+
 ## Adding a Minecraft version
 
 1. Uncomment or add its `match(...)` line in `settings.gradle.kts`.

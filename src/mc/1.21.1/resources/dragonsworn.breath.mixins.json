@@ -9,7 +9,6 @@
 		"DragonSittingFlamingPhaseMixin",
 		"DragonStrafePlayerPhaseMixin",
 		"DragonVoiceMixin",
-		"EnderDragonPhaseInvoker",
 		"ProjectileMixin"
 	],
 	"injectors": {

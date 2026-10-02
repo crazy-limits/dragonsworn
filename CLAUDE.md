@@ -33,8 +33,15 @@ Targets 1.21.11 and 26.2 (GeckoLib 5) are paused in `settings.gradle.kts` until 
   `attack` (breath, breath pass, fly-by and hover attack geometry/timing), `config` (`DragonConfig`: every AI knob and
   the only home of its default), `math` (shared clamps, easing, angles, 3x3 rotations), `arena`, `debug`.
   Packages form layers: `ArchitectureTest` fails on an import cycle or any game/loader import in the core.
-- `src/mc/<version>/java` -- Minecraft bridge per MC version: `mc` (DragonBrain: AI director, movement,
-  collision, parts; phases in `mc/phase`; mixins), `mc/client` (GeckoLib renderer, model, showcase).
+- `src/mc/<version>/java` -- Minecraft bridge per MC version:
+  - `mc`: `DragonBrain` (one per dragon: what plays, body, hitboxes) and its parts: `Flight` (+ `AirRoute`),
+    `HullCollision`, `Fireballs`, `CombatMemory`, `Tactics`, `WildDirector`/`ArenaDirector`; `DragonPhases` (the
+    phase registry: append only, ids are saved); `Targets`; mixins.
+  - `mc/phase`: the phases. Air attacks extend `AirAttackPhase` (target, run-up, way out) and share `JawBlow`
+    (what a bite hits) and `FlyingBreath` (the stream in flight); `GroundWalker` walks a landed dragon.
+  - `mc/client`: GeckoLib renderer and model, `LimbAnimator` (+ `TalonPose`, `ToePose`, `GeoBones`: the only
+    GeckoLib bone access, `GroundClearance`); `mc/client/showcase`: the in-game test (`TestRun` runner, `Script`
+    steps and helpers, one class per stage, `Stages` lists them; `ArenaTour`).
 - `src/fabric`, `src/neoforge` -- entrypoints only (`src/neoforge/mc<version>` for moved APIs).
 - `src/gecko4/resources` (1.21.1) / `src/gecko5/resources` (1.21.2+) -- model + animations; textures in `src/mc/shared/resources`.
 - `tools/` -- the asset pipeline. **Never hand-edit the generated model/animation JSON.**
@@ -54,7 +61,7 @@ Targets 1.21.11 and 26.2 (GeckoLib 5) are paused in `settings.gradle.kts` until 
   Arm, forearm and fingers are raised 0.1 px each over the one before (no z-fight where they overlap at the
   wrist). Every hind toe is its own bone hinged at its knuckle (`foot_*_toe1..3`, the toe + the claw under its
   tip) and each hind foot has a back toe (`foot_*_back_toe`: the middle toe + claw again, turned 180 degrees);
-  no animation keys them: `limb/Toes` (core, tested) turns them in `LimbAnimator.toes` (see Grabs).
+  no animation keys them: `limb/Toes` (core, tested) turns them in `ToePose` (see Grabs).
 - `pack_uv.py` -- last step: lays the texture out as **box UV** (no per-face UV, so it edits like any Blockbench
   model): every cube its own unfolded net, the right wing wearing the left's nets through `mirror: true`, cubes
   with identical nets sharing one (toes, fingers, horns), the nets packed by body part (body, neck, head, legs,
@@ -166,7 +173,7 @@ mouth, then the fire comes; it flickers while pouring and cools after. A texture
 8 emissive frames (`textures/entity/heat/`) from the model's UV map (chest, neck underside, jaw get ignition times
 by model z); the layer draws the two frames around `BreathAttack.heat`, weighted. It bakes on `build_wings.py`'s
 layout, before `pack_uv.py` repacks it with the skin. Every fireball (roam pass/barrage, the arena's strafe via
-`DragonStrafePlayerPhaseMixin`) goes through `DragonBrain.chargeFireball`: the same glow plays `FIREBALL_SPEEDUP`
+`DragonStrafePlayerPhaseMixin`) goes through `mc/Fireballs`: the same glow plays `FIREBALL_SPEEDUP`
 (3) x faster (synced as a count, `DragonData.FIREBALL`) and the fireball flies from the head when it reaches the jaw.
 Through that windup the head turns to the target (look attention full, `BreathAttack.fireballAiming`, both sides); it
 fires only once the head points within `FIREBALL_CONE` of it (waits up to `FIREBALL_AIM_TICKS`, else drops the
@@ -210,19 +217,19 @@ stream breath uses the same aim: the neck is straightened toward a point that ch
 ## Wild dragons are lazy
 Outside the End fight (`DragonBrain.Context.WILD`) a dragon lives on foot: `ai/Roaming` gives long ground spells
 (walks and rests) and only short flights (a few short, low legs) to come down somewhere else. A target is fought on
-the ground: in the air with a target and `CombatStance.grounded()`, `wildTick` lands beside it (`tryGroundAssault`,
+the ground: in the air with a target and `CombatStance.grounded()`, `WildDirector` lands beside it (`tryGroundAssault`,
 retried every 40 ticks; air attacks meanwhile), and a wild `GroundFightPhase` with a target never takes off on its
 timer. `ai/CombatStance` (core, tested): losing `GROUND_LIMIT` of its health on the ground (or `HitTally`) starts a
 break in the air (`BREAK_MIN..MAX` ticks of air attacks: pass, barrage, charge, snatch); the break's end or
 `AIR_LIMIT` more damage up there sends it back down to fight on foot; `CALM_TICKS` without a target resets it.
 The arena's dragon keeps vanilla's fight, except that it never
 lands on the exit portal: where vanilla's would (`LANDING_APPROACH`, remapped in `DragonBrain.remap`), it perches beside the
-player nearest it on the island (`perchByPlayer`: `GroundApproachPhase.perch`, then vanilla's sitting phases there; its
+player nearest it on the island (`ArenaDirector.perchByPlayer`: `GroundApproachPhase.perch`, then vanilla's sitting phases there; its
 takeoffs are all `LIFTOFF`), or flies on when nobody stands where it can land. Showcase stage `stance` checks the cycle (hits are fed to the brain as the husk's).
 
 ## Narrow footholds
 `ai/Foothold`: where all four limbs do not fit (`LandingSite.fits(x, z, foothold)`), a ground assault
-(`DragonBrain.tryGroundAssault`) comes down within a bite of its prey (`LandingSite.near`, every column, at the prey's
+(`Tactics.tryGroundAssault`) comes down within a bite of its prey (`LandingSite.near`, every column, at the prey's
 height) on a smaller one: `UPRIGHT` (ground under the 3x3 round its feet: sat up on its hind feet, the tail laid
 behind, the wings held out half spread for balance, teetering, a righting stroke at `BALANCE_SECONDS`) or `CLING`
 (only the center column, a pillar's top: feet planted, the wings beating the hover's stroke). Both need the body sat
@@ -251,10 +258,10 @@ return (else the clock and tail freeze). Showcase stage `death`.
 Where the dragon cannot come down by its prey it fights it in the air. `ai/AirTactics` (core, tested) gives the
 repertoire by `Reach`: `GROUND` (room to land: snatch, breath pass, fireball pass, charge, barrage), `WALL` (on solid
 ground but no landing site nor foothold: a wall's top, a lone pillar, a player pillaring up a spire to its crystal;
-`DragonBrain.walled` remembers a failed `tryGroundAssault` for `WALLED_TICKS`) and `AIR` (`DragonBrain.airborne`:
+`Tactics.walled` remembers a failed `tryGroundAssault` for `WALLED_TICKS`) and `AIR` (`Tactics.airborne`:
 elytra, flying, or `AIRBORNE_GAP` blocks of air under it); the brain tries `choices` in order until one starts
-(the last, the barrage, always does; the End fight uses vanilla's strafe for it). Wild: `wildTick`; the End fight:
-`arenaTick` (a player in the air, or one it cannot land by). Against WALL/AIR it attacks every 80-160 ticks.
+(the last, the barrage, always does; the End fight uses vanilla's strafe for it). Wild: `WildDirector`; the End fight:
+`ArenaDirector` (a player in the air, or one it cannot land by). Against WALL/AIR it attacks every 80-160 ticks.
 **Fly-by bite** (`attack/FlybyBite` core, `mc/phase/FlybyBitePhase`, animation `GLIDE_BITE`): run-up, then a level
 glide on the line that puts the bite's resting jaws (`Strike.rest`: the blow frame's head part before the IK) on the
 prey's middle, the body `CLEARANCE` over and `PULL` behind it (the neck's sweet spot for a low bite, measured);
@@ -276,13 +283,13 @@ player. The prey a dragon carries is left in its grip. Showcase stage `collision
 
 ## Collision and paths
 Vanilla's dragon has no physics; `DragonBrain` gives it some. The hull (head, necks, chest, hips, tail root parts)
-never moves deeper into solid, unbreakable blocks (`move`: in flight; `walk`: on its feet, sliding along walls), and
+never moves deeper into solid, unbreakable blocks (`HullCollision.move`: in flight; `walk`: on its feet, sliding along walls), and
 `pushOut` shoves it back out a little per tick when a turn or the pose swung it into one (only a hull wedged for
-`ESCAPE_TICKS` may pass through to free itself). Flight (`route`): straight when clear, else `nav/AirPlanner`'s A*
+`ESCAPE_TICKS` may pass through to free itself). Flight (`AirRoute`): straight when clear, else `nav/AirPlanner`'s A*
 route, kept while its next leg is clear, corners cut when a later waypoint is in view; whatever its momentum carries
 it into within `LOOKAHEAD_TICKS` makes it `swerve` at once and replan; a route leg steeply up (over a wall) is flown
 hovering. Walking: `nav/GroundPlanner` clears the whole body (`BODY_RADIUS`, low steps under the belly), keeps off
-walls, and a bent path (a detour) is walked even where it leads away from the target; `followGround` never climbs a
+walls, and a bent path (a detour) is walked even where it leads away from the target; `GroundFightPhase.followGround` never climbs a
 wall the wrists are against. Showcase stage `walls` (`-Pdragonsworn.showcase=walls`) checks all of it.
 
 ## Turning on the spot
@@ -305,14 +312,14 @@ draws held prey lying flat about its middle (along the dragon in the talons, acr
 camera sits at its lying head (`client/CameraMixin`, `PreyHold.lyingEyes`). The snatch (`phase/SnatchPhase`, wild
 attacks and the arena's holding pattern): run-up, a dive down a glide slope that homes in with both hind legs thrown
 forward under the chest, toes spread (`Grip.REACH_ANKLE`, an eagle's), the right foot reaching out for the prey over
-the last `Grip.REACH_NEAR` blocks (`LimbAnimator.talon`, IK), catch, a hard climb, drop from 26-40 blocks. The gripping foot is held level and turned across the prey
+the last `Grip.REACH_NEAR` blocks (`TalonPose`, IK), catch, a hard climb, drop from 26-40 blocks. The gripping foot is held level and turned across the prey
 (`Grip.TALON_YAW`), the prey's back against its sole (`Grip.talonPad`, `PreyHold.talonPoint`); its toes close until
 each meets the prey and then stay frozen until it lets go. Elsewhere the toes (`limb/Toes`) are straight on the
 ground (the user wants the dragon standing on its feet, not on its claws), hang half curled and stir in the air, and
 open wide for a landing or a swoop, on a slightly springy lag. Toe bones are set from their rest pose every frame
 (GeckoLib does not reset unkeyed bones every frame: adding to them spins them). The seize (`GroundFightPhase`): a bite that
 may keep its prey (only one that lands: dodged, nothing is held), shaken and chewed, then flung; anyone else hitting the head or neck makes it let go
-(`DragonBrain.hurtBy`). Showcase stage `grabs` (`-Pdragonsworn.showcase=grabs` runs only it).
+(`CombatMemory.hurtBy`). Showcase stage `grabs` (`-Pdragonsworn.showcase=grabs` runs only it).
 
 ## Sound
 `python3 tools/sounds.py` (needs numpy + soundfile) cuts vanilla's dragon sounds (read from Loom's asset cache)

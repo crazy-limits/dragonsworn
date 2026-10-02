@@ -1,12 +1,13 @@
 package crazylimits.dragonsworn.mc.breath;
 
 import crazylimits.dragonsworn.attack.BreathAttack;
+import crazylimits.dragonsworn.body.Parts;
 import crazylimits.dragonsworn.body.Strike;
 import crazylimits.dragonsworn.config.DragonConfig;
 import crazylimits.dragonsworn.mc.DragonBrain;
 import crazylimits.dragonsworn.mc.DragonData;
+import crazylimits.dragonsworn.mc.DragonPhases;
 import crazylimits.dragonsworn.mc.DragonswornDragon;
-import crazylimits.dragonsworn.mc.breath.mixin.EnderDragonPhaseInvoker;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.entity.EntitySelector;
 import net.minecraft.world.entity.LivingEntity;
@@ -34,9 +35,6 @@ import org.joml.Vector3f;
  * themselves are spawned by {@code BreathRender} out of the model's animated mouth.
  */
 public class BreathStreamPhase extends AbstractDragonSittingPhase {
-	public static final EnderDragonPhase<BreathStreamPhase> PHASE =
-			EnderDragonPhaseInvoker.dragonsworn$create(BreathStreamPhase.class, "DragonswornBreathStream");
-
 	/** Ticks the model's facing lags the entity's yaw (DragonRenderer turns it by getLatencyPos(7)). */
 	private static final int MODEL_LAG = 7;
 	/** More than this many ticks since the last stream means the dragon landed again. */
@@ -55,11 +53,6 @@ public class BreathStreamPhase extends AbstractDragonSittingPhase {
 
 	public BreathStreamPhase(EnderDragon dragon) {
 		super(dragon);
-	}
-
-	/** Called once at startup, on both sides, so the phase id is the same on client and server. */
-	public static void register() {
-		PHASE.getId();
 	}
 
 	@Override
@@ -129,7 +122,7 @@ public class BreathStreamPhase extends AbstractDragonSittingPhase {
 
 	/** The stream's start this tick: the model's mouth (the head's hitbox, on the aimed neck), or the stream pose's. */
 	public Vec3 mouth() {
-		if (aim() != null) return brain().partCenter(Strike.HEAD_PART);
+		if (aim() != null) return brain().partCenter(Parts.HEAD);
 		double[] m = BreathAttack.mouth(dragon.getLatencyPos(MODEL_LAG, 1.0F)[0]);
 		return dragon.position().add(m[0], m[1], m[2]);
 	}
@@ -204,6 +197,6 @@ public class BreathStreamPhase extends AbstractDragonSittingPhase {
 
 	@Override
 	public EnderDragonPhase<BreathStreamPhase> getPhase() {
-		return PHASE;
+		return DragonPhases.BREATH_STREAM;
 	}
 }

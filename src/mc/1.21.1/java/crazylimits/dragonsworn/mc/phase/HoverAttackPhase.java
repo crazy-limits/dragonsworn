@@ -1,28 +1,20 @@
 package crazylimits.dragonsworn.mc.phase;
 
 import crazylimits.dragonsworn.anim.DragonAnim;
-import crazylimits.dragonsworn.attack.BreathPass;
 import crazylimits.dragonsworn.attack.HoverAttack;
 import crazylimits.dragonsworn.body.Strike;
 import crazylimits.dragonsworn.config.DragonConfig;
 import crazylimits.dragonsworn.flight.FlightModel;
 import crazylimits.dragonsworn.mc.DragonBrain;
 import crazylimits.dragonsworn.mc.DragonPhases;
-import crazylimits.dragonsworn.mc.DragonswornDragon;
-import crazylimits.dragonsworn.mc.breath.BreathStreamPhase;
 import crazylimits.dragonsworn.nav.BlockGrid;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.Mth;
 import net.minecraft.world.damagesource.DamageSource;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.EntitySelector;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
-import net.minecraft.world.entity.boss.enderdragon.phases.AbstractDragonPhaseInstance;
 import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ClipContext;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
@@ -41,20 +33,17 @@ import org.jetbrains.annotations.Nullable;
  * turns after it, and the client pours the flames from the model's mouth ({@code BreathRender}, via
  * {@link BreathPassPhase#breathTicks}). What the stream touches burns (server).
  */
-public class HoverAttackPhase extends AbstractDragonPhaseInstance implements DragonswornPhase {
+public class HoverAttackPhase extends AirAttackPhase {
 	public enum Mode { BITE, BREATH }
 
 	private enum Stage { APPROACH, HOLD, ACT, AWAY }
 
 	static final int AWAY_TICKS = 40;
 
-	@Nullable
-	private LivingEntity target;
 	private Mode mode = Mode.BITE;
 	private Stage stage = Stage.APPROACH;
-	private int ticks, spellTicks, attacks, readyAt;
-	@Nullable
-	private Vec3 waypoint;
+	/** Ticks since the spell began, attacks made, and the spell tick the next one may start at. */
+	private int spellTicks, attacks, readyAt;
 	/** The side (horizontal unit direction) it hovers on, from the prey toward it. */
 	private Vec3 side = Vec3.ZERO;
 	/** The bite's aim (world), or the breath's angles (off the facing, below level). */
@@ -71,10 +60,7 @@ public class HoverAttackPhase extends AbstractDragonPhaseInstance implements Dra
 	/** Starts a hover attack at {@code target} when it is within reach of a flight. */
 	public static boolean start(EnderDragon dragon, LivingEntity target, Mode mode) {
 		if (target.distanceToSqr(dragon) > HoverAttack.MAX_RANGE * HoverAttack.MAX_RANGE) return false;
-		dragon.getPhaseManager().setPhase(DragonPhases.HOVER_ATTACK);
-		HoverAttackPhase phase = dragon.getPhaseManager().getPhase(DragonPhases.HOVER_ATTACK);
-		phase.target = target;
-		phase.mode = mode;
+		begin(dragon, DragonPhases.HOVER_ATTACK, target).mode = mode;
 		return true;
 	}
 
@@ -83,17 +69,12 @@ public class HoverAttackPhase extends AbstractDragonPhaseInstance implements Dra
 		return DragonPhases.HOVER_ATTACK;
 	}
 
-	private DragonBrain brain() {
-		return DragonswornDragon.brain(dragon);
-	}
-
 	@Override
 	public void begin() {
-		target = null;
+		super.begin();
 		mode = Mode.BITE;
 		stage = Stage.APPROACH;
-		ticks = spellTicks = attacks = readyAt = 0;
-		waypoint = null;
+		spellTicks = attacks = readyAt = 0;
 		side = Vec3.ZERO;
 		aim = null;
 		hit = false;
@@ -120,16 +101,12 @@ public class HoverAttackPhase extends AbstractDragonPhaseInstance implements Dra
 			case APPROACH -> approach();
 			case HOLD -> hold();
 			case ACT -> act();
-			case AWAY -> {
-				if (ticks > AWAY_TICKS) dragon.getPhaseManager().setPhase(EnderDragonPhase.HOLDING_PATTERN);
-			}
+			case AWAY -> leaveAfter(AWAY_TICKS);
 		}
 	}
 
 	private boolean lost() {
-		return target == null || !target.isAlive() || target.level() != dragon.level()
-				|| target.distanceToSqr(dragon) > HoverAttack.LOST_RANGE * HoverAttack.LOST_RANGE
-				|| target instanceof Player p && (p.isCreative() || p.isSpectator());
+		return lostBeyond(HoverAttack.LOST_RANGE);
 	}
 
 	private Vec3 middle() {
@@ -273,19 +250,12 @@ public class HoverAttackPhase extends AbstractDragonPhaseInstance implements Dra
 		if (!hit) brain().aimStrike(aim);
 		if (hit || toHit > 0 || aim == null) return;
 		hit = true;
-		DragonBrain brain = brain();
-		probe.aim(DragonAnim.HOVER_BITE, aim.x - dragon.getX(), aim.y - dragon.getY(), aim.z - dragon.getZ());
-		probe.solve(brain.body, 1.0F);
-		double[] end = new double[3];
-		probe.blow(brain.body, 1.0F, end);
-		Vec3 jaws = dragon.position().add(end[0], end[1], end[2]);
+		Vec3 jaws = JawBlow.landing(dragon, probe, DragonAnim.HOVER_BITE, aim);
 		dragon.playSound(SoundEvents.RAVAGER_ATTACK, 3.0F, 0.6F);
 		DamageSource source = dragon.damageSources().mobAttack(dragon);
-		double radius = DragonConfig.BITE_RADIUS.get();
-		for (Entity e : dragon.level().getEntities(dragon, new AABB(jaws, jaws).inflate(radius + 2.0), EntitySelector.NO_CREATIVE_OR_SPECTATOR)) {
-			if (!(e instanceof LivingEntity living) || !e.getBoundingBox().inflate(radius).contains(jaws)) continue;
+		for (LivingEntity living : JawBlow.struck(dragon, jaws, DragonConfig.BITE_RADIUS.get())) {
 			if (!living.hurt(source, DragonConfig.HOVER_BITE_DAMAGE.f())) continue;
-			Vec3 push = e.position().subtract(dragon.position()).multiply(1, 0, 1).normalize().scale(HoverAttack.BITE_PUSH);
+			Vec3 push = living.position().subtract(dragon.position()).multiply(1, 0, 1).normalize().scale(HoverAttack.BITE_PUSH);
 			living.push(push.x, 0.3, push.z);
 			living.hurtMarked = true;
 		}
@@ -303,17 +273,8 @@ public class HoverAttackPhase extends AbstractDragonPhaseInstance implements Dra
 			Vec3 at = target.position().add(0.0, target.getBbHeight() * 0.4, 0.0).subtract(base);
 			want = HoverAttack.angles(yaw, at.x, at.y, at.z);
 		}
-		angles = BreathPass.chase(angles, want, ticks < BreathPass.WINDUP_TICKS ? HoverAttack.WINDUP_TURN : HoverAttack.STREAM_TURN);
-		double[] d = BreathPass.direction(yaw, angles);
-		Vec3 dir = new Vec3(d[0], d[1], d[2]);
-		Vec3 point = ticks < BreathPass.WINDUP_TICKS + BreathPass.STREAM_TICKS
-				? BreathStreamPhase.stream(dragon, base, dir, HoverAttack.RANGE).getLocation() : null;
-		brain.aimStrike(point);
-		if (point != null && BreathPass.streaming(ticks) && (ticks - BreathPass.WINDUP_TICKS) % BreathPass.DAMAGE_INTERVAL == 0) {
-			Vec3 mouth = brain.partCenter(Strike.HEAD_PART);
-			Vec3 to = point.subtract(mouth);
-			if (to.lengthSqr() > 1e-4) BreathStreamPhase.burn(dragon, mouth, to.normalize(), HoverAttack.RANGE, DragonConfig.HOVER_BREATH_DAMAGE.f());
-		}
+		angles = FlyingBreath.tick(dragon, ticks, base, angles, want, HoverAttack.WINDUP_TURN, HoverAttack.STREAM_TURN,
+				HoverAttack.RANGE, DragonConfig.HOVER_BREATH_DAMAGE.f());
 	}
 
 	private void away() {
@@ -328,9 +289,10 @@ public class HoverAttackPhase extends AbstractDragonPhaseInstance implements Dra
 		waypoint = dragon.position().add(dir.scale(40.0)).add(0.0, 10.0, 0.0);
 	}
 
-	/** Server: the stage it is in and how many attacks it has made, for the showcase. */
-	public String stage() {
-		return stage.name() + " " + attacks;
+	/** Client: the breath's sounds, as the breath pass's (the same timing). */
+	@Override
+	public void doClientTick() {
+		FlyingBreath.sounds(dragon);
 	}
 
 	@Override
@@ -348,11 +310,5 @@ public class HoverAttackPhase extends AbstractDragonPhaseInstance implements Dra
 	@Override
 	public float getFlySpeed() {
 		return 1.0F;
-	}
-
-	@Nullable
-	@Override
-	public Vec3 getFlyTargetLocation() {
-		return waypoint;
 	}
 }

@@ -32,7 +32,7 @@ class StrikeTest {
 			strike.aim(DragonAnim.ATTACK, a[0], a[1], a[2]);
 			assertTrue(strike.solve(body, 1.0F) < 0.05, "reaches " + a[0] + ", " + a[1] + ", " + a[2]);
 			// the hitbox (what the server and the renderer place) is on the aim too
-			assertTrue(distance(blowPart(DragonAnim.ATTACK, body, strike, Strike.HEAD_PART), a[0], a[1], a[2]) < 0.05);
+			assertTrue(distance(blowPart(DragonAnim.ATTACK, body, strike, Parts.HEAD), a[0], a[1], a[2]) < 0.05);
 		}
 	}
 
@@ -44,7 +44,7 @@ class StrikeTest {
 		for (double[] a : aims) {
 			strike.aim(DragonAnim.TAIL_SWEEP, a[0], a[1], a[2]);
 			assertTrue(strike.solve(body, 1.0F) < 0.05, "reaches " + a[0] + ", " + a[1] + ", " + a[2]);
-			assertTrue(distance(blowPart(DragonAnim.TAIL_SWEEP, body, strike, Strike.TAIL_TIP_PART), a[0], a[1], a[2]) < 0.05);
+			assertTrue(distance(blowPart(DragonAnim.TAIL_SWEEP, body, strike, Parts.TAIL_TIP), a[0], a[1], a[2]) < 0.05);
 		}
 	}
 

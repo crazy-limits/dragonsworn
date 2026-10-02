@@ -17,6 +17,11 @@ public interface DragonswornPhase {
 		return null;
 	}
 
+	/** An attack in progress: the dragon does not roar through it. */
+	default boolean attacks() {
+		return false;
+	}
+
 	/** Whether movement is blocked by terrain (it flies around it) in this phase. */
 	default boolean collides() {
 		return true;

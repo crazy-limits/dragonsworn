@@ -8,19 +8,13 @@ import crazylimits.dragonsworn.config.DragonConfig;
 import crazylimits.dragonsworn.flight.FlightModel;
 import crazylimits.dragonsworn.mc.DragonBrain;
 import crazylimits.dragonsworn.mc.DragonPhases;
-import crazylimits.dragonsworn.mc.DragonswornDragon;
 import crazylimits.dragonsworn.nav.BlockGrid;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.Mth;
 import net.minecraft.world.damagesource.DamageSource;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.EntitySelector;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
-import net.minecraft.world.entity.boss.enderdragon.phases.AbstractDragonPhaseInstance;
 import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
@@ -32,7 +26,7 @@ import org.jetbrains.annotations.Nullable;
  * when they close (prey in the air is led by its velocity), until a moment before; whatever is at the
  * jaws then is hit, harder and flung further the faster the dragon flies. Then it flies on.
  */
-public class FlybyBitePhase extends AbstractDragonPhaseInstance implements DragonswornPhase {
+public class FlybyBitePhase extends AirAttackPhase {
 	private enum Stage { RUN_UP, APPROACH, BITE, AWAY }
 
 	static final int RUN_UP_TICKS = 200, APPROACH_TICKS = 300, AWAY_TICKS = 50;
@@ -43,14 +37,9 @@ public class FlybyBitePhase extends AbstractDragonPhaseInstance implements Drago
 	 */
 	static final double LEVEL_OFF = 70.0, HOME_IN = 30.0;
 
-	@Nullable
-	private LivingEntity target;
 	private Stage stage = Stage.RUN_UP;
-	private int ticks;
 	/** The run's direction across the ground (unit), fixed as it comes in. */
 	private Vec3 heading = Vec3.ZERO;
-	@Nullable
-	private Vec3 waypoint;
 	/** Where the jaws are aimed (world): the prey's middle when they close, frozen a moment before. */
 	@Nullable
 	private Vec3 aim;
@@ -67,8 +56,7 @@ public class FlybyBitePhase extends AbstractDragonPhaseInstance implements Drago
 	/** Starts a fly-by bite at {@code target} when it is in range. */
 	public static boolean start(EnderDragon dragon, LivingEntity target) {
 		if (target.distanceToSqr(dragon) > FlybyBite.MAX_RANGE * FlybyBite.MAX_RANGE) return false;
-		dragon.getPhaseManager().setPhase(DragonPhases.FLYBY_BITE);
-		dragon.getPhaseManager().getPhase(DragonPhases.FLYBY_BITE).target = target;
+		begin(dragon, DragonPhases.FLYBY_BITE, target);
 		return true;
 	}
 
@@ -77,16 +65,10 @@ public class FlybyBitePhase extends AbstractDragonPhaseInstance implements Drago
 		return DragonPhases.FLYBY_BITE;
 	}
 
-	private DragonBrain brain() {
-		return DragonswornDragon.brain(dragon);
-	}
-
 	@Override
 	public void begin() {
-		target = null;
+		super.begin();
 		stage = Stage.RUN_UP;
-		ticks = 0;
-		waypoint = null;
 		aim = null;
 		hit = false;
 		heading = Vec3.ZERO;
@@ -107,16 +89,12 @@ public class FlybyBitePhase extends AbstractDragonPhaseInstance implements Drago
 			case RUN_UP -> runUp();
 			case APPROACH -> approach();
 			case BITE -> bite();
-			case AWAY -> {
-				if (ticks > AWAY_TICKS) dragon.getPhaseManager().setPhase(EnderDragonPhase.HOLDING_PATTERN);
-			}
+			case AWAY -> leaveAfter(AWAY_TICKS);
 		}
 	}
 
 	private boolean lost() {
-		return target == null || !target.isAlive() || target.level() != dragon.level()
-				|| target.distanceToSqr(dragon) > 4 * FlybyBite.MAX_RANGE * FlybyBite.MAX_RANGE
-				|| target instanceof Player p && (p.isCreative() || p.isSpectator());
+		return lostBeyond(2 * FlybyBite.MAX_RANGE);
 	}
 
 	/** The prey's middle {@code ticks} from now: where it is, led by how it moves (prey in the air keeps going). */
@@ -161,17 +139,10 @@ public class FlybyBitePhase extends AbstractDragonPhaseInstance implements Drago
 			return;
 		}
 		brain().setLookTarget(target);
-		Vec3 out = dragon.position().subtract(target.position()).multiply(1, 0, 1);
-		double distance = out.length();
-		if (distance > FlybyBite.RUN_UP - 4.0) {
+		if (runUp(FlybyBite.RUN_UP, 6.0)) {
 			stage = Stage.APPROACH;
 			ticks = 0;
 			heading = Vec3.ZERO;
-			return;
-		}
-		if (waypoint == null) {
-			Vec3 dir = distance > 1e-3 ? out.scale(1.0 / distance) : dragon.getLookAngle().multiply(-1, 0, -1).normalize();
-			waypoint = target.position().add(dir.scale(FlybyBite.RUN_UP + 8.0)).add(0.0, 6.0, 0.0);
 		}
 	}
 
@@ -259,18 +230,12 @@ public class FlybyBitePhase extends AbstractDragonPhaseInstance implements Drago
 	private void blow() {
 		if (aim == null) return;
 		Vec3 v = dragon.getDeltaMovement();
-		probe.aim(DragonAnim.GLIDE_BITE, aim.x - dragon.getX(), aim.y - dragon.getY(), aim.z - dragon.getZ());
-		probe.solve(brain().body, 1.0F);
-		double[] end = new double[3];
-		probe.blow(brain().body, 1.0F, end);
-		Vec3 jaws = dragon.position().add(end[0], end[1], end[2]);
+		Vec3 jaws = JawBlow.landing(dragon, probe, DragonAnim.GLIDE_BITE, aim);
 		dragon.playSound(SoundEvents.RAVAGER_ATTACK, 3.0F, 0.6F);
 		DamageSource source = dragon.damageSources().mobAttack(dragon);
 		float damage = FlybyBite.damage(v.length());
 		double[] push = FlybyBite.knockback(v.x, v.y, v.z);
-		double radius = DragonConfig.FLYBY_RADIUS.get();
-		for (Entity e : dragon.level().getEntities(dragon, new AABB(jaws, jaws).inflate(radius + 2.0), EntitySelector.NO_CREATIVE_OR_SPECTATOR)) {
-			if (!(e instanceof LivingEntity living) || !e.getBoundingBox().inflate(radius).contains(jaws)) continue;
+		for (LivingEntity living : JawBlow.struck(dragon, jaws, DragonConfig.FLYBY_RADIUS.get())) {
 			if (!living.hurt(source, damage)) continue;
 			living.push(push[0], push[1], push[2]);
 			living.hurtMarked = true;
@@ -283,13 +248,7 @@ public class FlybyBitePhase extends AbstractDragonPhaseInstance implements Drago
 		brain.setLookTarget(null);
 		stage = Stage.AWAY;
 		ticks = 0;
-		float yaw = dragon.getYRot() * Mth.DEG_TO_RAD;
-		waypoint = dragon.position().add(Mth.sin(yaw) * 40.0, 10.0, -Mth.cos(yaw) * 40.0);
-	}
-
-	/** Server: the stage it is in, for the showcase. */
-	public String stage() {
-		return stage.name();
+		waypoint = onAhead(40.0, 10.0);
 	}
 
 	@Override
@@ -301,11 +260,5 @@ public class FlybyBitePhase extends AbstractDragonPhaseInstance implements Drago
 	@Override
 	public float getFlySpeed() {
 		return stage == Stage.APPROACH ? 1.3F : 1.0F;
-	}
-
-	@Nullable
-	@Override
-	public Vec3 getFlyTargetLocation() {
-		return waypoint;
 	}
 }

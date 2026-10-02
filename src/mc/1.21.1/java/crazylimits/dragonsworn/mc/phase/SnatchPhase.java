@@ -7,17 +7,15 @@ import crazylimits.dragonsworn.mc.DragonBrain;
 import crazylimits.dragonsworn.mc.DragonPhases;
 import crazylimits.dragonsworn.mc.DragonswornDragon;
 import crazylimits.dragonsworn.mc.PreyHold;
-import crazylimits.dragonsworn.nav.BlockGrid;
+import crazylimits.dragonsworn.mc.Targets;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
-import net.minecraft.world.entity.boss.enderdragon.phases.AbstractDragonPhaseInstance;
 import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
 import net.minecraft.world.phys.Vec3;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -30,7 +28,7 @@ import java.util.concurrent.ThreadLocalRandom;
  * so does killing the dragon (it lets go as it dies); either way the fall is the prey's problem. A dodge
  * is possible too: the talons close only on what is under them as the dragon passes.
  */
-public class SnatchPhase extends AbstractDragonPhaseInstance implements DragonswornPhase {
+public class SnatchPhase extends AirAttackPhase {
 	private enum Stage { RUN_UP, SWOOP, CARRY, AWAY }
 
 	/** How close (blocks) the talons must pass to the prey's feet: across, and up or down. */
@@ -42,17 +40,14 @@ public class SnatchPhase extends AbstractDragonPhaseInstance implements Dragonsw
 	/** From this close the flight homes in on the prey. */
 	static final double HOME_IN = 24.0;
 	static final int RUN_UP_TICKS = 200, SWOOP_TICKS = 300, CARRY_TICKS = 240, AWAY_TICKS = 50;
+	/** Open sky over the prey (blocks) for the foot to come down through: no roof, tree trunk or cave. */
+	static final int OPEN_ABOVE = 10;
 	/** It never starts a snatch at prey further than this. */
 	static final double MAX_RANGE = 96.0;
 
-	@Nullable
-	private LivingEntity target;
 	private Stage stage = Stage.RUN_UP;
-	private int ticks;
-	/** The dive's direction across the ground (unit), and its run-up point. */
+	/** The dive's direction across the ground (unit). */
 	private Vec3 heading = Vec3.ZERO;
-	@Nullable
-	private Vec3 waypoint;
 	private double dropAt;
 
 	public SnatchPhase(EnderDragon dragon) {
@@ -62,22 +57,8 @@ public class SnatchPhase extends AbstractDragonPhaseInstance implements Dragonsw
 	/** Starts a snatch at {@code target} when it can be held and there is open sky over it. */
 	public static boolean start(EnderDragon dragon, LivingEntity target) {
 		if (!PreyHold.holdable(target) || target.isPassenger() || target.distanceToSqr(dragon) > MAX_RANGE * MAX_RANGE
-				|| !openAbove(DragonswornDragon.brain(dragon).grid(), target)) return false;
-		dragon.getPhaseManager().setPhase(DragonPhases.SNATCH);
-		dragon.getPhaseManager().getPhase(DragonPhases.SNATCH).target = target;
-		return true;
-	}
-
-	/** Nothing solid over the prey for the foot to come down through (a roof, a tree's trunk, a cave). */
-	static boolean openAbove(BlockGrid grid, LivingEntity target) {
-		int x0 = target.getBlockX(), y0 = Mth.floor(target.getY() + target.getBbHeight()), z0 = target.getBlockZ();
-		for (int x = x0 - 1; x <= x0 + 1; x++) {
-			for (int z = z0 - 1; z <= z0 + 1; z++) {
-				for (int y = y0; y < y0 + 10; y++) {
-					if (grid.blocked(x, y, z)) return false;
-				}
-			}
-		}
+				|| !openAbove(DragonswornDragon.brain(dragon).grid(), target, OPEN_ABOVE)) return false;
+		begin(dragon, DragonPhases.SNATCH, target);
 		return true;
 	}
 
@@ -86,16 +67,10 @@ public class SnatchPhase extends AbstractDragonPhaseInstance implements Dragonsw
 		return DragonPhases.SNATCH;
 	}
 
-	private DragonBrain brain() {
-		return DragonswornDragon.brain(dragon);
-	}
-
 	@Override
 	public void begin() {
-		target = null;
+		super.begin();
 		stage = Stage.RUN_UP;
-		ticks = 0;
-		waypoint = null;
 		heading = Vec3.ZERO;
 	}
 
@@ -113,9 +88,7 @@ public class SnatchPhase extends AbstractDragonPhaseInstance implements Dragonsw
 			case RUN_UP -> runUp();
 			case SWOOP -> swoop();
 			case CARRY -> carry();
-			case AWAY -> {
-				if (ticks > AWAY_TICKS) dragon.getPhaseManager().setPhase(EnderDragonPhase.HOLDING_PATTERN);
-			}
+			case AWAY -> leaveAfter(AWAY_TICKS);
 		}
 	}
 
@@ -131,16 +104,9 @@ public class SnatchPhase extends AbstractDragonPhaseInstance implements Dragonsw
 			return;
 		}
 		brain().setLookTarget(target);
-		Vec3 out = dragon.position().subtract(target.position()).multiply(1, 0, 1);
-		double distance = out.length();
-		if (distance > RUN_UP - 4.0) {
+		if (runUp(RUN_UP, 14.0)) {
 			stage = Stage.SWOOP;
 			ticks = 0;
-			return;
-		}
-		if (waypoint == null) {
-			Vec3 dir = distance > 1e-3 ? out.scale(1.0 / distance) : dragon.getLookAngle().multiply(-1, 0, -1).normalize();
-			waypoint = target.position().add(dir.scale(RUN_UP + 8.0)).add(0.0, 14.0, 0.0);
 		}
 	}
 
@@ -215,8 +181,7 @@ public class SnatchPhase extends AbstractDragonPhaseInstance implements Dragonsw
 		}
 		// the action bar first says the vanilla mount line: say what happened instead, a moment later
 		if (ticks == 3 && target instanceof ServerPlayer player) player.displayClientMessage(Component.translatable("dragonsworn.snatched"), true);
-		float yaw = dragon.getYRot() * Mth.DEG_TO_RAD;
-		Vec3 facing = new Vec3(Mth.sin(yaw), 0.0, -Mth.cos(yaw));
+		Vec3 facing = Targets.facing(dragon.getYRot());
 		waypoint = dragon.position().add(facing.scale(30.0)).add(0.0, dropAt + 6.0 - dragon.getY(), 0.0);
 		// hard beats: it climbs steeper than its cruise would
 		Vec3 v = dragon.getDeltaMovement();
@@ -234,8 +199,7 @@ public class SnatchPhase extends AbstractDragonPhaseInstance implements Dragonsw
 		brain.setLookTarget(null);
 		stage = Stage.AWAY;
 		ticks = 0;
-		float yaw = dragon.getYRot() * Mth.DEG_TO_RAD;
-		waypoint = dragon.position().add(Mth.sin(yaw) * 40.0, 8.0, -Mth.cos(yaw) * 40.0);
+		waypoint = onAhead(40.0, 8.0);
 	}
 
 	@Override
@@ -251,11 +215,5 @@ public class SnatchPhase extends AbstractDragonPhaseInstance implements Dragonsw
 	@Override
 	public float getFlySpeed() {
 		return stage == Stage.SWOOP ? 1.4F : 1.0F;
-	}
-
-	@Nullable
-	@Override
-	public Vec3 getFlyTargetLocation() {
-		return waypoint;
 	}
 }

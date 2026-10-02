@@ -1,6 +1,7 @@
 package crazylimits.dragonsworn.mc;
 
 import crazylimits.dragonsworn.body.Grip;
+import crazylimits.dragonsworn.body.Parts;
 import crazylimits.dragonsworn.limb.BodyFrame;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
@@ -8,7 +9,6 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityDimensions;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
@@ -84,7 +84,7 @@ public final class PreyHold {
 		EntityDimensions size = entity.getType().getDimensions().scale(entity.getAgeScale() * entity.getScale());
 		if (!entity.isAlive() || !Grip.fits(size.width(), size.height()) || entity.isVehicle()) return false;
 		if (carrier(entity) != null) return false;
-		return !(entity instanceof Player p && (p.isCreative() || p.isSpectator()));
+		return !Targets.untouchable(entity);
 	}
 
 	/**
@@ -94,7 +94,7 @@ public final class PreyHold {
 	 */
 	public Vec3 holdPoint(Entity prey) {
 		if (hold() == Grip.Hold.JAW) {
-			Vec3 head = brain.partCenter(0);
+			Vec3 head = brain.partCenter(Parts.HEAD);
 			return head.subtract(0.0, Grip.JAW_BELOW + prey.getBbHeight() / 2.0, 0.0);
 		}
 		return talonPoint(prey);
@@ -125,7 +125,7 @@ public final class PreyHold {
 		if (!holds(prey)) return Double.NaN;
 		// the dragon's yaw points backward by Minecraft's convention (its facing is (sin, -cos))
 		if (hold() == Grip.Hold.TALON) return brain.body.yaw(partialTick) + 180.0;
-		Vec3 head = brain.partCenter(0), neck = brain.partCenter(1);
+		Vec3 head = brain.partCenter(Parts.HEAD), neck = brain.partCenter(Parts.NECK_UPPER);
 		double dx = head.x - neck.x, dz = head.z - neck.z;
 		return Math.toDegrees(Math.atan2(-dx, dz)) + 90.0;
 	}

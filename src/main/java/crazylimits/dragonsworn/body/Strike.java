@@ -31,8 +31,6 @@ import java.util.Arrays;
 public final class Strike {
 	/** How close (blocks) the IK must put the jaws or the tail's tip on the aim for the blow to reach (half of it), and the tail's hit. */
 	public static final double BITE_RADIUS = 1.1, TAIL_RADIUS = 1.3;
-	/** The parts at the end of each chain: the head (jaw_upper) and the tail's last segment. */
-	public static final int HEAD_PART = 0, TAIL_TIP_PART = 12;
 	/** How far the tail is cocked away from the prey before the whip, as a share of the strike's bends. */
 	static final double COCK = 0.5;
 	/** Per-joint reach of the bends, degrees: the four neck segments and the head; every tail segment. */
@@ -97,7 +95,7 @@ public final class Strike {
 	public static double[] rest(DragonAnim anim, DragonBody body, float partialTick) {
 		double[] frame = new double[PoseTrack.POINTS * 3], world = new double[3];
 		PoseTrack.sample(anim, hitSeconds(anim), frame);
-		PartSolver.toWorld(body, partialTick, frame, HEAD_PART, world, 0);
+		PartSolver.toWorld(body, partialTick, frame, Parts.HEAD, world, 0);
 		double yaw = Math.toRadians(body.yaw(partialTick)), fx = Math.sin(yaw), fz = -Math.cos(yaw);
 		return new double[] {world[0] * fx + world[2] * fz, world[1], -world[0] * fz + world[2] * fx};
 	}
@@ -285,7 +283,7 @@ public final class Strike {
 		}
 		if (tail) {
 			chain.pose(totalX, totalY);
-			chain.framePoint(PoseTrack.partDepth(TAIL_TIP_PART) - 1, frame, TAIL_TIP_PART, tipPoint, 0);
+			chain.framePoint(PoseTrack.partDepth(Parts.TAIL_TIP) - 1, frame, Parts.TAIL_TIP, tipPoint, 0);
 			out[0] = tipPoint[0];
 			out[1] = tipPoint[1];
 			out[2] = tipPoint[2];
@@ -293,7 +291,7 @@ public final class Strike {
 		}
 		// bendChain stops at the chain's own joint count (5 on the neck)
 		PartSolver.bendChain(work, PoseTrack.CHAIN_NECK, totalX, totalY);
-		int part = HEAD_PART;
+		int part = Parts.HEAD;
 		out[0] = work[part * 3];
 		out[1] = work[part * 3 + 1];
 		out[2] = work[part * 3 + 2];

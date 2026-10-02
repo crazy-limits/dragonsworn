@@ -10,9 +10,6 @@ import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import software.bernie.geckolib.cache.object.GeoBone;
-import software.bernie.geckolib.cache.object.GeoCube;
-import software.bernie.geckolib.cache.object.GeoQuad;
-import software.bernie.geckolib.cache.object.GeoVertex;
 import software.bernie.geckolib.model.GeoModel;
 
 import java.util.ArrayList;
@@ -60,17 +57,17 @@ public final class LimbContact {
 		// GeckoLib's bone pivots). Not GeckoLib's tracked world matrix: in 4.9 it carries an extra twice
 		// the identity, so any point off a bone's pivot comes out twice as far from it.
 		BodyFrame frame = LimbAnimator.frame(dragon, partialTick);
-		LimbAnimator.Clearance clearance = new LimbAnimator.Clearance(dragon.level(), frame);
+		GroundClearance clearance = new GroundClearance(dragon.level(), frame);
 		double[] gap = new double[ROOTS.length], ground = new double[ROOTS.length];
 		for (int i = 0; i < ROOTS.length; i++) {
 			Optional<GeoBone> root = model.getBone(ROOTS[i]);
 			if (root.isEmpty() || root.get().getParent() == null) return;
 			// the closest any part of the limb comes to the ground under that part: 0 resting on it,
 			// positive floating above it, negative inside it
-			gap[i] = -clearance.of(root.get(), LimbAnimator.matrix(root.get().getParent()));
+			gap[i] = -clearance.of(root.get(), GeoBones.matrix(root.get().getParent()));
 			// the ground under the limb's own pivot (the ankle, the hand's apex): flat or a step there
 			GeoBone b = root.get();
-			double[] at = frame.toWorld(Affine.apply(LimbAnimator.matrix(b), new double[]{b.getPivotX(), b.getPivotY(), b.getPivotZ()}, new double[3]), new double[3]);
+			double[] at = frame.toWorld(Affine.apply(GeoBones.matrix(b), new double[]{b.getPivotX(), b.getPivotY(), b.getPivotZ()}, new double[3]), new double[3]);
 			ground[i] = groundTop(dragon.level(), at[0], at[1] + 2.0, at[2]);
 		}
 		String anim = DragonswornDragon.brain(dragon).choice().anim().name().toLowerCase(Locale.ROOT);
