@@ -61,8 +61,14 @@ sourceSets.test {
 repositories {
 	mavenCentral()
 	maven("https://maven.fabricmc.net/") { name = "Fabric" }
-	maven("https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/") { name = "GeckoLib"; content { includeGroup("software.bernie.geckolib"); includeGroup("com.geckolib") } }
-	maven("https://api.modrinth.com/maven") { name = "Modrinth"; content { includeGroup("maven.modrinth") } }
+	// Each of these groups is only ever looked up in its own repository: a lookup elsewhere that fails (a 502 from
+	// another maven) would disable that repository for the rest of the build
+	fun strictMaven(url: String, alias: String, vararg groups: String) = exclusiveContent {
+		forRepository { maven(url) { name = alias } }
+		filter { groups.forEach(::includeGroup) }
+	}
+	strictMaven("https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/", "GeckoLib", "software.bernie.geckolib", "com.geckolib")
+	strictMaven("https://api.modrinth.com/maven", "Modrinth", "maven.modrinth")
 	maven("https://maven.quiltmc.org/repository/release/") { name = "Quilt"; content { includeGroup("org.quiltmc.parsers") } }
 	maven("https://maven.shedaniel.me/") { name = "Shedaniel"; content { includeGroup("me.shedaniel.cloth") } }
 }
