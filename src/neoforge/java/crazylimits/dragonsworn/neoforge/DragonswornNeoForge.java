@@ -6,10 +6,10 @@ import crazylimits.dragonsworn.mc.DragonswornCommon;
 import crazylimits.dragonsworn.mc.breath.BreathParticles;
 import crazylimits.dragonsworn.mc.breath.DragonFire;
 import net.minecraft.core.registries.Registries;
+import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
-import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.fml.loading.FMLPaths;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.OnDatapackSyncEvent;
@@ -19,7 +19,7 @@ import net.neoforged.neoforge.registries.RegisterEvent;
 /** Both sides: the dragon's new phases (its AI lives on the server). Rendering: {@link DragonswornNeoForgeClient}. */
 @Mod(Dragonsworn.MOD_ID)
 public final class DragonswornNeoForge {
-	public DragonswornNeoForge(IEventBus modBus, ModContainer container) {
+	public DragonswornNeoForge(IEventBus modBus, ModContainer container, Dist dist) {
 		DragonswornCommon.init();
 		// the AI's server config: now, as a server starts, and on /reload (the sync to everyone, no single player)
 		DragonswornCommon.loadConfig(FMLPaths.CONFIGDIR.get());
@@ -28,7 +28,7 @@ public final class DragonswornNeoForge {
 			if (event.getPlayer() == null) DragonswornCommon.reloadConfig();
 		});
 		// the mods list's config button
-		if (FMLEnvironment.dist.isClient()) DragonswornNeoForgeClient.registerConfigScreen(container);
+		if (dist.isClient()) DragonswornNeoForgeClient.registerConfigScreen(container);
 		// the server needs them too: a breath cloud syncs its particle by id
 		modBus.addListener(RegisterEvent.class, event -> event.register(Registries.PARTICLE_TYPE,
 				helper -> BreathParticles.ALL.forEach(helper::register)));

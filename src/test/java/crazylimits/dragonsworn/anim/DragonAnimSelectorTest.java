@@ -7,8 +7,10 @@ import org.junit.jupiter.api.Test;
 
 import static crazylimits.dragonsworn.anim.DragonAnimSelector.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DragonAnimSelectorTest {
 	private static final FlightModel.Plan GLIDING = new FlightModel.Plan(FlightModel.Mode.GLIDE, 0, 3);
@@ -69,6 +71,23 @@ class DragonAnimSelectorTest {
 		assertEquals(1.0, playbackSpeed(DragonAnim.WALK, keyed), 1e-9);
 		assertEquals(2.0, playbackSpeed(DragonAnim.WALK, keyed * 2), 1e-9);
 		assertEquals(1.0, playbackSpeed(DragonAnim.FLY, 5));
+		assertEquals(0.35, playbackSpeed(DragonAnim.WALK, 0.021), 1e-9, "a crawl still steps");
+		assertEquals(0.0, playbackSpeed(DragonAnim.WALK, 0.0), "a stalled walk stands mid-stride");
+	}
+
+	@Test
+	void aShortStallKeepsTheWalkGoing() {
+		Gait gait = new Gait();
+		assertFalse(gait.walking());
+		gait.tick(0.1);
+		assertTrue(gait.walking());
+		// the walker turning, replanning: a few ticks without a step are no reason to start the walk over
+		for (int i = 0; i < Gait.STOP_TICKS - 1; i++) gait.tick(0.0);
+		assertTrue(gait.walking());
+		assertEquals(DragonAnim.WALK, select(Kind.GROUND, Foothold.STAND, null, 0, GLIDING, gait.walking()).anim());
+		gait.tick(0.0);
+		assertFalse(gait.walking(), "a real stop ends it");
+		assertEquals(DragonAnim.IDLE, select(Kind.GROUND, Foothold.STAND, null, 0, GLIDING, gait.walking()).anim());
 	}
 
 	@Test

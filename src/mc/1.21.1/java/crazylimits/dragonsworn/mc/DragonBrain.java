@@ -10,7 +10,7 @@ import crazylimits.dragonsworn.anim.DragonAnim;
 import crazylimits.dragonsworn.anim.DragonAnimSelector.Kind;
 import crazylimits.dragonsworn.anim.DragonAnimSelector;
 import crazylimits.dragonsworn.anim.DragonVoice;
-import crazylimits.dragonsworn.attack.BreathAttack;
+import crazylimits.dragonsworn.anim.Gait;
 import crazylimits.dragonsworn.body.DragonBody;
 import crazylimits.dragonsworn.body.Grip;
 import crazylimits.dragonsworn.body.PartSolver;
@@ -22,6 +22,7 @@ import crazylimits.dragonsworn.body.TailMotion;
 import crazylimits.dragonsworn.flight.FlightModel;
 import crazylimits.dragonsworn.limb.GroundFit;
 import crazylimits.dragonsworn.limb.HeadLook;
+import crazylimits.dragonsworn.mc.breath.BreathFlames;
 import crazylimits.dragonsworn.mc.breath.BreathStreamPhase;
 import crazylimits.dragonsworn.mc.phase.DragonswornPhase;
 import crazylimits.dragonsworn.nav.BlockGrid;
@@ -68,6 +69,8 @@ public final class DragonBrain {
 	private final EnderDragon dragon;
 	public final DragonBody body = new DragonBody();
 	public final AnimClock clock = new AnimClock();
+	/** Walking on the ground, through the walker's short stalls (else the walk would restart from its first frame). */
+	private final Gait gait = new Gait();
 	/** The roar sounding now (client). */
 	public final DragonVoice.Roar roar = new DragonVoice.Roar();
 	/** The bite, tail strike or stream breath aimed now (both sides, from {@link DragonData#STRIKE}). */
@@ -89,6 +92,8 @@ public final class DragonBrain {
 	public final HullCollision hull;
 	/** Charging and shooting fireballs (server), and their glow's timing (client). */
 	public final Fireballs fireballs = new Fireballs(this);
+	/** The breath's flames in flight: they burn when and where they land (server). */
+	public final BreathFlames flames;
 	/** Who has been hurting it (server). */
 	public final CombatMemory combat = new CombatMemory(this);
 	/** How it goes at a target: on foot or one attack from the air (server). */
@@ -110,6 +115,7 @@ public final class DragonBrain {
 	public DragonBrain(EnderDragon dragon) {
 		this.dragon = dragon;
 		this.prey = new PreyHold(dragon, this);
+		this.flames = new BreathFlames(dragon);
 		AirRoute route = new AirRoute(this);
 		this.hull = new HullCollision(this, route);
 		this.flight = new Flight(this, route, hull);
@@ -146,6 +152,11 @@ public final class DragonBrain {
 		return flight.model.beatPhase(dragon.level().getGameTime());
 	}
 
+	/** Server: ticks until the wings may go still (0 when gliding): a beat or push under way is always finished. */
+	public long wingsStillIn() {
+		return flight.model.ticksToChange(dragon.level().getGameTime());
+	}
+
 	public FlightModel.Plan flightPlan() {
 		return FlightModel.Plan.decode(dragon.getEntityData().get(DragonData.FLIGHT));
 	}
@@ -157,7 +168,7 @@ public final class DragonBrain {
 	public DragonAnimSelector.Choice choice() {
 		int bits = dragon.getEntityData().get(DragonData.ACTION);
 		return DragonAnimSelector.select(kind(), foothold(), DragonAnimSelector.actionAnim(bits), DragonAnimSelector.actionSequence(bits),
-				flightPlan(), horizontalSpeed());
+				flightPlan(), gait.walking());
 	}
 
 	/** How it stands on the ground (synced): on all fours, sat up on a narrow foothold, or clinging. */
@@ -251,6 +262,7 @@ public final class DragonBrain {
 		bodyTickedAt = dragon.tickCount;
 		body.setShaking(prey.hold() == Grip.Hold.JAW);
 		body.tick(dragon.getYRot(), dragon.getX(), dragon.getY(), dragon.getZ(), bodyMode());
+		gait.tick(horizontalSpeed());
 		clock.tick(choice(), flightPlan(), horizontalSpeed());
 		updateStrike();
 		updateLook();
@@ -329,7 +341,7 @@ public final class DragonBrain {
 		boolean free = (action == null || tailStrike) && kind != Kind.DYING && kind != Kind.PERCH_BREATH
 				&& kind != Kind.PERCH_FLAMING && prey.hold() != Grip.Hold.JAW;
 		// a fireball's windup turns the head all the way round to its target (it fires down the head's line)
-		boolean aiming = BreathAttack.fireballAiming(fireballs.glowTicks(0.0F));
+		boolean aiming = fireballs.aiming();
 		Entity target = lookTarget();
 		double wantYaw = Double.NaN, wantPitch = Double.NaN;
 		if (target != null && free) {
@@ -372,6 +384,7 @@ public final class DragonBrain {
 		if ((dragon.isDeadOrDying() || dying()) && prey.hold() != Grip.Hold.NONE) prey.release(null);
 		prey.tick();
 		fireballs.tick();
+		flames.tick();
 		if (dragon.isNoAi() || dragon.isDeadOrDying() || dying()) return;
 		updateContext();
 		roarTick();

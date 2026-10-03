@@ -48,8 +48,9 @@ final class TestRun {
 		// The test window is usually not focused; a paused game would freeze every animation.
 		mc.options.pauseOnLostFocus = false;
 		if (stage == 2 && mc.screen instanceof PauseScreen) mc.setScreen(null);
-		// Creative flight keeps the camera where each shot puts it; otherwise it falls between shots.
-		if (stage == 2 && mc.player != null) mc.player.getAbilities().flying = true;
+		// Creative flight keeps the camera where each shot puts it; otherwise it falls between shots. A player
+		// that cannot fly (the film's survival actor) is left to stand.
+		if (stage == 2 && mc.player != null && mc.player.getAbilities().mayfly) mc.player.getAbilities().flying = true;
 		try {
 			switch (stage) {
 				case 0 -> {

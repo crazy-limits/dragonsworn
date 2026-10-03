@@ -48,7 +48,7 @@ sourceSets.test {
 
 repositories {
 	mavenCentral()
-	maven("https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/") { name = "GeckoLib"; content { includeGroup("software.bernie.geckolib") } }
+	maven("https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/") { name = "GeckoLib"; content { includeGroup("software.bernie.geckolib"); includeGroup("com.geckolib") } }
 	maven("https://api.modrinth.com/maven") { name = "Modrinth"; content { includeGroup("maven.modrinth") } }
 }
 
@@ -82,6 +82,13 @@ neoForge {
 				jvmArgument("-Ddragonsworn.arena=true")
 				programArguments.addAll("--width", "1600", "--height", "900")
 			}
+			// `-Pdragonsworn.film`: clips of the dragon on the End island (see Film.java)
+			if (providers.gradleProperty("dragonsworn.film").isPresent) {
+				jvmArgument("-Ddragonsworn.film=true")
+				val only = providers.gradleProperty("dragonsworn.film").get()
+				if (only.isNotBlank() && only != "true") jvmArgument("-Ddragonsworn.film.only=$only")
+				programArguments.addAll("--width", "1280", "--height", "720")
+			}
 			// `-Pdragonsworn.configScreen=plain|cloth|yacl`: which library builds the config screen (ConfigScreens)
 			if (providers.gradleProperty("dragonsworn.configScreen").isPresent) {
 				jvmArgument("-Ddragonsworn.configScreen=" + providers.gradleProperty("dragonsworn.configScreen").get())
@@ -99,6 +106,8 @@ neoForge {
 
 tasks.withType<JavaCompile>().configureEach {
 	options.encoding = "UTF-8"
+	// every error at once (a port to a new Minecraft version starts with hundreds)
+	options.compilerArgs.addAll(listOf("-Xmaxerrs", "5000"))
 	options.release = javaVersion
 }
 

@@ -117,6 +117,19 @@ public final class FlightModel {
 		};
 	}
 
+	/** Ticks from {@code tick} until the wings may next change: 0 gliding, else to the end of the beat or of the push. */
+	public long ticksToChange(long tick) {
+		long elapsed = tick - start;
+		return switch (plan.mode) {
+			case GLIDE -> 0;
+			case FLY, HOVER -> {
+				long beat = Math.round(BEAT_TICKS);
+				yield (beat - elapsed % beat) % beat;
+			}
+			case PUSH -> Math.max(0, Math.round(plan.flaps * PUSH_TICKS) - elapsed);
+		};
+	}
+
 	/** Beat phase (0..1) at {@code tick}, or -1 when the wings are still. */
 	public double beatPhase(long tick) {
 		long elapsed = tick - start;

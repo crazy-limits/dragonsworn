@@ -21,6 +21,21 @@ class FlightModelTest {
 	}
 
 	@Test
+	void theWingsGoStillOnlyOnceTheStrokeUnderWayIsDone() {
+		FlightModel m = new FlightModel();
+		assertEquals(0, m.ticksToChange(0), "gliding: any time");
+		m.update(0, 0.2, 0, 1.0, Force.NONE, random);
+		long beat = Math.round(FlightModel.BEAT_TICKS);
+		assertEquals(beat - 5, m.ticksToChange(5), "a beat: to its end");
+		assertEquals(0, m.ticksToChange(beat), "on the boundary");
+		FlightModel p = new FlightModel();
+		p.update(0, 0, 0, 1.2, Force.NONE, random);
+		FlightModel.Plan push = p.update(1, 0, 0, 0.85, Force.NONE, random);
+		assertEquals(Mode.PUSH, push.mode());
+		assertEquals(Math.round(push.flaps() * FlightModel.PUSH_TICKS) - 9, p.ticksToChange(10), "a push: to its last stroke's end");
+	}
+
+	@Test
 	void sharpTurnsBeatAndGentleTurnsGlide() {
 		FlightModel m = new FlightModel();
 		assertEquals(Mode.GLIDE, m.update(0, 0, 1.5, 1.2, Force.NONE, random).mode());

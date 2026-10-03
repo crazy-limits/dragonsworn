@@ -1,7 +1,7 @@
 plugins {
 	id("dev.kikugie.stonecutter")
 	id("dev.kikugie.loom-back-compat") apply false
-	id("net.neoforged.moddev") version "2.0.144" apply false
+	id("net.neoforged.moddev") version "2.0.148" apply false
 }
 
 // The version the IDE / plain `./gradlew` commands operate on.

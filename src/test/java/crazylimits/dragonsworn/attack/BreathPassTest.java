@@ -61,25 +61,39 @@ class BreathPassTest {
 	}
 
 	@Test
+	void theFlamesLandShortOfThePreyAndCatchItUp() {
+		assertEquals(LEAD, lead(100.0), EPS);
+		assertEquals(0.0, lead(CATCH), EPS);
+		assertEquals(0.0, lead(2.0), EPS);
+		assertTrue(lead(CATCH + 4.0) > 0.0);
+	}
+
+	@Test
 	void flyingOverThePreyTheStreamRakesThroughItAndOnAhead() {
-		// a dragon flying north (yaw 0, -z) at the pass's speed and height, over prey 30 blocks ahead
-		double z = 30.0, y = HEIGHT;
-		double[] aim = {0.0, PITCH_REST};
-		double closest = Double.MAX_VALUE;
-		for (int tick = 0; tick < WINDUP_TICKS + STREAM_TICKS; tick++) {
-			double[] base = neckBase(0.0F);
-			double bx = base[0], by = y + base[1], bz = z + base[2];
-			double[] want = angles(0.0F, -bx, 0.5 - by, -bz);
-			aim = chase(aim, want, tick < WINDUP_TICKS ? WINDUP_TURN : STREAM_TURN);
-			double[] d = direction(0.0F, aim);
-			// where the stream meets the ground (y = 0): the prey is at the origin
-			double t = by / -d[1];
-			if (streaming(tick)) {
-				assertTrue(t > 0 && t < RANGE, "the stream reaches the ground");
-				closest = Math.min(closest, Math.hypot(bx + d[0] * t, bz + d[2] * t));
+		// a dragon flying north (yaw 0, -z) at the pass's speed (slow or fast) and height, from where the inhale starts
+		for (double speed : new double[] {MIN_SPEED, MAX_SPEED}) {
+			double z = START_DISTANCE, y = HEIGHT;
+			double[] aim = {0.0, PITCH_REST};
+			double closest = Double.MAX_VALUE, first = Double.NaN;
+			for (int tick = 0; tick < WINDUP_TICKS + STREAM_TICKS; tick++) {
+				double[] base = neckBase(0.0F);
+				double bx = base[0], by = y + base[1], bz = z + base[2];
+				// the prey at the origin, the aim short of it along the run (+z)
+				double[] want = angles(0.0F, -bx, 0.5 - by, lead(z) - bz);
+				aim = chase(aim, want, tick < WINDUP_TICKS ? WINDUP_TURN : STREAM_TURN);
+				double[] d = direction(0.0F, aim);
+				// where the stream meets the ground (y = 0)
+				double t = by / -d[1];
+				if (streaming(tick)) {
+					assertTrue(t > 0 && t < RANGE, "the stream reaches the ground at speed " + speed);
+					double gz = bz + d[2] * t;
+					if (Double.isNaN(first)) first = gz;
+					closest = Math.min(closest, Math.hypot(bx + d[0] * t, gz));
+				}
+				z -= speed;
 			}
-			z -= MAX_SPEED * 0.9;
+			assertTrue(first > 4.0, "the flames touch down short of the prey: " + first + " at speed " + speed);
+			assertTrue(closest < 1.5, "the flames pass over the prey: " + closest + " at speed " + speed);
 		}
-		assertTrue(closest < 1.5, "the flames pass over the prey: " + closest);
 	}
 }

@@ -73,5 +73,68 @@
 				"attenuation_distance": 40
 			}
 		]
+	},
+	"entity.ender_dragon.bite": {
+		"subtitle": "subtitles.dragonsworn.entity.ender_dragon.bite",
+		"sounds": [
+			{
+				"name": "minecraft:entity.ravager.attack",
+				"type": "event"
+			}
+		]
+	},
+	"entity.ender_dragon.tail": {
+		"subtitle": "subtitles.dragonsworn.entity.ender_dragon.tail",
+		"sounds": [
+			{
+				"name": "minecraft:entity.player.attack.sweep",
+				"type": "event"
+			}
+		]
+	},
+	"entity.ender_dragon.snatch": {
+		"subtitle": "subtitles.dragonsworn.entity.ender_dragon.snatch",
+		"sounds": [
+			{
+				"name": "minecraft:entity.ravager.attack",
+				"type": "event"
+			}
+		]
+	},
+	"entity.ender_dragon.chew": {
+		"subtitle": "subtitles.dragonsworn.entity.ender_dragon.chew",
+		"sounds": [
+			{
+				"name": "minecraft:entity.ravager.attack",
+				"type": "event"
+			}
+		]
+	},
+	"entity.ender_dragon.fling": {
+		"subtitle": "subtitles.dragonsworn.entity.ender_dragon.fling",
+		"sounds": [
+			{
+				"name": "minecraft:entity.player.attack.sweep",
+				"type": "event"
+			}
+		]
+	},
+	"entity.ender_dragon.breath": {
+		"subtitle": "subtitles.dragonsworn.entity.ender_dragon.breath",
+		"sounds": [
+			{
+				"name": "minecraft:entity.ender_dragon.shoot",
+				"type": "event"
+			}
+		]
+	},
+	"entity.ender_dragon.flames": {
+		"subtitle": "subtitles.dragonsworn.entity.ender_dragon.flames",
+		"sounds": [
+			{
+				"name": "minecraft:entity.blaze.shoot",
+				"type": "event"
+			}
+		]
 	}
 }

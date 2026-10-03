@@ -93,17 +93,12 @@ public final class BreathAttack {
 	public static final int FIREBALL_WINDUP_TICKS = (WINDUP_TICKS + FIREBALL_SPEEDUP - 1) / FIREBALL_SPEEDUP;
 	public static final int FIREBALL_COOL_TICKS = RECOVER_TICKS / FIREBALL_SPEEDUP;
 	/**
-	 * Through the windup the head turns to the target; the fireball flies only once the head points
-	 * within {@link #FIREBALL_CONE} degrees of it (never backwards over its own body), waiting up to
-	 * {@link #FIREBALL_AIM_TICKS} more for that, else the shot is dropped.
+	 * Before the windup the head turns to the target; the dragon heats up only once the head points within
+	 * {@link #FIREBALL_CONE} degrees of it (never backwards over its own body), turning for up to
+	 * {@link #FIREBALL_AIM_TICKS}, else the shot is dropped before any glow.
 	 */
 	public static final double FIREBALL_CONE = 25.0;
 	public static final int FIREBALL_AIM_TICKS = 20;
-
-	/** Whether a fireball started charging {@code tick} ticks ago may still be turning its head to aim. */
-	public static boolean fireballAiming(double tick) {
-		return tick >= 0.0 && tick < FIREBALL_WINDUP_TICKS + FIREBALL_AIM_TICKS;
-	}
 
 	/** {@link #heat} for a fireball, {@code tick} (fractional) from the start of its windup. */
 	public static double fireballHeat(double tick) {

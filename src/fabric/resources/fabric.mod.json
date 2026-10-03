@@ -20,7 +20,7 @@
 	},
 	"depends": {
 		"fabricloader": ">=${loaderVersion}",
-		"minecraft": "~${mcVersion}",
+		"minecraft": "${mcVersion}",
 		"java": ">=${java}",
 		"fabric-api": "*",
 		"geckolib": "*"

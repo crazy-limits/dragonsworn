@@ -140,6 +140,18 @@ EVENTS = {
 	'step': ([step(i) for i in range(1, 6)], 40, 'Ender Dragon steps'),
 }
 
+# event: (vanilla event it plays, subtitle). The attacks keep vanilla's sounds but get events (and so
+# subtitles) of their own: a deaf player reads what the dragon does, never "Ravager bites".
+ALIASES = {
+	'bite': ('entity.ravager.attack', 'Ender Dragon bites'),
+	'tail': ('entity.player.attack.sweep', 'Ender Dragon lashes its tail'),
+	'snatch': ('entity.ravager.attack', 'Ender Dragon snatches'),
+	'chew': ('entity.ravager.attack', 'Ender Dragon chews'),
+	'fling': ('entity.player.attack.sweep', 'Ender Dragon flings its prey'),
+	'breath': ('entity.ender_dragon.shoot', 'Ender Dragon breathes fire'),
+	'flames': ('entity.blaze.shoot', 'Void flames roar'),
+}
+
 
 def build():
 	os.makedirs(DST, exist_ok=True)
@@ -154,12 +166,17 @@ def build():
 			names.append({'name': f'dragonsworn:entity/ender_dragon/{event}{k}', 'attenuation_distance': distance})
 			print(f'  {os.path.relpath(path, ROOT)}  {len(clip) / SR:.2f}s')
 		sounds[f'entity.ender_dragon.{event}'] = {'subtitle': f'subtitles.dragonsworn.entity.ender_dragon.{event}', 'sounds': names}
+	for event, (vanilla, _) in ALIASES.items():
+		sounds[f'entity.ender_dragon.{event}'] = {'subtitle': f'subtitles.dragonsworn.entity.ender_dragon.{event}',
+			'sounds': [{'name': f'minecraft:{vanilla}', 'type': 'event'}]}
 	with open(os.path.join(ASSETS, 'sounds.json'), 'w') as f:
 		json.dump(sounds, f, indent='\t')
 		f.write('\n')
 	lang = os.path.join(ASSETS, 'lang', 'en_us.json')
 	entries = json.load(open(lang)) if os.path.exists(lang) else {}
-	for event, (_, _, subtitle) in EVENTS.items():
+	subtitles = {event: subtitle for event, (_, _, subtitle) in EVENTS.items()}
+	subtitles.update({event: subtitle for event, (_, subtitle) in ALIASES.items()})
+	for event, subtitle in subtitles.items():
 		entries[f'subtitles.dragonsworn.entity.ender_dragon.{event}'] = subtitle
 	os.makedirs(os.path.dirname(lang), exist_ok=True)
 	with open(lang, 'w') as f:

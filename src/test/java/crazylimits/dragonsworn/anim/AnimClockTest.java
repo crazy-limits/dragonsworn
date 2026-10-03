@@ -75,9 +75,11 @@ class AnimClockTest {
 		run(clock, walk, GLIDING, keyed * 2, 20);
 		assertEquals(2.0, clock.seconds(), 1e-6, "twice the keyed speed: two seconds per second");
 		AnimClock crawl = new AnimClock();
-		crawl.tick(walk, GLIDING, 0);
+		crawl.tick(walk, GLIDING, 0.021);
+		run(crawl, walk, GLIDING, 0.021, 20);
+		assertEquals(0.35, crawl.seconds(), 1e-6, "a crawl still steps, at its clamp");
 		run(crawl, walk, GLIDING, 0, 20);
-		assertEquals(0.35, crawl.seconds(), 1e-6, "standing still the walk still crawls at its clamp");
+		assertEquals(0.35, crawl.seconds(), 1e-6, "a stalled walk stands mid-stride: no restart, no steps in place");
 		AnimClock other = new AnimClock();
 		other.tick(IDLE, GLIDING, keyed * 2);
 		run(other, IDLE, GLIDING, keyed * 2, 20);

@@ -1,6 +1,7 @@
 package crazylimits.dragonsworn.mc.breath.client;
 
 import crazylimits.dragonsworn.attack.BreathAttack;
+import crazylimits.dragonsworn.attack.FlamePuff;
 import crazylimits.dragonsworn.attack.BreathPass;
 import crazylimits.dragonsworn.mc.breath.BreathParticles;
 import crazylimits.dragonsworn.mc.breath.BreathStreamPhase;
@@ -30,10 +31,8 @@ public final class BreathRender {
 	/** A point inside the mouth, model px: a little behind the teeth, between the jaws. */
 	private static final float MOUTH_Y = 52.0F, MOUTH_Z = -96.0F;
 	private static final int FLAMES_PER_TICK = 16, EMBERS_PER_TICK = 2;
-	/** Blocks per tick the flames leave the mouth with. */
-	private static final double SPEED = 0.85, JITTER = 0.07;
-	/** The pass's flames fly faster: its aim is further from the mouth. */
-	private static final double PASS_SPEED = 1.1;
+	/** The flames' scatter (blocks per tick); their speed is {@link FlamePuff}'s, as the server's puffs that burn. */
+	private static final double JITTER = 0.07;
 
 	/** The last tick flames were spawned for each dragon: the renderer runs per frame, the flames per tick. */
 	private static final Map<EnderDragon, Integer> LAST_TICK = new WeakHashMap<>();
@@ -65,7 +64,7 @@ public final class BreathRender {
 		Vec3 dir = (perched != null ? perched.stream().getLocation() : aim).subtract(mouth).normalize();
 		// in flight the flames carry the dragon's own speed
 		Vec3 carried = perched != null ? Vec3.ZERO : new Vec3(dragon.getX() - dragon.xo, dragon.getY() - dragon.yo, dragon.getZ() - dragon.zo);
-		double jet = perched != null ? SPEED : PASS_SPEED;
+		double jet = perched != null ? FlamePuff.JET : FlamePuff.FLYING_JET;
 		RandomSource random = dragon.getRandom();
 		if (glowing) {
 			// the telegraph: embers flicker up inside the parting jaws

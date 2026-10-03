@@ -7,16 +7,14 @@ import crazylimits.dragonsworn.config.DragonConfig;
 import crazylimits.dragonsworn.mc.DragonBrain;
 import crazylimits.dragonsworn.mc.DragonData;
 import crazylimits.dragonsworn.mc.DragonPhases;
+import crazylimits.dragonsworn.mc.DragonSounds;
 import crazylimits.dragonsworn.mc.DragonswornDragon;
-import net.minecraft.sounds.SoundEvents;
-import net.minecraft.world.entity.EntitySelector;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.targeting.TargetingConditions;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.boss.enderdragon.phases.AbstractDragonSittingPhase;
 import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
 import net.minecraft.world.level.ClipContext;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Vector3f;
@@ -31,8 +29,9 @@ import org.joml.Vector3f;
  * drawn out straight toward it with the head pointing down it ({@code Strike}); the flames leave the
  * model's mouth for the aim. Without one the stream sweeps the ground ahead as before.
  *
- * <p>The server burns what the stream touches; the client only plays sounds here. The flames
- * themselves are spawned by {@code BreathRender} out of the model's animated mouth.
+ * <p>The server pours a flame puff every {@link BreathAttack#DAMAGE_INTERVAL} ({@code BreathFlames}): it burns
+ * what it reaches when it gets there. The client only plays sounds here; the flames themselves are spawned
+ * by {@code BreathRender} out of the model's animated mouth.
  */
 public class BreathStreamPhase extends AbstractDragonSittingPhase {
 	/** Ticks the model's facing lags the entity's yaw (DragonRenderer turns it by getLatencyPos(7)). */
@@ -149,48 +148,19 @@ public class BreathStreamPhase extends AbstractDragonSittingPhase {
 	}
 
 	private void burn() {
-		burn(dragon, mouth(), direction(), BreathAttack.RANGE, DragonConfig.STREAM_DAMAGE.f());
+		brain().flames.pour(mouth(), direction(), BreathAttack.RANGE, DragonConfig.STREAM_DAMAGE.f(), false);
 	}
-
-	/**
-	 * Hurts everything in a stream from {@code mouth} along {@code dir}, and everything near where it splashes
-	 * against a block; the splash leaves dragon fire on the ground ({@link DragonFire}).
-	 */
-	public static void burn(EnderDragon dragon, Vec3 mouth, Vec3 dir, double range, float damage) {
-		HitResult hit = stream(dragon, mouth, dir, range);
-		Vec3 end = hit.getLocation();
-		double length = end.distanceTo(mouth);
-		double[] d = {dir.x, dir.y, dir.z};
-		boolean splash = hit.getType() == HitResult.Type.BLOCK;
-
-		AABB area = new AABB(mouth, end).inflate(BreathAttack.MOUTH_RADIUS + BreathAttack.SPREAD * length + BreathAttack.SPLASH_RADIUS);
-		double[] origin = {mouth.x, mouth.y, mouth.z};
-		for (LivingEntity victim : dragon.level().getEntitiesOfClass(LivingEntity.class, area, EntitySelector.NO_CREATIVE_OR_SPECTATOR)) {
-			if (victim == dragon) continue;
-			Vec3 c = victim.getBoundingBox().getCenter();
-			double radius = victim.getBbWidth() / 2.0;
-			boolean inStream = BreathAttack.inStream(origin, d, length, new double[] {c.x, c.y, c.z}, radius);
-			boolean inSplash = splash && victim.getBoundingBox().inflate(BreathAttack.SPLASH_RADIUS).contains(end);
-			if (inStream || inSplash) victim.hurt(dragon.damageSources().dragonBreath(), damage);
-		}
-		// where it splashes, the ground catches dragon fire
-		if (splash) DragonFire.spread(dragon.level(), end, FIRE_RADIUS, FIRE_CHANCE);
-	}
-
-	/** The splash sets this far round it alight, each column with this chance (per burn). */
-	private static final double FIRE_RADIUS = 1.5;
-	private static final float FIRE_CHANCE = 0.35F;
 
 	@Override
 	public void doClientTick() {
 		ticks++;
 		// the inhale is silent: an attack does not roar (DragonVoice fades a roar going on)
 		if (ticks == BreathAttack.WINDUP_TICKS) {
-			dragon.level().playLocalSound(dragon.getX(), dragon.getY(), dragon.getZ(), SoundEvents.ENDER_DRAGON_SHOOT,
+			dragon.level().playLocalSound(dragon.getX(), dragon.getY(), dragon.getZ(), DragonSounds.BREATH,
 					dragon.getSoundSource(), 4.0F, 0.7F, false);
 		}
 		if (BreathAttack.streaming(ticks) && ticks % 5 == 0) {
-			dragon.level().playLocalSound(dragon.getX(), dragon.getY(), dragon.getZ(), SoundEvents.BLAZE_SHOOT,
+			dragon.level().playLocalSound(dragon.getX(), dragon.getY(), dragon.getZ(), DragonSounds.FLAMES,
 					dragon.getSoundSource(), 3.0F, 0.45F + dragon.getRandom().nextFloat() * 0.1F, false);
 		}
 	}

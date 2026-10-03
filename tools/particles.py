@@ -17,6 +17,8 @@ the fire is the part near the heart (its share shrinks between the set's smoke s
 bands from a white heart to a violet rim, cooling with age; the smoke is shaded per billow, lit from the
 upper left and darker underneath (as vanilla's big smoke), and texels of it touching the fire glow violet.
 Each 4x4 block then becomes one texel of the nearest palette color: clean pixel art, no noise speckle.
+Every texel is opaque or empty, as vanilla's campfire smoke: the smoke's see-through look is the particle's
+own alpha (VoidFlameParticle.smokeAlpha, one for the whole quad), never the texture's.
 """
 import math
 import os
@@ -117,7 +119,6 @@ def frames(N, count, seed, smoke_start, fire_end, birth):
 		w = inside.astype(float).reshape(N, SS, N, SS)
 		avg = (rgb.reshape(N, SS, N, SS, 3) * w[..., None]).sum((1, 3)) / np.maximum(w.sum((1, 3)), 1)[..., None]
 		hot = (cover >= 0.5) & (fire_cover >= 0.5 * cover)
-		smoke_alpha = round(235 - 120 * thin)
 		img = np.zeros((N, N, 4), np.uint8)
 		for y in range(N):
 			for x in range(N):
@@ -127,7 +128,7 @@ def frames(N, count, seed, smoke_start, fire_end, birth):
 					img[y, x] = (*nearest(FIRE, avg[y, x]), 255)
 					continue
 				beside = hot[max(0, y - 1):y + 2, max(0, x - 1):x + 2].any()
-				img[y, x] = (*(GLOW[0 if avg[y, x].sum() > 330 else 1] if beside else nearest(SMOKE, avg[y, x])), smoke_alpha)
+				img[y, x] = (*(GLOW[0 if avg[y, x].sum() > 330 else 1] if beside else nearest(SMOKE, avg[y, x])), 255)
 		out.append(Image.fromarray(img))
 	return out
 

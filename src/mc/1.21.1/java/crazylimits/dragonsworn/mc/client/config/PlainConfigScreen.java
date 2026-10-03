@@ -2,6 +2,7 @@ package crazylimits.dragonsworn.mc.client.config;
 
 import crazylimits.dragonsworn.config.DragonConfig;
 import crazylimits.dragonsworn.config.Toml;
+import crazylimits.dragonsworn.mc.Lang;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -15,6 +16,7 @@ import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.narration.NarratableEntry;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -57,18 +59,19 @@ public final class PlainConfigScreen extends Screen {
 		fields.clear();
 		OptionList list = new OptionList(minecraft, width, height - 64, 32);
 		if (ConfigScreens.remote()) list.add(new Heading(ConfigScreens.remoteNote(), null));
-		for (Map.Entry<String, String> section : DragonConfig.sections().entrySet()) {
-			String name = section.getKey();
-			String label = name.contains(".") ? DragonConfig.label(name.substring(0, name.indexOf('.'))) + ": " + DragonConfig.label(name)
-					: DragonConfig.label(name);
-			list.add(new Heading(Component.literal(label).withStyle(s -> s.withBold(true)), Component.literal(section.getValue())));
+		for (String name : DragonConfig.sections().keySet()) {
+			MutableComponent label = Lang.of(DragonConfig.sectionLabel(name));
+			if (name.contains(".")) {
+				label = Lang.of(DragonConfig.sectionLabel(name.substring(0, name.indexOf('.')))).append(": ").append(label);
+			}
+			list.add(new Heading(label.withStyle(s -> s.withBold(true)), Lang.of(DragonConfig.sectionHeading(name))));
 			for (DragonConfig.Option o : DragonConfig.options()) {
 				if (o.section().equals(name)) list.add(new Row(o, widget(o)));
 			}
 		}
 		addRenderableWidget(list);
 		int y = height - 27, w = 100;
-		addRenderableWidget(Button.builder(Component.literal("Reset to defaults"), b -> {
+		addRenderableWidget(Button.builder(Component.translatableWithFallback("dragonsworn.config.reset", "Reset to defaults"), b -> {
 			for (DragonConfig.Option o : DragonConfig.options()) pending.put(o, fallback(o));
 			rebuildWidgets();
 		}).bounds(width / 2 - w * 3 / 2 - 6, y, w, 20).build());
@@ -80,19 +83,26 @@ public final class PlainConfigScreen extends Screen {
 		Tooltip tooltip = Tooltip.create(ConfigScreens.tooltip(o));
 		if (o instanceof DragonConfig.Flag) {
 			CycleButton<Boolean> button = CycleButton.onOffBuilder((Boolean) pending.get(o)).displayOnlyValue()
-					.create(0, 0, FIELD_WIDTH, 20, Component.literal(o.label()), (b, value) -> pending.put(o, value));
+					.create(0, 0, FIELD_WIDTH, 20, ConfigScreens.label(o), (b, value) -> pending.put(o, value));
 			button.setTooltip(tooltip);
 			return button;
 		}
-		EditBox field = new EditBox(font, 0, 0, FIELD_WIDTH, 18, Component.literal(o.label()));
+		EditBox field = new EditBox(font, 0, 0, FIELD_WIDTH, 18, ConfigScreens.label(o));
 		field.setMaxLength(24);
 		field.setValue((String) pending.get(o));
+		// not by colour alone: a value that does not parse also says so in the tooltip (and the narrator reads it)
+		Tooltip invalid = Tooltip.create(Component.translatableWithFallback(o instanceof DragonConfig.Int ? "dragonsworn.config.invalid.whole"
+				: "dragonsworn.config.invalid.number", o instanceof DragonConfig.Int ? "Not a whole number" : "Not a number")
+				.withStyle(s -> s.withColor(ERROR)).append("\n").append(ConfigScreens.tooltip(o)));
 		field.setResponder(text -> {
 			pending.put(o, text);
-			field.setTextColor(parses(o, text) ? TEXT : ERROR);
+			boolean valid = parses(o, text);
+			field.setTextColor(valid ? TEXT : ERROR);
+			field.setTooltip(valid ? tooltip : invalid);
 		});
-		field.setTextColor(parses(o, field.getValue()) ? TEXT : ERROR);
-		field.setTooltip(tooltip);
+		boolean valid = parses(o, field.getValue());
+		field.setTextColor(valid ? TEXT : ERROR);
+		field.setTooltip(valid ? tooltip : invalid);
 		fields.put(o, field);
 		return field;
 	}
@@ -187,11 +197,11 @@ public final class PlainConfigScreen extends Screen {
 
 	/** An option: its name, and its widget at the right. */
 	private final class Row extends Line {
-		private final DragonConfig.Option option;
+		private final Component label;
 		private final AbstractWidget widget;
 
 		Row(DragonConfig.Option option, AbstractWidget widget) {
-			this.option = option;
+			this.label = ConfigScreens.label(option);
 			this.widget = widget;
 		}
 
@@ -199,7 +209,12 @@ public final class PlainConfigScreen extends Screen {
 		public void render(GuiGraphics graphics, int index, int top, int left, int width, int height, int mouseX, int mouseY,
 				boolean hovering, float partialTick) {
 			Font font = PlainConfigScreen.this.font;
-			graphics.drawString(font, option.label(), left + 4, top + 6, TEXT);
+			// a long (translated) name is cut short of the widget, and shown in full when hovered
+			int room = width - FIELD_WIDTH - 10;
+			String line = label.getString();
+			boolean cut = font.width(line) > room;
+			graphics.drawString(font, cut ? font.plainSubstrByWidth(line, room - font.width("...")) + "..." : line, left + 4, top + 6, TEXT);
+			if (cut && hovering && mouseX < left + room) PlainConfigScreen.this.setTooltipForNextRenderPass(font.split(label, 240));
 			widget.setX(left + width - FIELD_WIDTH - 2);
 			widget.setY(top + 1);
 			widget.render(graphics, mouseX, mouseY, partialTick);

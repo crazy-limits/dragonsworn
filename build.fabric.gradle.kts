@@ -60,7 +60,7 @@ sourceSets.test {
 repositories {
 	mavenCentral()
 	maven("https://maven.fabricmc.net/") { name = "Fabric" }
-	maven("https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/") { name = "GeckoLib"; content { includeGroup("software.bernie.geckolib") } }
+	maven("https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/") { name = "GeckoLib"; content { includeGroup("software.bernie.geckolib"); includeGroup("com.geckolib") } }
 	maven("https://api.modrinth.com/maven") { name = "Modrinth"; content { includeGroup("maven.modrinth") } }
 	maven("https://maven.quiltmc.org/repository/release/") { name = "Quilt"; content { includeGroup("org.quiltmc.parsers") } }
 	maven("https://maven.shedaniel.me/") { name = "Shedaniel"; content { includeGroup("me.shedaniel.cloth") } }
@@ -116,6 +116,16 @@ loom {
 			programArgs("--width", "1600", "--height", "900")
 		}
 	}
+	// `-Pdragonsworn.film`: clips of the dragon on the End island, a frame a tick, into run/<target>/screenshots
+	// (see Film.java; `-Pdragonsworn.film=walk,jaws` films only those scenes); tools/film_gifs.py makes the GIFs.
+	if (providers.gradleProperty("dragonsworn.film").isPresent) {
+		runs.named("client") {
+			vmArgs("-Ddragonsworn.film=true")
+			val only = providers.gradleProperty("dragonsworn.film").get()
+			if (only.isNotBlank() && only != "true") vmArgs("-Ddragonsworn.film.only=$only")
+			programArgs("--width", "1280", "--height", "720")
+		}
+	}
 	runs.named("server") {
 		server()
 		ideConfigGenerated(true)
@@ -127,6 +137,8 @@ loom {
 tasks.withType<JavaCompile>().configureEach {
 	dependsOn(tasks.named("stonecutterGenerate"))
 	options.encoding = "UTF-8"
+	// every error at once (a port to a new Minecraft version starts with hundreds)
+	options.compilerArgs.addAll(listOf("-Xmaxerrs", "5000"))
 	options.release = javaVersion
 }
 tasks.withType<Jar>().configureEach { dependsOn(tasks.named("stonecutterGenerate")) }

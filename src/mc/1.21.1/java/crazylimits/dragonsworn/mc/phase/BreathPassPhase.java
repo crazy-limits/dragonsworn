@@ -1,6 +1,7 @@
 package crazylimits.dragonsworn.mc.phase;
 
 import crazylimits.dragonsworn.anim.DragonAnim;
+import crazylimits.dragonsworn.attack.BreathAttack;
 import crazylimits.dragonsworn.attack.BreathPass;
 import crazylimits.dragonsworn.config.DragonConfig;
 import crazylimits.dragonsworn.flight.FlightModel;
@@ -20,7 +21,8 @@ import org.joml.Vector3f;
  * The breath pass ({@link BreathPass}): the dragon swings out to get a run at its prey, comes back in
  * {@link BreathPass#HEIGHT} blocks over it, and from {@link BreathPass#START_DISTANCE} short of it glides,
  * inhaling ({@link DragonAnim#GLIDE_BREATH}); then the neck swings down and it pours void flame onto the
- * ground under its flight path, the aim raking through the prey and on ahead of it. Then it flies on.
+ * ground under its flight path, touching down short of the prey and raking through it and on ahead of it.
+ * Then it flies on.
  *
  * <p>The aim is synced like the perched breath's ({@link DragonData#STRIKE}): the neck is straightened
  * onto it ({@code body/Strike}) and the client pours the flames from the model's mouth at it
@@ -38,6 +40,8 @@ public class BreathPassPhase extends AirAttackPhase {
 	private double[] aim = {0.0, BreathPass.PITCH_REST};
 	/** The height it passes at (world y), set as it comes in. */
 	private double passY;
+	/** Lined up on its last stretch in: the wings go still before the inhale ({@link BreathPass#GLIDE_IN}). */
+	private boolean glidingIn;
 
 	public BreathPassPhase(EnderDragon dragon) {
 		super(dragon);
@@ -64,6 +68,7 @@ public class BreathPassPhase extends AirAttackPhase {
 		super.begin();
 		stage = Stage.RUN_UP;
 		heading = Vec3.ZERO;
+		glidingIn = false;
 		aim = new double[] {0.0, BreathPass.PITCH_REST};
 	}
 
@@ -125,11 +130,15 @@ public class BreathPassPhase extends AirAttackPhase {
 			stage = Stage.RUN_UP;
 			ticks = 0;
 			waypoint = null;
+			glidingIn = false;
 			return;
 		}
 		passY = passHeight(target.position());
+		glidingIn = distance <= BreathPass.START_DISTANCE + BreathPass.GLIDE_IN
+				&& Math.abs(BreathAttack.offFacing(dragon.getYRot(), dx, dz)) <= BreathPass.LINE_UP;
 		waypoint = new Vec3(target.getX() + heading.x * 16.0, passY, target.getZ() + heading.z * 16.0);
-		if (BreathPass.linedUp(dragon.getYRot(), dx, dz)) {
+		// the wings must be still by the time the stream starts: a beat or push under way is finished first
+		if (BreathPass.linedUp(dragon.getYRot(), dx, dz) && brain().wingsStillIn() < BreathPass.WINDUP_TICKS - 2) {
 			stage = Stage.PASS;
 			ticks = 0;
 			aim = new double[] {0.0, BreathPass.PITCH_REST};
@@ -156,13 +165,15 @@ public class BreathPassPhase extends AirAttackPhase {
 		double want = Mth.clamp((passY - dragon.getY()) * 0.1, -0.3, 0.2);
 		dragon.setDeltaMovement(v.x * keep, v.y + (want - v.y) * 0.3, v.z * keep);
 
-		// the aim: from the neck's base, after the prey's body within the cone (straight ahead and down without one)
+		// the aim: from the neck's base, after the prey's body within the cone (straight ahead and down without one),
+		// landing short of it along the run while the dragon is still far off
 		float yaw = dragon.getYRot();
 		double[] b = BreathPass.neckBase(yaw);
 		Vec3 base = dragon.position().add(b[0], b[1], b[2]);
 		double[] prey = {0.0, BreathPass.PITCH_REST};
 		if (!lost) {
-			Vec3 at = target.position().add(0.0, target.getBbHeight() * 0.3, 0.0).subtract(base);
+			double lead = BreathPass.lead(Math.hypot(target.getX() - dragon.getX(), target.getZ() - dragon.getZ()));
+			Vec3 at = target.position().add(-heading.x * lead, target.getBbHeight() * 0.3, -heading.z * lead).subtract(base);
 			prey = BreathPass.angles(yaw, at.x, at.y, at.z);
 		}
 		aim = FlyingBreath.tick(dragon, ticks, base, aim, prey, BreathPass.WINDUP_TURN, BreathPass.STREAM_TURN,
@@ -205,7 +216,7 @@ public class BreathPassPhase extends AirAttackPhase {
 
 	@Override
 	public FlightModel.Force flightForce() {
-		return stage == Stage.PASS ? FlightModel.Force.GLIDE : FlightModel.Force.NONE;
+		return stage == Stage.PASS || stage == Stage.APPROACH && glidingIn ? FlightModel.Force.GLIDE : FlightModel.Force.NONE;
 	}
 
 	@Override

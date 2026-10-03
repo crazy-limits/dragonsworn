@@ -2,10 +2,11 @@
 
     python3 tools/icon.py [preview.png]     (the preview is the icon x4, nearest neighbour)
 
-The scene: the End at night. The dragon hangs over the island, wings spread, its head turned down toward a
-player who stands on the end stone in the foreground, seen from behind, looking up at it. Spiral obsidian
-spires (`arena/Monolith`'s, flat tops) stand round it, each crowned by its End crystal, their healing beams
-running to the dragon's chest. A pale violet glow behind the dragon keeps its black hide readable.
+The scene: the End at night, seen from low down. The dragon flies over the island, wings spread (its
+silhouette traced from `source/icon_dragon.png`), a great pale light behind it: its hide is dark against the
+light and the membranes glow with it. Spiral obsidian spires (`arena/Monolith`'s, flat tops) frame it, tall at the
+edges, each crowned by its End crystal, their healing beams running to the dragon's chest. In the foreground
+a player, a black silhouette, stands braced on the end stone with the sword raised against it.
 
 Everything is drawn on the 128 grid without anti-aliasing (masks filled with polygons/ellipses, then shaded
 per pixel), colours from the dragon texture's palette; gradients are ordered-dithered (Bayer 4x4) in steps.
@@ -27,7 +28,10 @@ BAYER = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]]
 HIDE = [(2, 0, 2), (8, 7, 14), (21, 17, 21), (32, 24, 32), (41, 33, 45), (49, 39, 53), (74, 63, 71), (90, 79, 87)]
 EYE = [(166, 50, 167), (241, 56, 241), (255, 200, 255)]
 SKY = [(6, 3, 12), (12, 6, 22), (20, 10, 34), (30, 15, 48), (42, 21, 62), (56, 30, 80)]
-GLOW = [(56, 30, 80), (74, 42, 102), (96, 58, 128), (122, 80, 154), (150, 108, 180)]
+GLOW = [(56, 30, 80), (74, 42, 102), (96, 58, 128), (122, 80, 154), (150, 108, 180), (184, 146, 206),
+	(216, 188, 232)]
+MEMBRANE = [(14, 8, 22), (26, 16, 40), (42, 26, 62), (62, 38, 88), (86, 54, 114), (112, 74, 140)]
+SILHOUETTE = (4, 2, 8)
 STONE = [(110, 104, 70), (150, 146, 98), (190, 188, 130), (219, 222, 158), (236, 238, 186)]
 OBSIDIAN = [(6, 4, 12), (15, 10, 24), (27, 18, 41), (44, 28, 66), (72, 46, 104), (110, 76, 150)]
 CRYSTAL = [(120, 40, 140), (200, 90, 210), (250, 170, 250), (255, 240, 255)]
@@ -66,8 +70,8 @@ def edge(m, x, y, dx, dy):
 
 # ---- the scene -------------------------------------------------------------------------------------------
 
-DRAGON_GLOW = (70, 36, 30)      # middle and radius of the light behind the dragon
-CHEST = (61, 49)                # where the crystal beams meet
+DRAGON_GLOW = (64, 30, 44)      # middle and radius of the light behind the dragon
+CHEST = (70, 32)                # where the crystal beams meet
 HORIZON = 100
 
 
@@ -78,17 +82,26 @@ def sky(img):
 	for y in range(N):
 		for x in range(N):
 			t = y / HORIZON
-			c = SKY[dither(0.15 + 0.75 * t, len(SKY), x, y)]
-			d = math.hypot((x - gx) / 1.15, y - gy) / gr
-			if d < 1.6:
-				g = max(0.0, 1 - d / 1.6) ** 2 * 1.1
+			c = SKY[dither(0.1 + 0.8 * t, len(SKY), x, y)]
+			d = math.hypot((x - gx) / 1.2, y - gy) / gr
+			if d < 1.5:
+				g = max(0.0, 1 - d / 1.5) ** 1.6 * 1.35
 				i = dither(g, len(GLOW) + 2, x, y) - 2       # the two lowest steps keep the sky
 				c = GLOW[i] if i >= 0 else c
 			px[x, y] = c
+	# rays: faint spokes out of the light, every other one
+	for y in range(N):
+		for x in range(N):
+			d = math.hypot(x - gx, y - gy)
+			if gr * 0.55 < d < gr * 1.6:
+				a = math.atan2(y - gy, x - gx)
+				if math.cos(a * 9 + 0.6) > 0.82 and BAYER[y % 4][x % 4] < 8 * (1 - d / (gr * 1.6)) + 2:
+					r, g, b = px[x, y]
+					px[x, y] = (min(255, r + 18), min(255, g + 12), min(255, b + 24))
 	# stars: single texels, a few with a faint cross
-	for _ in range(70):
-		x, y = rng.randrange(N), rng.randrange(HORIZON - 6)
-		if math.hypot(x - gx, y - gy) < gr * 1.05:
+	for _ in range(80):
+		x, y = rng.randrange(N), rng.randrange(HORIZON - 10)
+		if math.hypot(x - gx, y - gy) < gr * 1.2:
 			continue
 		b = rng.random()
 		px[x, y] = (200, 180, 230) if b > 0.85 else (130, 110, 170) if b > 0.4 else (84, 66, 120)
@@ -98,12 +111,24 @@ def sky(img):
 					px[x + dx, y + dy] = (100, 80, 140)
 
 
+def haze(img):
+	"""A violet mist on the horizon: the spires' feet fade into it and the player's shoulders stand out on it."""
+	px = img.load()
+	for y in range(HORIZON - 26, HORIZON + 2):
+		k = (y - (HORIZON - 26)) / 26
+		for x in range(N):
+			if BAYER[y % 4][x % 4] < k * k * 16:
+				r, g, b = px[x, y]
+				w = 0.55 * k
+				px[x, y] = (int(r + (120 - r) * w), int(g + (84 - g) * w), int(b + (160 - b) * w))
+
+
 # spires: (x of the middle, top y, half width at the top, half width at the base, twist turns)
 SPIRES = [
-	(14, 44, 6, 8, 0.55),
-	(115, 58, 6, 7, 0.45),
-	(95, 70, 4, 5, 0.35),
-	(33, 72, 3, 4, 0.3),
+	(31, 70, 3, 4, 0.3),
+	(100, 76, 4, 5, 0.35),
+	(9, 34, 7, 9, 0.6),
+	(119, 46, 6, 8, 0.5),
 ]
 LIGHT = math.radians(-60)       # where the light comes from, round the towers (toward the glow, a little front)
 
@@ -175,15 +200,14 @@ def beam(img, a, b):
 
 
 def ground(img):
-	"""The island: end stone from a bumpy horizon down, darker toward the bottom edge and in the craters."""
+	"""The island: end stone from a bumpy horizon down, darker toward the bottom edge (a low camera)."""
 	px = img.load()
 	rng = random.Random(3)
 	bumps = [HORIZON + round(2 * math.sin(x * 0.11) + 1.2 * math.sin(x * 0.37 + 1)) for x in range(N)]
 	for x in range(N):
 		for y in range(bumps[x], N):
 			t = (y - bumps[x]) / (N - HORIZON)
-			light = 0.95 - 0.55 * t + (0.25 if y == bumps[x] else 0)
-			# glow from the sky on the far ground
+			light = 1.0 - 0.8 * t + (0.25 if y == bumps[x] else 0)
 			px[x, y] = STONE[dither(light, len(STONE), x, y)]
 	# end stone's speckles
 	for _ in range(160):
@@ -196,179 +220,111 @@ def ground(img):
 
 # ---- the dragon ------------------------------------------------------------------------------------------
 
-def wing(d, shoulder, wrist, tips, root):
-	"""A wing membrane: shoulder -> wrist (the arm), then finger tips, back to the root on the flank,
-	scalloped between the fingers. Returns the finger lines (wrist -> tip) for the bones."""
-	pts = [shoulder, wrist] + tips + [root]
-	d.polygon(pts, fill=1)
+# the silhouette (tools/source/icon_dragon.png, black on white), drawn DRAGON_W wide with its top left at DRAGON_AT;
+# everything on it is placed in fractions (u, v) of its width and height
+DRAGON_SRC = os.path.join(HERE, 'source', 'icon_dragon.png')
+DRAGON_AT, DRAGON_W = (14, 3), 100
+# the wings' bones: the wrist (the leading edge's peak) to the points between the scallops
+BONES = [((0.375, 0.0), [(0.01, 0.26), (0.10, 0.31), (0.23, 0.41), (0.33, 0.48)]),
+	((0.84, 0.19), [(0.99, 0.50), (0.90, 0.48), (0.77, 0.55)])]
+EYE_UV = (0.605, 0.225)
 
 
-def scallop(d, a, b, depth):
-	"""Cuts an arc into the membrane edge between finger tips a and b."""
-	mx, my = (a[0] + b[0]) / 2, (a[1] + b[1]) / 2
-	dx, dy = b[0] - a[0], b[1] - a[1]
-	L = math.hypot(dx, dy)
-	# the cut's middle, pushed outward (away from the wing) by most of the radius
-	nx, ny = dy / L, -dx / L
-	r = L / 2
-	cx, cy = mx + nx * (r - depth), my + ny * (r - depth)
-	d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=0)
+def silhouette():
+	src = Image.open(DRAGON_SRC).convert('L')
+	h = round(src.height * DRAGON_W / src.width)
+	small = src.resize((DRAGON_W, h), Image.LANCZOS)
+	m = Image.new('1', (N, N), 0)
+	m.paste(small.point(lambda v: 255 if v < 150 else 0).convert('1'), DRAGON_AT)
+	return m, h
 
 
-FAR_WING = dict(shoulder=(64, 44), wrist=(46, 12), tips=[(22, 6), (14, 18), (16, 32), (30, 40)], root=(58, 50))
-NEAR_WING = dict(shoulder=(72, 44), wrist=(92, 6), tips=[(120, 2), (126, 18), (122, 34), (106, 44)], root=(80, 50))
+def at(uv, h):
+	return DRAGON_AT[0] + uv[0] * (DRAGON_W - 1), DRAGON_AT[1] + uv[1] * (h - 1)
 
 
-def wing_mask(w, outward):
-	def draw(d):
-		wing(d, w['shoulder'], w['wrist'], w['tips'], w['root'])
-		tips = w['tips'] + [w['root']]
-		for a, b in zip(tips, tips[1:]):
-			scallop(d, a if outward else b, b if outward else a, 3)
-	return mask(draw)
-
-
-def body_mask():
-	def draw(d):
-		# torso: chest to hips
-		d.polygon([(56, 46), (62, 41), (74, 40), (84, 42), (88, 46), (84, 51), (72, 53), (60, 52)], fill=1)
-		# neck: from the chest up and over, the head turned down toward the player
-		neck = [(58, 46), (54, 40), (49, 35), (43, 32), (37, 32)]
-		for (x0, y0), (x1, y1), r in zip(neck, neck[1:], (4, 3.5, 3, 2.6)):
-			for k in range(6):
-				t = k / 5
-				x, y = x0 + (x1 - x0) * t, y0 + (y1 - y0) * t
-				d.ellipse([x - r, y - r, x + r, y + r], fill=1)
-		# head: skull, the snout pointing down-left, jaw a little open; horns swept back
-		d.polygon([(40, 29), (35, 30), (29, 35), (27, 39), (29, 40), (33, 37), (37, 36), (41, 35)], fill=1)
-		d.polygon([(32, 38), (28, 42), (30, 43), (35, 39)], fill=1)                     # lower jaw
-		d.polygon([(39, 30), (44, 26), (47, 25), (43, 29)], fill=1)                     # horn
-		d.polygon([(37, 30), (40, 25), (41, 26), (39, 30)], fill=1)                     # second horn
-		# tail: from the hips, sweeping down and right, tapering
-		tail = [(86, 47), (93, 53), (100, 57), (108, 58), (115, 55), (120, 50), (123, 46)]
-		for i, ((x0, y0), (x1, y1)) in enumerate(zip(tail, tail[1:])):
-			r0, r1 = 3.2 - i * 0.45, 3.2 - (i + 1) * 0.45
-			for k in range(8):
-				t = k / 7
-				r = max(0.6, r0 + (r1 - r0) * t)
-				x, y = x0 + (x1 - x0) * t, y0 + (y1 - y0) * t
-				d.ellipse([x - r, y - r, x + r, y + r], fill=1)
-		# the tail's spade
-		d.polygon([(121, 47), (126, 41), (125, 47), (123, 49)], fill=1)
-		# legs: the front pair tucked, the hind pair hanging, toes curled
-		d.polygon([(60, 50), (63, 51), (62, 56), (60, 59), (58, 58), (59, 55)], fill=1)
-		d.polygon([(78, 50), (84, 50), (83, 56), (81, 61), (78, 61), (79, 56)], fill=1)
-		d.polygon([(77, 61), (80, 63), (82, 61)], fill=1)
-		d.polygon([(57, 58), (59, 61), (61, 58)], fill=1)
-		# spines along the back
-		for x, y in ((66, 40), (71, 39), (76, 39), (81, 40), (52, 37), (47, 33)):
-			d.polygon([(x - 1, y + 1), (x + 1, y - 3), (x + 2, y + 1)], fill=1)
-	return mask(draw)
-
-
-def wing_bones(d, w):
-	d.line([w['shoulder'], w['wrist']], fill=1, width=2)
-	for t in w['tips'][:-1]:
-		d.line([w['wrist'], t], fill=1, width=1)
-	d.line([w['wrist'], w['tips'][-1]], fill=1, width=1)
+def membrane_at(u, v):
+	"""Whether (u, v) is on a wing's membrane (the rest is body, neck, head, legs, tail)."""
+	return v < 0.5 and (u < 0.41 or u > 0.69)
 
 
 def dragon(img):
-	gx, gy, _ = DRAGON_GLOW
-	far, near, body = wing_mask(FAR_WING, False), wing_mask(NEAR_WING, True), body_mask()
+	gx, gy, gr = DRAGON_GLOW
+	m, h = silhouette()
+	ux = lambda x: (x - DRAGON_AT[0]) / (DRAGON_W - 1)
+	vy = lambda y: (y - DRAGON_AT[1]) / (h - 1)
 
-	def membrane(base, rim_m):
-		def shade(x, y):
-			# the light behind shines through the membrane: lighter toward the glow's middle
-			d = math.hypot(x - gx, y - gy) / 40
-			v = base + 0.5 * max(0.0, 1 - d)
-			if edge(rim_m, x, y, 0, -1) or edge(rim_m, x, y, -1, 0) or edge(rim_m, x, y, 1, 0):
-				v += 0.25
-			return HIDE[dither(v, len(HIDE), x, y)]
-		return shade
+	def shade(x, y):
+		rim = edge(m, x, y, 0, -1) or edge(m, x, y, -1, -1) or edge(m, x, y, 1, -1)
+		if membrane_at(ux(x), vy(y)):
+			# the light behind shines through the membrane: brighter toward the light's middle, dark rims
+			d = math.hypot(x - gx, y - gy) / (gr * 1.3)
+			v = 0.25 + 0.75 * max(0.0, 1 - d)
+			if rim or edge(m, x, y, -1, 0) or edge(m, x, y, 1, 0) or edge(m, x, y, 0, 1):
+				v -= 0.35
+			return MEMBRANE[dither(v, len(MEMBRANE), x, y)]
+		# the body: dark, its upper edges rimmed by the light behind
+		return HIDE[5] if rim else HIDE[3] if edge(m, x, y, 1, 0) or edge(m, x, y, -1, 0) else HIDE[1]
+	paint(img, m, shade)
 
-	paint(img, far, membrane(0.24, far))
-	paint(img, mask(lambda d: wing_bones(d, FAR_WING)), lambda x, y: HIDE[1])
-	paint(img, body, lambda x, y: HIDE[4] if edge(body, x, y, 0, -1) or edge(body, x, y, 1, -1) else
-		HIDE[2] if edge(body, x, y, 0, 1) else HIDE[1])
-	paint(img, near, membrane(0.36, near))
-	paint(img, mask(lambda d: wing_bones(d, NEAR_WING)), lambda x, y: HIDE[2])
-	# the shoulder over the near wing's root
-	paint(img, mask(lambda d: d.ellipse([68, 40, 77, 49], fill=1)), lambda x, y: HIDE[1])
-	# the eye and the glow round it
+	def bones(d):
+		for wrist, tips in BONES:
+			for t in tips:
+				d.line([at(wrist, h), at(t, h)], fill=1)
+	mp = m.load()
+	paint(img, mask(bones), lambda x, y: HIDE[1] if mp[x, y] and not edge(m, x, y, 0, -1) else None)
+	# the eye, glowing
 	px = img.load()
-	px[35, 32], px[36, 32] = EYE[1], EYE[2]
-	px[34, 32], px[37, 33] = EYE[0], EYE[0]
+	ex, ey = at(EYE_UV, h)
+	ex, ey = round(ex), round(ey)
+	px[ex, ey], px[ex - 1, ey] = EYE[2], EYE[1]
+	px[ex + 1, ey] = EYE[0]
 
 
 # ---- the player ------------------------------------------------------------------------------------------
 
 def player(img, fx, fy):
-	"""Steve seen from behind, feet at (fx, fy): 24 px tall, head tilted back to look up, sword in hand."""
+	"""Steve from behind, a black silhouette, feet at (fx, fy): braced wide, the left arm thrown out, the
+	sword raised high in the right hand toward the dragon. 34 px tall, the sword's point at ~fy - 55."""
+	def draw(d):
+		top = fy - 34
+		# legs: wide stance, the right one stepped back
+		d.polygon([(fx - 4, top + 20), (fx, top + 20), (fx - 6, fy), (fx - 11, fy)], fill=1)
+		d.polygon([(fx, top + 20), (fx + 4, top + 20), (fx + 11, fy), (fx + 6, fy)], fill=1)
+		# body, the shoulders a little broad
+		d.rectangle([fx - 5, top + 9, fx + 4, top + 21], fill=1)
+		# head
+		d.rectangle([fx - 4, top + 1, fx + 3, top + 8], fill=1)
+		# the left arm thrown out to the side, fist clenched
+		d.polygon([(fx - 5, top + 9), (fx - 5, top + 13), (fx - 14, top + 17), (fx - 15, top + 13)], fill=1)
+		d.rectangle([fx - 17, top + 13, fx - 14, top + 17], fill=1)
+		# the right arm raised high, the sword up and leaning toward the dragon
+		d.polygon([(fx + 1, top + 9), (fx + 4, top + 9), (fx + 9, top - 2), (fx + 6, top - 3)], fill=1)
+		d.rectangle([fx + 6, top - 5, fx + 9, top - 2], fill=1)                 # the fist
+		d.line([(fx + 5, top - 4), (fx + 11, top - 5)], fill=1, width=2)        # the guard
+		d.line([(fx + 8, top - 6), (fx + 12, top - 20)], fill=1, width=2)       # the blade
+		d.point((fx + 13, top - 21), fill=1)
+	m = mask(draw)
 	px = img.load()
-	HAIR = [(44, 28, 14), (61, 40, 22), (82, 56, 30)]
-	SHIRT = [(0, 96, 100), (0, 140, 145), (0, 175, 178)]
-	PANTS = [(36, 34, 100), (52, 50, 130), (70, 68, 160)]
-	SKIN = [(150, 100, 70), (190, 130, 95)]
-	SHOE = [(50, 50, 50), (80, 80, 80)]
-	RIM = (190, 150, 230)
-
-	def rect(x0, y0, w, h, ramp, lit_left=True):
-		for y in range(y0, y0 + h):
-			for x in range(x0, x0 + w):
-				u = (x - x0) / max(1, w - 1)
-				v = 2 if (u < 0.34) == lit_left and h > 2 else 1
-				if y == y0 + h - 1 or (x == x0 + w - 1 if lit_left else x == x0):
-					v = 0
-				px[x, y] = ramp[min(v, len(ramp) - 1)]
-
-	# shadow on the ground
-	for x in range(fx - 9, fx + 10):
-		for y in (fy, fy + 1):
-			if abs(x - fx) < 9 - (y - fy) * 2:
-				r, g, b = px[x, y]
-				px[x, y] = (int(r * 0.6), int(g * 0.6), int(b * 0.65))
-	top = fy - 24
-	# legs (8 tall: pants, shoes at the bottom)
-	rect(fx - 4, top + 15, 4, 8, PANTS)
-	rect(fx, top + 15, 4, 8, PANTS)
-	for x in range(fx - 4, fx + 4):
-		px[x, top + 22] = SHOE[0] if x in (fx - 1, fx + 3) else SHOE[1]
-		px[x, top + 23] = SHOE[0]
-	# body
-	rect(fx - 4, top + 7, 8, 8, SHIRT)
-	# arms: the left hangs, the right holds the sword down at its side
-	rect(fx - 7, top + 7, 3, 8, SHIRT)
-	rect(fx + 4, top + 7, 3, 8, SHIRT, lit_left=False)
-	for x in (fx - 7, fx - 6, fx - 5):
-		px[x, top + 15] = SKIN[0]
-	for x in (fx + 4, fx + 5, fx + 6):
-		px[x, top + 15] = SKIN[0]
-	# the sword (diamond), point down past the right hand
-	px[fx + 5, top + 14] = (60, 40, 20)
-	for y in range(top + 16, top + 23):
-		px[fx + 6, y] = (120, 230, 220) if y < top + 20 else (70, 180, 175)
-		px[fx + 7, y] = (40, 120, 130)
-	px[fx + 4, top + 16], px[fx + 7, top + 16] = (40, 40, 40), (40, 40, 40)
-	# head, tilted back (looking up): the back of the head, seen a little from below -> 7 tall
-	rect(fx - 4, top, 8, 7, HAIR)
-	px[fx - 4, top + 6], px[fx + 3, top + 6] = SKIN[1], SKIN[0]          # ears / jaw at the sides
-	# rim light from the dragon's glow on the top edges
-	for x in range(fx - 4, fx + 4):
-		px[x, top] = RIM if x < fx + 2 else HAIR[2]
-	px[fx - 7, top + 7], px[fx - 6, top + 7] = RIM, (150, 200, 210)
-	px[fx + 4, top + 7] = (150, 200, 210)
+	# the shadow, long, toward the viewer
+	for y in range(fy - 1, N):
+		w = 10 - (y - fy) * 0.5
+		for x in range(int(fx - w), int(fx + w) + 1):
+			r, g, b = px[x, y]
+			px[x, y] = (int(r * 0.55), int(g * 0.55), int(b * 0.62))
+	paint(img, m, lambda x, y: SILHOUETTE)
 
 
 def build():
 	img = Image.new('RGB', (N, N))
 	sky(img)
 	tops = [spire(img, *s) for s in SPIRES]
+	haze(img)
 	for t in tops:
 		beam(img, t, CHEST)
 	dragon(img)
 	ground(img)
-	player(img, 46, 122)
+	player(img, 63, 126)
 	return img
 
 

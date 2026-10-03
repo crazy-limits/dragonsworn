@@ -41,6 +41,11 @@ public final class DragonAnimSelector {
 
 	/** As above; {@code foothold}: how it stands on the ground ({@link Kind#GROUND}), sat up it never walks. */
 	public static Choice select(Kind kind, Foothold foothold, DragonAnim action, int actionSeq, FlightModel.Plan flight, double horizontalSpeed) {
+		return select(kind, foothold, action, actionSeq, flight, horizontalSpeed > WALK_THRESHOLD);
+	}
+
+	/** As above, {@code walking} on the ground given (a {@link Gait}'s: it walks on through a short stall). */
+	public static Choice select(Kind kind, Foothold foothold, DragonAnim action, int actionSeq, FlightModel.Plan flight, boolean walking) {
 		if (kind == Kind.DYING) return new Choice(DragonAnim.DEATH, 0);
 		if (action != null) return new Choice(action, actionSeq);
 		if (kind == Kind.PERCH_BREATH) return new Choice(DragonAnim.BREATH, 0);
@@ -48,7 +53,7 @@ public final class DragonAnimSelector {
 		if (kind == Kind.GROUND && foothold == Foothold.CLING) return new Choice(DragonAnim.CLING, 0);
 		return switch (kind) {
 			case PERCH_SCANNING, PERCH_FLAMING, PERCH_ATTACKING, GROUND -> {
-				if (horizontalSpeed > WALK_THRESHOLD) yield new Choice(DragonAnim.WALK, 0);
+				if (walking) yield new Choice(DragonAnim.WALK, 0);
 				if (kind == Kind.PERCH_ATTACKING) yield new Choice(DragonAnim.ROAR, 0);
 				// Breath: the lunge with the jaw open aims the head at the ground in front.
 				if (kind == Kind.PERCH_FLAMING) yield new Choice(DragonAnim.ATTACK, 0);
@@ -65,10 +70,12 @@ public final class DragonAnimSelector {
 
 	/**
 	 * Playback speed for {@code anim} so the feet match the ground: the walk runs at the dragon's real
-	 * speed over its keyed speed (clamped so a crawl does not freeze it); everything else plays at 1.
+	 * speed over its keyed speed (clamped so a crawl does not freeze it), and stands mid-stride while it does
+	 * not move (a {@link Gait}'s stall); everything else plays at 1.
 	 */
 	public static double playbackSpeed(DragonAnim anim, double horizontalSpeed) {
 		if (anim != DragonAnim.WALK) return 1.0;
+		if (horizontalSpeed <= WALK_THRESHOLD) return 0.0;
 		double blocksPerSecond = horizontalSpeed * 20.0;
 		return Math.max(0.35, Math.min(2.5, blocksPerSecond / DragonAnim.WALK_BLOCKS_PER_SECOND));
 	}

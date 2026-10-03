@@ -11,7 +11,17 @@ synced state (`src/mc/<version>/java/.../mc/mixin`, `dragonsworn.mixins.json`).
 ./gradlew :1.21.1-fabric:build :1.21.1-neoforge:build      # jars + unit tests
 ./gradlew :1.21.1-fabric:runClient -Pdragonsworn.showcase    # in-game test (also :1.21.1-neoforge)
 ./gradlew :1.21.1-fabric:runClient -Pdragonsworn.arena       # End monolith tour: df-arena-*.png, arena-report.txt
+./gradlew :1.21.1-fabric:runClient -Pdragonsworn.film        # End island clips, a frame a tick: film-<clip>-*.png
+python3 tools/film_gifs.py                                     # -> gallery/dragonsworn-<clip>.gif
 ```
+The film (`Film`, ~6 min) levels a pad on the main island, ends the vanilla fight and films flight + running landing,
+takeoff, walk, stalk (first person), stream breath (third + first person), breath pass, claw grab and jaw grab (third +
+first person each). The player is the prey (survival, resistance 255); third-person shots use a free camera
+(`FilmCamera`, placed by `CameraMixin`) so the player's model is in the shot. `-Pdragonsworn.film=walk,jaws` films
+only those scenes (`flight`, `walk`, `stalk`, `breath`, `pass`, `claws`, `jaws`); the others' frames are kept.
+`-Pdragonsworn.film=gallery` (only when named) shoots the CurseForge stills instead: composed shots (low angles, long
+lens, gamma up), each a burst of `still-<shot>-<n>.png`; `python3 tools/gallery.py` grades the picked frames (`PICKS`)
+into `gallery/*.jpg` (1920x1080).
 The showcase creates a flat world, summons NoAI dragons, plays every animation, then tests the AI live
 (leaf cage + stone pillar, ground assault on a husk, takeoff, hitbox shots, a running landing) and the breath; it writes
 screenshots to `run/<target>/screenshots/df-*.png`, a report to `run/<target>/showcase-report.txt`, and quits.
@@ -23,7 +33,16 @@ screenshots to `run/<target>/screenshots/df-*.png`, a report to `run/<target>/sh
 `-Pdragonsworn.showcase=narrow` runs only the narrow footholds (a 3x3 platform, a lone pillar beside a husk's pillar).
 `-Pdragonsworn.showcase=air` runs only the air attacks (a husk on a lone 16-block pillar, one hanging in the air: fly-by
 bite, hover bite, hover breath each, then the wild AI's own choice; ~6 min).
-Targets 1.21.11 and 26.2 (GeckoLib 5) are paused in `settings.gradle.kts` until their `src/mc/<version>` bridge is written.
+Targets: 1.21.1 (GeckoLib 4), 1.21.11 (GeckoLib 5.4) and 26.3 (GeckoLib 5.5, `com.geckolib`, Java 25, unobfuscated), each
+on Fabric and NeoForge (`:1.21.11-fabric`, `:26.3-neoforge`, ...; `./gradlew buildAll`). Each has its own bridge tree
+`src/mc/<version>` (the 1.21.11 and 26.3 trees were ported from 1.21.1: a change to the bridge goes into every tree).
+Porting notes: GeckoLib 5 poses bones per render pass through `BoneSnapshot`s handed to the renderer's
+`adjustModelBonesForRender` (`GeoBones.Model`/`Bone` wrap them with GeckoLib 4's whole-turn API, so `LimbAnimator` & co.
+read the same); the animation handler sees only the render state (`ReplacedEnderDragon.DRAGON` carries the dragon);
+`DragonRenderer.State` implements `GeoRenderState` itself (NeoForge does not see GeckoLib's injected interface at
+compile time); what read GeckoLib 4's world matrices after drawing (`BreathRender`, `LimbContact`) runs in the posing
+step on the limbs' forward kinematics. Mixin targets moved a lot between versions: check each against the decompiled
+sources (`genSources`) -- an injection that matches only some of its methods fails silently unless `require` says how many.
 
 ## Layout
 - `src/main/java` -- game-free core (Stonecutter-processed), tested in `src/test`: `anim` (what plays),
@@ -42,7 +61,7 @@ Targets 1.21.11 and 26.2 (GeckoLib 5) are paused in `settings.gradle.kts` until 
   - `mc/client`: GeckoLib renderer and model, `LimbAnimator` (+ `TalonPose`, `ToePose`, `GeoBones`: the only
     GeckoLib bone access, `GroundClearance`); `mc/client/showcase`: the in-game test (`TestRun` runner, `Script`
     steps and helpers, one class per stage, `Stages` lists them; `ArenaTour`).
-- `src/fabric`, `src/neoforge` -- entrypoints only (`src/neoforge/mc<version>` for moved APIs).
+- `src/fabric`, `src/neoforge` -- entrypoints only (`src/fabric/mc<version>` (`FabricClientParts`), `src/neoforge/mc<version>` for moved APIs).
 - `src/gecko4/resources` (1.21.1) / `src/gecko5/resources` (1.21.2+) -- model + animations; textures in `src/mc/shared/resources`.
 - `tools/` -- the asset pipeline. **Never hand-edit the generated model/animation JSON.**
 
@@ -111,8 +130,9 @@ Targets 1.21.11 and 26.2 (GeckoLib 5) are paused in `settings.gradle.kts` until 
   cracks, then open ones with lit edges) on a `hatch` 0..2 property (`mc/mixin/DragonEggBlockMixin`, vanilla's
   `HATCH`) and blockstate. Nothing raises it yet (hatching comes later). The item is a flat sprite like the
   sniffer egg's (`textures/item/dragon_egg`; `items/dragon_egg.json` for 1.21.4+). `egg.py <png>` previews it all.
-- `icon.py` -- the mod icon (`assets/dragonsworn/icon.png`, 128x128 pixel art, drawn: the dragon over the island,
-  twisted spires with crystals beaming to it, a player seen from behind looking up). `icon.py <png>` previews it x4.
+- `icon.py` -- the mod icon (`assets/dragonsworn/icon.png`, 128x128 pixel art, drawn: the dragon in flight against a
+  great light, its silhouette traced from `tools/source/icon_dragon.png`, backlit wings, twisted spires with crystals beaming to it, a player's black silhouette
+  braced with the sword raised). `icon.py <png>` previews it x4.
 
 ## Tail
 Fully procedural. `body/TailMotion` (core, tested) is what the keyframes used to do per animation (ported from
@@ -166,20 +186,24 @@ the body rides over the planted feet into the stance.
 
 ## Breath attack
 `attack/BreathAttack` (core, tested) + `mc/breath/` (phase, particles, mixins in `dragonsworn.breath.mixins.json`).
-After the perched roar the dragon sometimes pours a void-flame stream instead of vanilla's cloud; the server
-burns along `BreathAttack`'s cone, the client spawns flames from the model's mouth (`BreathRender`). Over the 2 s inhale
+After the perched roar the dragon sometimes pours a void-flame stream instead of vanilla's cloud; the client spawns
+flames from the model's mouth (`BreathRender`), the server pours a puff each damage interval (`attack/FlamePuff`, core,
+tested; `mc/breath/BreathFlames`, ticked by the brain) that flies as the particles do (same jet speed, drag, rise, burning
+`FIRE_TICKS` until they turn to smoke): it hurts each thing it passes through once, splashes where it meets a block, and
+flies on after the breath ends, so damage and dragon fire land only when and where the flames reach (every stream breath:
+perched, pass, hover). Over the 2 s inhale
 the dragon heats up (`mc/client/HeatGlowLayer`): its chest glows first, the glow climbs the throat to the jaw and
 mouth, then the fire comes; it flickers while pouring and cools after. A texture animation: `tools/heat.py` bakes
 8 emissive frames (`textures/entity/heat/`) from the model's UV map (chest, neck underside, jaw get ignition times
 by model z); the layer draws the two frames around `BreathAttack.heat`, weighted. It bakes on `build_wings.py`'s
 layout, before `pack_uv.py` repacks it with the skin. Every fireball (roam pass/barrage, the arena's strafe via
-`DragonStrafePlayerPhaseMixin`) goes through `mc/Fireballs`: the same glow plays `FIREBALL_SPEEDUP`
-(3) x faster (synced as a count, `DragonData.FIREBALL`) and the fireball flies from the head when it reaches the jaw.
-Through that windup the head turns to the target (look attention full, `BreathAttack.fireballAiming`, both sides); it
-fires only once the head points within `FIREBALL_CONE` of it (waits up to `FIREBALL_AIM_TICKS`, else drops the
-shot: never backwards), from in front of the mouth; projectiles never hit their owner's own parts (`ProjectileMixin`).
+`DragonStrafePlayerPhaseMixin`) goes through `mc/Fireballs`: first the head turns to the target (look attention full,
+`Fireballs.aiming`, both sides); only once it points within `FIREBALL_CONE` of it does the same glow play
+`FIREBALL_SPEEDUP` (3) x faster (a head that does not come round within `FIREBALL_AIM_TICKS` drops the shot before any
+glow), and the fireball always flies when the glow reaches the jaw (at the target, or down the head's line if it slipped
+out of the cone: never backwards; synced as count x 3 + stage, `DragonData.FIREBALL`), from in front of the mouth; projectiles never hit their owner's own parts (`ProjectileMixin`).
 **Dragon fire** (`mc/breath/DragonFire`, block `dragonsworn:dragon_fire`): every fire attack leaves it where it lands
-(`DragonFire.spread`): the stream and the breath pass where they splash (`BreathStreamPhase.burn`), the fireball a few
+(`DragonFire.spread`): the stream and the breath pass where their puffs splash (`BreathFlames`), the fireball a few
 flames right where it bursts, the perched cloud breath under its cloud. Soul fire tinted violet, `DAMAGE` 3 a touch
 (fire: 1); it does not spread or burn blocks, stands on any solid top and burns out after 5-10 s; the dragon is
 immune. Created inside the loaders' block registration; cutout via `BlockRenderLayerMap` (Fabric) or the models'
@@ -196,7 +220,7 @@ pattern): run-up, back in `BreathPass.HEIGHT` over the prey, and once lined up `
 action `GLIDE_BREATH` (`anims.glide_breath`: the glide, a short inhale, then the straight neck swung ~50 deg down,
 jaw open) on a forced glide; the aim is a direction from the neck's base inside a cone ahead and below
 (`PITCH_MIN..MAX`, `YAW_ARC`) that swings after the prey at `STREAM_TURN`, so the flames rake the ground along the
-flight path through it. Synced as `DragonData.STRIKE` (the ground point), the neck straightened onto it by
+flight path through it; they touch down `BreathPass.lead` short of the prey and walk up to it, reaching it `CATCH` short. Synced as `DragonData.STRIKE` (the ground point), the neck straightened onto it by
 `body/Strike` as the perched breath's; the client times flames, heat and sounds off the animation clock
 (`BreathPassPhase.breathTicks`), the flames carrying the dragon's speed. Showcase `-Pdragonsworn.showcase=pass`.
 
@@ -330,6 +354,19 @@ slightly deeper) and `step` (hard-ground step: stone + ravager step + a low thum
 as the jaw opens; in flight the server picks occasional roars (`DragonData.VOICE`) and the jaw opens with
 them (`DragonModel`); an attack fades a roar out (`RoarSound`). Vanilla's flap timer, growl and ambient
 sound are silenced (`DragonVoiceMixin`).
+Every sound the dragon makes has a subtitle that says what it does (for deaf and hard-of-hearing players):
+the attacks keep vanilla's sounds but play them through events of their own (`DragonSounds`: `bite`, `tail`,
+`snatch`, `chew`, `fling`, `breath`, `flames`; sounds.json points each at vanilla's event with `"type": "event"`,
+written by `sounds.py`'s `ALIASES`), never vanilla's event directly ("Ravager bites", "Blaze shoots" would lie).
+`LangFilesTest` fails on a sound event without a subtitle.
+
+## Translations
+Every player-facing text is a lang key (`src/mc/shared/resources/assets/dragonsworn/lang/*.json`). The core
+words its texts as `Text` (key + English fallback + `%s` args; `DragonConfig`'s labels, tooltips and ranges,
+`DragonCommand`'s feedback); the bridge shows them through `mc/Lang.of` (`translatableWithFallback`).
+`en_us.json` must hold `DragonConfig.translations()` word for word: change an option's comment and update
+`en_us.json` (`LangFilesTest` lists what differs); other languages may lag (English shows for missing keys) but
+may only use en_us keys with the same `%s` count. The config file (TOML) stays English.
 
 ## Arena (End spires)
 `arena/Monolith` (core, tested) replaces vanilla's obsidian cylinders with spiral towers (references: Mode Gakuen

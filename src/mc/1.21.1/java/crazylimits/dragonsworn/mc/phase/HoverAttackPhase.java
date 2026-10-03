@@ -7,8 +7,8 @@ import crazylimits.dragonsworn.config.DragonConfig;
 import crazylimits.dragonsworn.flight.FlightModel;
 import crazylimits.dragonsworn.mc.DragonBrain;
 import crazylimits.dragonsworn.mc.DragonPhases;
+import crazylimits.dragonsworn.mc.DragonSounds;
 import crazylimits.dragonsworn.nav.BlockGrid;
-import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.Mth;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.LivingEntity;
@@ -251,7 +251,7 @@ public class HoverAttackPhase extends AirAttackPhase {
 		if (hit || toHit > 0 || aim == null) return;
 		hit = true;
 		Vec3 jaws = JawBlow.landing(dragon, probe, DragonAnim.HOVER_BITE, aim);
-		dragon.playSound(SoundEvents.RAVAGER_ATTACK, 3.0F, 0.6F);
+		dragon.playSound(DragonSounds.BITE, 3.0F, 0.6F);
 		DamageSource source = dragon.damageSources().mobAttack(dragon);
 		for (LivingEntity living : JawBlow.struck(dragon, jaws, DragonConfig.BITE_RADIUS.get())) {
 			if (!living.hurt(source, DragonConfig.HOVER_BITE_DAMAGE.f())) continue;

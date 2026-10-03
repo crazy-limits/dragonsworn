@@ -1,0 +1,227 @@
+package crazylimits.dragonsworn.mc.phase;
+
+import crazylimits.dragonsworn.anim.DragonAnim;
+import crazylimits.dragonsworn.attack.BreathAttack;
+import crazylimits.dragonsworn.attack.BreathPass;
+import crazylimits.dragonsworn.config.DragonConfig;
+import crazylimits.dragonsworn.flight.FlightModel;
+import crazylimits.dragonsworn.mc.DragonBrain;
+import crazylimits.dragonsworn.mc.DragonData;
+import crazylimits.dragonsworn.mc.DragonPhases;
+import crazylimits.dragonsworn.mc.DragonswornDragon;
+import crazylimits.dragonsworn.nav.BlockGrid;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.util.Mth;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
+import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
+import net.minecraft.world.phys.Vec3;
+import org.joml.Vector3fc;
+
+/**
+ * The breath pass ({@link BreathPass}): the dragon swings out to get a run at its prey, comes back in
+ * {@link BreathPass#HEIGHT} blocks over it, and from {@link BreathPass#START_DISTANCE} short of it glides,
+ * inhaling ({@link DragonAnim#GLIDE_BREATH}); then the neck swings down and it pours void flame onto the
+ * ground under its flight path, touching down short of the prey and raking through it and on ahead of it.
+ * Then it flies on.
+ *
+ * <p>The aim is synced like the perched breath's ({@link DragonData#STRIKE}): the neck is straightened
+ * onto it ({@code body/Strike}) and the client pours the flames from the model's mouth at it
+ * ({@code BreathRender}). What the stream touches burns (server).
+ */
+public class BreathPassPhase extends AirAttackPhase {
+	private enum Stage { RUN_UP, APPROACH, PASS, AWAY }
+
+	static final int RUN_UP_TICKS = 200, APPROACH_TICKS = 300, AWAY_TICKS = 50;
+
+	private Stage stage = Stage.RUN_UP;
+	/** The run's direction across the ground (unit), fixed as it comes in. */
+	private Vec3 heading = Vec3.ZERO;
+	/** The aim's angles (off the facing, below level), degrees. */
+	private double[] aim = {0.0, BreathPass.PITCH_REST};
+	/** The height it passes at (world y), set as it comes in. */
+	private double passY;
+	/** Lined up on its last stretch in: the wings go still before the inhale ({@link BreathPass#GLIDE_IN}). */
+	private boolean glidingIn;
+
+	public BreathPassPhase(EnderDragon dragon) {
+		super(dragon);
+	}
+
+	/**
+	 * Starts a pass at {@code target} when it is in range and there is open sky over it to pour through
+	 * (up to the pass's height: else the flames would only splash on a roof).
+	 */
+	public static boolean start(EnderDragon dragon, LivingEntity target) {
+		if (target.distanceToSqr(dragon) > BreathPass.MAX_RANGE * BreathPass.MAX_RANGE
+				|| !openAbove(DragonswornDragon.brain(dragon).grid(), target, BreathPass.HEIGHT)) return false;
+		begin(dragon, DragonPhases.BREATH_PASS, target);
+		return true;
+	}
+
+	@Override
+	public EnderDragonPhase<BreathPassPhase> getPhase() {
+		return DragonPhases.BREATH_PASS;
+	}
+
+	@Override
+	public void begin() {
+		super.begin();
+		stage = Stage.RUN_UP;
+		heading = Vec3.ZERO;
+		glidingIn = false;
+		aim = new double[] {0.0, BreathPass.PITCH_REST};
+	}
+
+	@Override
+	public void end() {
+		if (dragon.level().isClientSide()) return;
+		DragonBrain brain = brain();
+		if (brain.action() == DragonAnim.GLIDE_BREATH) brain.clearAction();
+		brain.setLookTarget(null);
+	}
+
+	@Override
+	public void doServerTick(ServerLevel serverLevel) {
+		ticks++;
+		switch (stage) {
+			case RUN_UP -> runUp();
+			case APPROACH -> approach();
+			case PASS -> pass();
+			case AWAY -> leaveAfter(AWAY_TICKS);
+		}
+	}
+
+	private boolean lost() {
+		return lostBeyond(2 * BreathPass.MAX_RANGE);
+	}
+
+	/** The height it passes over {@code at}: over the prey's feet, or the ground there when that is higher. */
+	private double passHeight(Vec3 at) {
+		int ground = brain().grid().ground(Mth.floor(at.x), Mth.floor(at.z));
+		double base = target == null ? at.y : target.getY();
+		return Math.max(base, ground == BlockGrid.NO_GROUND ? base : ground) + BreathPass.HEIGHT;
+	}
+
+	/** Too close for a run: swing out away from the prey first. */
+	private void runUp() {
+		if (lost() || ticks > RUN_UP_TICKS) {
+			away();
+			return;
+		}
+		brain().setLookTarget(target);
+		if (runUp(BreathPass.RUN_UP, BreathPass.HEIGHT + 4.0)) {
+			stage = Stage.APPROACH;
+			ticks = 0;
+		}
+	}
+
+	/** Back in at the prey, at the pass's height, aiming past it; the inhale starts once lined up close enough. */
+	private void approach() {
+		if (lost() || ticks > APPROACH_TICKS) {
+			away();
+			return;
+		}
+		brain().setLookTarget(target);
+		double dx = target.getX() - dragon.getX(), dz = target.getZ() - dragon.getZ();
+		double distance = Math.hypot(dx, dz);
+		if (distance > 1e-3 && (distance > BreathPass.START_DISTANCE + 8.0 || heading == Vec3.ZERO)) heading = new Vec3(dx / distance, 0.0, dz / distance);
+		// overshot without lining up: a fresh run
+		if (dx * heading.x + dz * heading.z < 0.0) {
+			stage = Stage.RUN_UP;
+			ticks = 0;
+			waypoint = null;
+			glidingIn = false;
+			return;
+		}
+		passY = passHeight(target.position());
+		glidingIn = distance <= BreathPass.START_DISTANCE + BreathPass.GLIDE_IN
+				&& Math.abs(BreathAttack.offFacing(dragon.getYRot(), dx, dz)) <= BreathPass.LINE_UP;
+		waypoint = new Vec3(target.getX() + heading.x * 16.0, passY, target.getZ() + heading.z * 16.0);
+		// the wings must be still by the time the stream starts: a beat or push under way is finished first
+		if (BreathPass.linedUp(dragon.getYRot(), dx, dz) && brain().wingsStillIn() < BreathPass.WINDUP_TICKS - 2) {
+			stage = Stage.PASS;
+			ticks = 0;
+			aim = new double[] {0.0, BreathPass.PITCH_REST};
+			brain().startAction(DragonAnim.GLIDE_BREATH);
+		}
+	}
+
+	/** The glide over the prey: level at the pass's height, the aim raking after it, everything in the stream burning. */
+	private void pass() {
+		DragonBrain brain = brain();
+		if (ticks >= BreathPass.TOTAL_TICKS || brain.action() != DragonAnim.GLIDE_BREATH) {
+			away();
+			return;
+		}
+		boolean lost = lost();
+		// on along the line it came in on, over the ground at the pass's height
+		Vec3 ahead = dragon.position().add(heading.scale(24.0));
+		passY = Math.max(passY - 0.05, passHeight(dragon.position()));
+		waypoint = new Vec3(ahead.x, passY, ahead.z);
+		Vec3 v = dragon.getDeltaMovement();
+		double horizontal = v.horizontalDistance();
+		double keep = horizontal > BreathPass.MAX_SPEED ? BreathPass.MAX_SPEED / horizontal
+				: horizontal > 1e-3 && horizontal < BreathPass.MIN_SPEED ? BreathPass.MIN_SPEED / horizontal : 1.0;
+		double want = Mth.clamp((passY - dragon.getY()) * 0.1, -0.3, 0.2);
+		dragon.setDeltaMovement(v.x * keep, v.y + (want - v.y) * 0.3, v.z * keep);
+
+		// the aim: from the neck's base, after the prey's body within the cone (straight ahead and down without one),
+		// landing short of it along the run while the dragon is still far off
+		float yaw = dragon.getYRot();
+		double[] b = BreathPass.neckBase(yaw);
+		Vec3 base = dragon.position().add(b[0], b[1], b[2]);
+		double[] prey = {0.0, BreathPass.PITCH_REST};
+		if (!lost) {
+			double lead = BreathPass.lead(Math.hypot(target.getX() - dragon.getX(), target.getZ() - dragon.getZ()));
+			Vec3 at = target.position().add(-heading.x * lead, target.getBbHeight() * 0.3, -heading.z * lead).subtract(base);
+			prey = BreathPass.angles(yaw, at.x, at.y, at.z);
+		}
+		aim = FlyingBreath.tick(dragon, ticks, base, aim, prey, BreathPass.WINDUP_TURN, BreathPass.STREAM_TURN,
+				BreathPass.RANGE, DragonConfig.PASS_DAMAGE.f());
+	}
+
+	private void away() {
+		DragonBrain brain = brain();
+		if (brain.action() == DragonAnim.GLIDE_BREATH) brain.clearAction();
+		brain.setLookTarget(null);
+		stage = Stage.AWAY;
+		ticks = 0;
+		waypoint = onAhead(40.0, 10.0);
+	}
+
+	// ---------------------------------------------------------------- both sides: what the breath shows
+
+	/**
+	 * Ticks (fractional) into a flying breath's animation (the pass's, or the hover's: the same timing),
+	 * from the animation clock (both sides: the client has no phase state of its own); NaN when neither
+	 * is playing.
+	 */
+	public static double breathTicks(EnderDragon dragon, float partialTick) {
+		DragonBrain brain = DragonswornDragon.brain(dragon);
+		DragonAnim action = brain.action();
+		if (action == null || !action.breathesInFlight() || brain.clock.anim() != action) return Double.NaN;
+		return brain.clock.seconds() * 20.0 + partialTick;
+	}
+
+	/** Where the flames land (world), from the synced aim; null without one. */
+	public static Vec3 aimPoint(EnderDragon dragon) {
+		Vector3fc a = dragon.getEntityData().get(DragonData.STRIKE);
+		return Float.isFinite(a.x()) ? dragon.position().add(a.x(), a.y(), a.z()) : null;
+	}
+
+	@Override
+	public void doClientTick() {
+		FlyingBreath.sounds(dragon);
+	}
+
+	@Override
+	public FlightModel.Force flightForce() {
+		return stage == Stage.PASS || stage == Stage.APPROACH && glidingIn ? FlightModel.Force.GLIDE : FlightModel.Force.NONE;
+	}
+
+	@Override
+	public float getFlySpeed() {
+		return stage == Stage.PASS ? 0.9F : 1.1F;
+	}
+}

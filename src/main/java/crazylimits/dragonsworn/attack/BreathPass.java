@@ -13,7 +13,8 @@ import crazylimits.dragonsworn.math.Maths;
  * frames, played faster). The stream is aimed by direction from the neck's base: a cone ahead and below
  * ({@link #PITCH_MIN}..{@link #PITCH_MAX} below level, {@link #YAW_ARC} either side). The aim swings after
  * the prey no faster than {@link #STREAM_TURN} degrees a tick, so the flames rake the ground along the
- * flight path, through the prey, and on ahead once it is behind (never back under the body).
+ * flight path, through the prey, and on ahead once it is behind (never back under the body). They touch
+ * down short of the prey ({@link #lead}) and walk up to it as the dragon closes in.
  */
 public final class BreathPass {
 	public static final int WINDUP_TICKS = 24;
@@ -30,7 +31,12 @@ public final class BreathPass {
 	/** It swings out at least this far (horizontal blocks) for its run before turning in. */
 	public static final double RUN_UP = 44.0;
 	/** The inhale starts this far short of the prey (horizontal blocks), the prey within {@link #LINE_UP} degrees of its facing. */
-	public static final double START_DISTANCE = 34.0, LINE_UP = 20.0;
+	public static final double START_DISTANCE = 40.0, LINE_UP = 20.0;
+	/**
+	 * Lined up, it glides in (wings still) from this much further out than {@link #START_DISTANCE}: a wingbeat
+	 * ({@code FlightModel.BEAT_TICKS}) outlasts the inhale, so one still under way would beat on into the stream.
+	 */
+	public static final double GLIDE_IN = 16.0;
 	/** Glide speed it holds over the pass, blocks per tick: at most, and at least. */
 	public static final double MAX_SPEED = 0.95, MIN_SPEED = 0.6;
 	/** It never starts a pass at prey further than this. */
@@ -45,6 +51,12 @@ public final class BreathPass {
 	/** How far the flames carry from the neck's base along the aim. */
 	public static final double RANGE = 22.0;
 	public static final int DAMAGE_INTERVAL = 4;
+	/**
+	 * The flames land short of the prey (along the run) at first: at most {@link #LEAD} blocks, {@link #LEAD_SHARE}
+	 * of how much further than {@link #CATCH} the dragon still is, so they walk up to the prey at that share
+	 * less than its speed and reach it when it is {@link #CATCH} blocks short of it (horizontal).
+	 */
+	public static final double LEAD = 10.0, LEAD_SHARE = 0.6, CATCH = 8.0;
 
 	private BreathPass() {}
 
@@ -87,6 +99,11 @@ public final class BreathPass {
 		// behind the neck (under or past the body): the steepest it pours, straight on
 		if (Math.abs(off) > 90.0) return new double[] {0.0, PITCH_MAX};
 		return new double[] {Maths.clampAbs(off, YAW_ARC), Math.max(PITCH_MIN, Math.min(PITCH_MAX, down))};
+	}
+
+	/** How far short of the prey (blocks along the run) the flames aim, the dragon {@code distance} from it (horizontal). */
+	public static double lead(double distance) {
+		return Math.max(0.0, Math.min(LEAD, (distance - CATCH) * LEAD_SHARE));
 	}
 
 	/** {@code at} swung toward {@code want} by at most {@code step} degrees on each angle. */

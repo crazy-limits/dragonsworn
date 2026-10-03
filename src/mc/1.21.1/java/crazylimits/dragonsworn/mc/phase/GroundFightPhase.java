@@ -23,7 +23,6 @@ import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Mth;
 import net.minecraft.world.damagesource.DamageSource;
@@ -455,8 +454,8 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 		boolean bite = anim.bites();
 		boolean seize = bite && seizing;
 		seizing = false;
-		if (bite) dragon.playSound(SoundEvents.RAVAGER_ATTACK, 3.0F, 0.6F);
-		else dragon.playSound(SoundEvents.PLAYER_ATTACK_SWEEP, 4.0F, 0.5F);
+		if (bite) dragon.playSound(DragonSounds.BITE, 3.0F, 0.6F);
+		else dragon.playSound(DragonSounds.TAIL, 4.0F, 0.5F);
 		double radius = Strike.hitRadius(anim);
 		DamageSource source = dragon.damageSources().mobAttack(dragon);
 		for (LivingEntity living : JawBlow.struck(dragon, point, radius)) {
@@ -511,13 +510,13 @@ public class GroundFightPhase extends AbstractDragonPhaseInstance implements Dra
 		if (holdTicks == 3 && prey instanceof ServerPlayer player) player.displayClientMessage(Component.translatable("dragonsworn.seized"), true);
 		if (holdTicks % DragonConfig.CHEW_INTERVAL.get() == 0 && prey instanceof LivingEntity living) {
 			living.hurt(dragon.damageSources().mobAttack(dragon), DragonConfig.CHEW_DAMAGE.f());
-			dragon.playSound(SoundEvents.RAVAGER_ATTACK, 1.5F, 0.8F);
+			dragon.playSound(DragonSounds.CHEW, 1.5F, 0.8F);
 		}
 		if (holdTicks >= holdFor) {
 			// flung off to one side, out and up
 			float yaw = (dragon.getYRot() + (dragon.getRandom().nextBoolean() ? 70.0F : -70.0F)) * Mth.DEG_TO_RAD;
 			brain.prey.release(new Vec3(Mth.sin(yaw) * 1.3, 0.55, -Mth.cos(yaw) * 1.3));
-			dragon.playSound(SoundEvents.PLAYER_ATTACK_SWEEP, 3.0F, 0.5F);
+			dragon.playSound(DragonSounds.FLING, 3.0F, 0.5F);
 		}
 	}
 

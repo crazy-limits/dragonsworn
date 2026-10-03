@@ -1,5 +1,7 @@
 package crazylimits.dragonsworn.config;
 
+import crazylimits.dragonsworn.Text;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -334,6 +336,30 @@ public final class DragonConfig {
 		return Character.toUpperCase(last.charAt(0)) + last.substring(1);
 	}
 
+	/** A table's name in the config screens, translatable. */
+	public static Text sectionLabel(String name) {
+		return new Text("dragonsworn.config.section." + name, label(name));
+	}
+
+	/** A table's heading (its comment in the file, as one paragraph), translatable. */
+	public static Text sectionHeading(String name) {
+		return new Text("dragonsworn.config.section." + name + ".tooltip", SECTIONS.get(name).replace('\n', ' '));
+	}
+
+	/** Every text the config screens show, key to English: what {@code en_us.json} must hold (tested). */
+	public static Map<String, String> translations() {
+		Map<String, String> out = new LinkedHashMap<>();
+		for (String name : SECTIONS.keySet()) {
+			for (Text t : List.of(sectionLabel(name), sectionHeading(name))) out.put(t.key(), t.english());
+		}
+		for (Option o : OPTIONS) {
+			for (Text t : List.of(o.labelText(), o.commentText())) out.put(t.key(), t.english());
+		}
+		out.put(Flag.RANGE_KEY, Flag.RANGE);
+		out.put(Int.RANGE_KEY, Int.RANGE);
+		return out;
+	}
+
 	/** The whole file, every option at its current value. */
 	public static synchronized String write() {
 		StringBuilder out = new StringBuilder();
@@ -418,9 +444,25 @@ public final class DragonConfig {
 			return DragonConfig.label(key);
 		}
 
+		/** {@link #label}, translatable. */
+		public Text labelText() {
+			return new Text("dragonsworn.config.option." + path(), label());
+		}
+
+		/** {@link #comment}, translatable (every weight shares one). */
+		public Text commentText() {
+			return comment.isEmpty() ? new Text("dragonsworn.config.weight.tooltip", comment())
+					: new Text("dragonsworn.config.option." + path() + ".tooltip", comment);
+		}
+
+		/** {@link #describeRange}, translatable. */
+		public abstract Text rangeText();
+
 		abstract Object value();
 
-		abstract String range();
+		String range() {
+			return rangeText().toEnglish();
+		}
 
 		abstract void reset();
 
@@ -454,9 +496,11 @@ public final class DragonConfig {
 			return value;
 		}
 
+		static final String RANGE_KEY = "dragonsworn.config.range.flag", RANGE = "true or false, default: %s";
+
 		@Override
-		String range() {
-			return "true or false, default: " + fallback;
+		public Text rangeText() {
+			return new Text(RANGE_KEY, RANGE, fallback);
 		}
 
 		@Override
@@ -511,9 +555,11 @@ public final class DragonConfig {
 			return value;
 		}
 
+		static final String RANGE_KEY = "dragonsworn.config.range.number", RANGE = "range: %s .. %s, default: %s";
+
 		@Override
-		String range() {
-			return "range: " + min + " .. " + max + ", default: " + fallback;
+		public Text rangeText() {
+			return new Text(RANGE_KEY, RANGE, min, max, fallback);
 		}
 
 		@Override
@@ -575,8 +621,8 @@ public final class DragonConfig {
 		}
 
 		@Override
-		String range() {
-			return "range: " + Toml.format(min) + " .. " + Toml.format(max) + ", default: " + Toml.format(fallback);
+		public Text rangeText() {
+			return new Text(Int.RANGE_KEY, Int.RANGE, Toml.format(min), Toml.format(max), Toml.format(fallback));
 		}
 
 		@Override

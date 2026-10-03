@@ -5,12 +5,12 @@ import crazylimits.dragonsworn.config.DragonConfig;
 import crazylimits.dragonsworn.flight.FlightModel;
 import crazylimits.dragonsworn.mc.DragonBrain;
 import crazylimits.dragonsworn.mc.DragonPhases;
+import crazylimits.dragonsworn.mc.DragonSounds;
 import crazylimits.dragonsworn.mc.DragonswornDragon;
 import crazylimits.dragonsworn.mc.PreyHold;
 import crazylimits.dragonsworn.mc.Targets;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
@@ -169,7 +169,7 @@ public class SnatchPhase extends AirAttackPhase {
 		stage = Stage.CARRY;
 		ticks = 0;
 		dropAt = target.getY() + DragonConfig.between(DragonConfig.DROP_MIN, DragonConfig.DROP_MAX, ThreadLocalRandom.current());
-		dragon.playSound(SoundEvents.RAVAGER_ATTACK, 3.0F, 0.5F);
+		dragon.playSound(DragonSounds.SNATCH, 3.0F, 0.5F);
 	}
 
 	/** Climbing hard with the prey; at the height it drops it, with a roar, and flies on. */
