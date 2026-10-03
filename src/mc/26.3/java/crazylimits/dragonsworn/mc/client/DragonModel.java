@@ -33,6 +33,9 @@ import java.util.Arrays;
  *
  * <p>GeckoLib 5 poses the bones per render pass: the renderer hands {@link #pose} the pass's model once
  * the animation has set it.
+ *
+ * <p>Assets: the model, animations and textures derive from the "Ender Dragon Reborn" resource pack by
+ * Parrie43, All Rights Reserved. The LGPL does not cover them: see LICENSE-ASSETS.md.
  */
 public final class DragonModel extends DefaultedEntityGeoModel<ReplacedEnderDragon> {
 	private static final String[] NECK = {"neck_1", "neck_2", "neck_3", "neck_4"};

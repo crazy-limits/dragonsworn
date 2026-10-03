@@ -13,6 +13,10 @@ scrolling. So a texel is ~0.145 blocks round and 0.0625 along: the glyphs are dr
 are in the font to keep their shape. Each strand puts SLOTS glyphs per turn round the tube, a step of
 STEP texels along between them, so a turn climbs SLOTS x STEP texels; TURNS turns fill the tile, which
 therefore repeats seamlessly. The two strands are half a turn apart along the beam.
+
+Licence: the runes are drawn from Minecraft's Standard Galactic Alphabet glyphs, which are Mojang's, under the
+Minecraft EULA. The script is LGPL and ships none of Mojang's files; its output is not LGPL: see
+LICENSE-ASSETS.md.
 """
 import glob
 import io

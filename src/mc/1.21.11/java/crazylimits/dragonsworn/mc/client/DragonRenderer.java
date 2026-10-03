@@ -40,6 +40,9 @@ import java.util.Map;
  * <p>GeckoLib 5 draws from a render state: {@link State} carries the dragon itself (the procedural layer
  * reads its brain), and the bones are posed in {@link #adjustModelBonesForRender}, where GeckoLib hands
  * over the pass's snapshots once the animation has set them.
+ *
+ * <p>Assets: the model and its textures (skin, glowmask) derive from the "Ender Dragon Reborn" resource pack
+ * by Parrie43, All Rights Reserved. The LGPL does not cover them: see LICENSE-ASSETS.md.
  */
 public final class DragonRenderer extends GeoReplacedEntityRenderer<ReplacedEnderDragon, EnderDragon, DragonRenderer.State> {
 	/** The model reaches ~12 blocks from the entity's origin, well past the vanilla culling box. */

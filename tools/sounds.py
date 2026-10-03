@@ -16,6 +16,9 @@ index has them, newest first). Out, in src/mc/shared/resources/assets/dragonswor
 
 And sounds.json, with the hearing distance of each (the game plays them at volume <= 1, so a roar can
 fade: above 1, volume only stretches the distance).
+
+Licence: the sounds it writes are cut from Minecraft's own, so they stay Mojang's, under the Minecraft EULA. The
+script is LGPL and ships none of Mojang's files; its output is not LGPL: see LICENSE-ASSETS.md.
 """
 import glob
 import json

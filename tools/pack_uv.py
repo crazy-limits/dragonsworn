@@ -17,6 +17,10 @@ A net face as big as the face's old texels gets exactly those texels; GeckoLib s
 cube's size rounded down, so a face of fractional size (the tail's split segments) is resampled (nearest)
 onto it. `verify` checks every other face texel for texel against the GeckoLib quad builder's UVs
 (BakedModelFactory / GeoQuad).
+
+Licence: the source model and texture (tools/source/dragon*.png, dragon_raw.geo.json) are from the "Ender
+Dragon Reborn" resource pack by Parrie43, All Rights Reserved, and so is everything built from them. This
+script is LGPL; its output is not: see LICENSE-ASSETS.md.
 """
 import glob
 import itertools

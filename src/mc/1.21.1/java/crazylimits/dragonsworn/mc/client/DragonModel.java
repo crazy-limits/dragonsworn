@@ -33,6 +33,9 @@ import java.util.Arrays;
  * every animation: its whole pose is procedural ({@link TailMotion}: the animation's motion, laid on the
  * real ground, trailing turns, swinging against the head, whipped by a strike) and kept out of blocks
  * ({@link Tail}), hung from the body bone as drawn.
+ *
+ * <p>Assets: the model, animations and textures derive from the "Ender Dragon Reborn" resource pack by
+ * Parrie43, All Rights Reserved. The LGPL does not cover them: see LICENSE-ASSETS.md.
  */
 public final class DragonModel extends DefaultedEntityGeoModel<ReplacedEnderDragon> {
 	private static final String[] NECK = {"neck_1", "neck_2", "neck_3", "neck_4"};

@@ -8,6 +8,10 @@ The file stores rotations with X and Y negated (Blockbench's Bedrock export does
 Every wing pose keeps the gap-free fold rule: the shoulder may rotate freely (it moves the whole wing
 rigidly), the elbow only about Z (its hinge lies on the inner-membrane/sail seam), and the hand only
 through fan.wing_fan.
+
+Licence: the source model and texture (tools/source/dragon*.png, dragon_raw.geo.json) are from the "Ender
+Dragon Reborn" resource pack by Parrie43, All Rights Reserved, and so is everything built from them. This
+script is LGPL; its output is not: see LICENSE-ASSETS.md.
 """
 import json
 import math

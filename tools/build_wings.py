@@ -6,6 +6,10 @@
 # Input: source/dragon_raw.geo.json (Blockbench's conversion of the pack's OptiFine CEM model) and
 # source/dragon.png (the pack's texture). Run `python3 tools/build_assets.py` rather than this
 # directly; it also writes the animations and copies everything into the mod's resources.
+#
+# Licence: the source model and texture are from the "Ender Dragon Reborn" resource pack by Parrie43,
+# All Rights Reserved, and so is everything built from them. This script is LGPL; its output is not:
+# see LICENSE-ASSETS.md.
 import json, math, os
 import numpy as np
 from PIL import Image

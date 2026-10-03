@@ -6,6 +6,10 @@ Reads soul_fire_0/1.png (+ .mcmeta, the frame order) from a Minecraft client jar
 Gradle build first). Soul fire is cyan (red ~0) shading to a white core; the tint swaps its red and green
 channels, dimmed a little: cyan becomes violet, the white core and pale edges pale lavender, so every
 texel keeps its shading and the animation stays vanilla's.
+
+Licence: the textures it writes are recoloured from Minecraft's soul fire, so they stay Mojang's, under the
+Minecraft EULA. The script is LGPL and ships none of Mojang's files; its output is not LGPL: see
+LICENSE-ASSETS.md.
 """
 import glob
 import io

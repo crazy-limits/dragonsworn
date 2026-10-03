@@ -26,6 +26,9 @@ import software.bernie.geckolib.renderer.layer.AutoGlowingGeoLayer;
 /**
  * Draws the vanilla Ender Dragon with the Dragonsworn model, turned and banked by the procedural body
  * (see {@link #applyRotations}). The crystal healing beam and the death rays are kept.
+ *
+ * <p>Assets: the model and its textures (skin, glowmask) derive from the "Ender Dragon Reborn" resource pack
+ * by Parrie43, All Rights Reserved. The LGPL does not cover them: see LICENSE-ASSETS.md.
  */
 public final class DragonRenderer extends GeoReplacedEntityRenderer<EnderDragon, ReplacedEnderDragon> {
 	/** The model reaches ~12 blocks from the entity's origin, well past the vanilla culling box. */

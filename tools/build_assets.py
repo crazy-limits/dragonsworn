@@ -9,6 +9,10 @@ left's membranes, every texture repacked into a small atlas), then copy into the
 * src/gecko4/resources  -- GeckoLib 4 (Minecraft 1.21.1): assets/<ns>/geo, assets/<ns>/animations
 * src/gecko5/resources  -- GeckoLib 5 (1.21.2+): assets/<ns>/geckolib/models, .../geckolib/animations
 * src/mc/shared/resources -- textures, identical for both
+
+Licence: the source model and texture (tools/source/dragon*.png, dragon_raw.geo.json) are from the "Ender
+Dragon Reborn" resource pack by Parrie43, All Rights Reserved, and so is everything built from them. This
+script is LGPL; its output is not: see LICENSE-ASSETS.md.
 """
 import os
 import shutil

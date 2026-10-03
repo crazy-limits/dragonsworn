@@ -15,6 +15,10 @@ Texel -> model point follows GeckoLib 4's quad building (BakedModelFactory / Geo
 for a face with uv (u, v) and uv_size (us, vs) the texture corners (u, v), (u + us, v), (u, v + vs),
 (u + us, v + vs) land on the face's 2nd, 1st, 3rd and 4th vertex (VertexSet.quadNorth() etc.). Box UV
 is first unfolded into per-face rectangles the same way GeckoLib does it.
+
+Licence: the source model and texture (tools/source/dragon*.png, dragon_raw.geo.json) are from the "Ender
+Dragon Reborn" resource pack by Parrie43, All Rights Reserved, and so is everything built from them. This
+script is LGPL; its output is not: see LICENSE-ASSETS.md.
 """
 import json
 import math

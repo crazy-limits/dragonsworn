@@ -26,6 +26,9 @@ import com.geckolib.renderer.layer.GeoRenderLayer;
  * <p>A texture animation: {@code tools/heat.py} bakes the glow at {@link #FRAMES} steps of the inhale
  * ({@link BreathAttack#heat}), and the dragon is drawn again, emissive and additive, with the two frames
  * around the current heat, weighted, so every texel brightens smoothly between them.
+ *
+ * <p>Assets: the heat frames are baked from the dragon texture, which derives from the "Ender Dragon Reborn"
+ * resource pack by Parrie43, All Rights Reserved. The LGPL does not cover them: see LICENSE-ASSETS.md.
  */
 final class HeatGlowLayer extends GeoRenderLayer<ReplacedEnderDragon, EnderDragon, DragonRenderer.State> {
 	/** {@code tools/heat.py} FRAMES. */
