@@ -1,5 +1,2 @@
-- First public alpha: the Ender Dragon's new model, animations and AI.
-- Ground combat (bite, tail strike, grab, void-flame breath) and air attacks (fly-by and hover bites, breath pass, snatch, fireballs).
-- Dragon fire, spiral End spires, rune crystal beams, a rounded entrance platform and a new dragon egg.
-- Wild dragons that live on foot outside the End.
-- Server config with an in-game config screen.
+### Fixes
+- Look up GeckoLib and Modrinth artifacts only in their own repositories
