@@ -43,6 +43,12 @@ read the same); the animation handler sees only the render state (`ReplacedEnder
 compile time); what read GeckoLib 4's world matrices after drawing (`BreathRender`, `LimbContact`) runs in the posing
 step on the limbs' forward kinematics. Mixin targets moved a lot between versions: check each against the decompiled
 sources (`genSources`) -- an injection that matches only some of its methods fails silently unless `require` says how many.
+Releasing (same setup as shared-resources-cl): push a `release`, `release-beta` or `release-alpha` tag at the tip of
+`main` (`git tag -f release-alpha && git push -f origin release-alpha`). `.github/workflows/release.yml` picks the version
+from Conventional Commits (`.github/scripts/release.py`; the first release is `mod.version`), writes it and `CHANGELOG.md`,
+runs `collectAll testAll`, tags it, makes the GitHub release and runs `publishAll` (mod-publish-plugin, wired in
+`buildSrc/DragonswornPublishing.kt`; ids `mod.modrinth`/`mod.curseforge`, org secrets `MODRINTH_TOKEN`/`CURSEFORGE_TOKEN`).
+`publish.yml` re-uploads a released tag by hand. Check uploads locally: `./gradlew publishAll -PpublishDryRun -PcurseforgeToken=x`.
 
 ## Layout
 - `src/main/java` -- game-free core (Stonecutter-processed), tested in `src/test`: `anim` (what plays),

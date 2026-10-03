@@ -2,6 +2,7 @@ plugins {
 	id("dev.kikugie.stonecutter")
 	id("dev.kikugie.loom-back-compat") apply false
 	id("net.neoforged.moddev") version "2.0.148" apply false
+	id("me.modmuss50.mod-publish-plugin") apply false
 }
 
 // The version the IDE / plain `./gradlew` commands operate on.
@@ -34,4 +35,16 @@ tasks.register("testAll") {
 	group = "stonecutter"
 	description = "Run the shared-core tests on every version/loader combination"
 	dependsOn(stonecutter.versions.map { ":${it.project}:test" })
+}
+
+tasks.register("collectAll") {
+	group = "stonecutter"
+	description = "Build every version/loader combination and copy the jars to `build/libs/{mod version}/`"
+	dependsOn(stonecutter.versions.map { ":${it.project}:buildAndCollect" })
+}
+
+tasks.register("publishAll") {
+	group = "stonecutter"
+	description = "Publish every version/loader combination to Modrinth and CurseForge"
+	dependsOn(stonecutter.versions.map { ":${it.project}:publishMods" })
 }

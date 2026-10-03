@@ -2,6 +2,7 @@ plugins {
 	java
 	idea
 	id("net.neoforged.moddev")
+	id("me.modmuss50.mod-publish-plugin")
 }
 
 stonecutter {
@@ -139,3 +140,17 @@ tasks.test { useJUnitPlatform() }
 
 // LGPL: the licence travels with the binary (and says which assets it does not cover)
 tasks.named<Jar>("jar") { from(rootProject.files("LICENSE", "COPYING", "LICENSE-ASSETS.md")) }
+
+// The release workflow puts every target's jar in one place for the GitHub release
+tasks.register<Copy>("buildAndCollect") {
+	group = "build"
+	description = "Build the mod jar and copy it to `build/libs/{mod version}/`"
+	from(tasks.jar.flatMap { it.archiveFile })
+	into(rootProject.layout.buildDirectory.dir("libs/${prop("mod.version")}"))
+	dependsOn("build")
+}
+
+configurePublishing("neoforge", tasks.jar.flatMap { it.archiveFile }, ::prop, mcVersion) {
+	requires("geckolib")
+	optional("yacl", "cloth-config")
+}

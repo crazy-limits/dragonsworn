@@ -1,0 +1,75 @@
+# Uploads an already released version to Modrinth and/or CurseForge again, for when the release workflow's
+# upload failed part way. Builds the given tag and publishes only the listed targets (all when left empty),
+# so files that already made it aren't uploaded twice. Started by hand from the Actions tab.
+
+name: publish
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Released version tag, like 0.1.0-alpha.2
+        required: true
+      platform:
+        description: Where to upload
+        type: choice
+        options: [curseforge, modrinth, both]
+        default: curseforge
+      targets:
+        description: Targets to upload, separated by spaces (like `1.21.1-fabric 26.3-neoforge`); empty for all
+        required: false
+        default: ''
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: checkout the release
+        uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+      - name: validate gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+      # 1.21.x needs 21, 26.x needs 25 (which also runs Gradle).
+      - name: setup jdks
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: |
+            21
+            25
+      - name: setup gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: publish
+        env:
+          PLATFORM: ${{ inputs.platform }}
+          TARGETS: ${{ inputs.targets }}
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+          CURSEFORGE_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
+        run: |
+          tasks=()
+          # Only hand over the tokens for the chosen platforms, so the others are skipped
+          if [ "$PLATFORM" != curseforge ]; then
+            [ -n "$MODRINTH_TOKEN" ] || { echo "::error::No MODRINTH_TOKEN secret"; exit 1; }
+            export ORG_GRADLE_PROJECT_modrinthToken="$MODRINTH_TOKEN"
+            tasks+=(publishModrinth)
+          fi
+          if [ "$PLATFORM" != modrinth ]; then
+            [ -n "$CURSEFORGE_TOKEN" ] || { echo "::error::No CURSEFORGE_TOKEN secret"; exit 1; }
+            export ORG_GRADLE_PROJECT_curseforgeToken="$CURSEFORGE_TOKEN"
+            tasks+=(publishCurseforge)
+          fi
+
+          # A bare task name runs in every target; Gradle rejects unknown target names
+          args=("${tasks[@]}")
+          if [ -n "$TARGETS" ]; then
+            args=()
+            for target in $TARGETS; do
+              for task in "${tasks[@]}"; do args+=(":$target:$task"); done
+            done
+          fi
+          echo "Publishing ${args[*]}"
+          ./gradlew "${args[@]}" --continue --stacktrace

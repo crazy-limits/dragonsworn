@@ -1,0 +1,132 @@
+# Releases the tip of the default branch when a `release`, `release-beta` or `release-alpha` tag is pushed there:
+#
+#   git tag -f release && git push -f origin release                  # 0.2.0
+#   git tag -f release-alpha && git push -f origin release-alpha      # 0.2.0-alpha.1, then alpha.2, ...
+#
+# The version comes from Conventional Commits since the last release (see .github/scripts/release.py):
+# feat -> minor, fix/perf -> patch, `!` or BREAKING CHANGE -> major. The workflow writes it to
+# stonecutter.properties.toml, puts the release notes in CHANGELOG.md, builds and tests every target, then
+# pushes a `chore(release)` commit with the version tag, creates the GitHub release with all jars and
+# uploads to Modrinth/CurseForge when their tokens are set. Alpha and beta versions are published as
+# pre-releases and alpha/beta files. The trigger tag is removed afterwards.
+#
+# Running it by hand (Actions > release > Run workflow) does the same and can force the bump level.
+
+name: release
+on:
+  push:
+    tags:
+      - release
+      - release-beta
+      - release-alpha
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Release channel
+        type: choice
+        options: [release, beta, alpha]
+        default: release
+      bump:
+        description: Version bump
+        type: choice
+        options: [auto, patch, minor, major]
+        default: auto
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    env:
+      BRANCH: ${{ github.event.repository.default_branch }}
+      # release, beta or alpha, from the trigger tag's name or the manual input
+      CHANNEL: ${{ github.event_name == 'push' && (github.ref_name == 'release' && 'release' || github.ref_name == 'release-beta' && 'beta' || 'alpha') || inputs.channel }}
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+      - name: check the release tag is on the tip of the default branch
+        if: github.event_name == 'push'
+        run: |
+          if [ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]; then
+            echo "::error::The release tag must point at the latest commit on $BRANCH ($(git rev-parse --short HEAD))"
+            exit 1
+          fi
+      - name: work out the next version
+        id: version
+        run: |
+          version=$(python3 .github/scripts/release.py next --write --bump "${{ inputs.bump || 'auto' }}" --channel "$CHANNEL")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Releasing $version"
+          cat CHANGELOG.md >> "$GITHUB_STEP_SUMMARY"
+      - name: check the version isn't released yet
+        run: |
+          if git rev-parse -q --verify "refs/tags/${{ steps.version.outputs.version }}" > /dev/null; then
+            echo "::error::Tag ${{ steps.version.outputs.version }} already exists"
+            exit 1
+          fi
+
+      - name: validate gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+      # 1.21.x needs 21, 26.x needs 25 (which also runs Gradle).
+      - name: setup jdks
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: |
+            21
+            25
+      - name: setup gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: build and test
+        run: ./gradlew collectAll testAll --stacktrace
+      - name: capture test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: versions/*/build/reports/tests/
+
+      - name: commit and tag the version
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898573+github-actions[bot]@users.noreply.github.com"
+          git add stonecutter.properties.toml CHANGELOG.md
+          git commit -m "chore(release): $VERSION"
+          git tag -a "$VERSION" -m "$VERSION"
+          git push --atomic origin "HEAD:refs/heads/$BRANCH" "refs/tags/$VERSION"
+      - name: create github release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          prerelease=$([ "$CHANNEL" = release ] || echo --prerelease)
+          gh release create "$VERSION" build/libs/"$VERSION"/*.jar --title "$VERSION" --notes-file CHANGELOG.md --verify-tag $prerelease
+      - name: publish to modrinth and curseforge
+        env:
+          ORG_GRADLE_PROJECT_modrinthToken: ${{ secrets.MODRINTH_TOKEN }}
+          ORG_GRADLE_PROJECT_curseforgeToken: ${{ secrets.CURSEFORGE_TOKEN }}
+        run: |
+          if [ -z "$ORG_GRADLE_PROJECT_modrinthToken$ORG_GRADLE_PROJECT_curseforgeToken" ]; then
+            echo "No MODRINTH_TOKEN or CURSEFORGE_TOKEN secret, skipping"
+            exit 0
+          fi
+          ./gradlew publishAll --stacktrace
+      - name: capture build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dragonsworn-${{ steps.version.outputs.version }}
+          path: build/libs/
+
+      - name: remove the release tag
+        if: always() && github.event_name == 'push'
+        run: git push origin ":refs/tags/$GITHUB_REF_NAME" || true

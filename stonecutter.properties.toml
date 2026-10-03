@@ -9,6 +9,9 @@ mod.id = "dragonsworn"
 mod.name = "Dragonsworn"
 mod.group = "crazylimits"
 mod.version = "0.1.0"
+# Upload targets (an empty id skips that platform), see buildSrc/DragonswornPublishing.kt
+mod.modrinth = ""
+mod.curseforge = "1721624"
 mod.description = "An overhauled Ender Dragon: a new animated boss model whose wings fold like a fan and carry it on the ground."
 mod.authors = "crazylimits"
 # SPDX: the code is LGPL-3.0; the model, textures and sounds are not (see LICENSE-ASSETS.md)
