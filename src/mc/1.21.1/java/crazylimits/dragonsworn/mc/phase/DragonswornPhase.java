@@ -1,6 +1,7 @@
 package crazylimits.dragonsworn.mc.phase;
 
 import crazylimits.dragonsworn.flight.FlightModel;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
@@ -14,6 +15,12 @@ public interface DragonswornPhase {
 	/** What a hovering dragon turns to face (its prey), or null: it faces where it drifts. */
 	@Nullable
 	default Vec3 hoverLook() {
+		return null;
+	}
+
+	/** Whom it attacks, or closes in on to attack (server): its head keeps on them. Null for nobody. */
+	@Nullable
+	default LivingEntity attackTarget() {
 		return null;
 	}
 

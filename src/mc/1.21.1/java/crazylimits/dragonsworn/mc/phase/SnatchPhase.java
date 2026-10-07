@@ -75,6 +75,11 @@ public class SnatchPhase extends AirAttackPhase {
 	}
 
 	@Override
+	protected boolean leaving() {
+		return stage == Stage.AWAY;
+	}
+
+	@Override
 	public void end() {
 		if (dragon.level().isClientSide) return;
 		if (brain().prey.hold() != Grip.Hold.NONE) brain().prey.release(null);

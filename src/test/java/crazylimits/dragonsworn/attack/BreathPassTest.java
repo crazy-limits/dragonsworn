@@ -66,6 +66,9 @@ class BreathPassTest {
 		assertEquals(0.0, lead(CATCH), EPS);
 		assertEquals(0.0, lead(2.0), EPS);
 		assertTrue(lead(CATCH + 4.0) > 0.0);
+		assertEquals(0.0, lead(-20.0), EPS, "none once past the prey");
+		// it starts far enough out for the stream to begin short of the prey, even at full speed
+		assertTrue(MIN_START - WINDUP_TICKS * MAX_SPEED > 0.0);
 	}
 
 	@Test

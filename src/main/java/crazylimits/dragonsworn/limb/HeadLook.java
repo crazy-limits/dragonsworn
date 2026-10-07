@@ -20,6 +20,11 @@ public final class HeadLook {
 	public static final double MAX_YAW = 70.0, MAX_UP = 35.0, MAX_DOWN = 40.0;
 	/** Further round than this the head does not try. */
 	public static final double GIVE_UP = 120.0;
+	/**
+	 * On a wall (hanging, its head facing the wall): it looks only at what is in front of its face, this
+	 * far round at most, and lets go of anything further (never back over its shoulder, out from the wall).
+	 */
+	public static final double WALL_YAW = 50.0, WALL_GIVE_UP = 90.0;
 	/** Shares of the turn, neck base to tip, then the head (they sum to 1). */
 	static final double[] NECK_SHARE = {0.10, 0.17, 0.23, 0.22};
 	static final double HEAD_SHARE = 0.28;
@@ -29,6 +34,8 @@ public final class HeadLook {
 	private static final double FOLLOW = 0.18, FADE = 0.1;
 
 	private double yaw, pitch, weight, balance = 1.0, last = Double.NaN;
+	/** On a wall the head turns alone (its neck is twisted: a turn shared down it would roll the head). */
+	private boolean upright;
 	/** The values before the last update, for reading between updates. */
 	private double prevYaw, prevPitch, prevWeight, prevBalance = 1.0;
 
@@ -48,30 +55,48 @@ public final class HeadLook {
 		prevPitch = pitch;
 		prevWeight = weight;
 		prevBalance = balance;
-		if (Double.isNaN(wantYaw) || Double.isNaN(wantPitch) || Math.abs(wantYaw) > GIVE_UP) attention = 0.0;
+		if (Double.isNaN(wantYaw) || Double.isNaN(wantPitch) || Math.abs(wantYaw) > (upright ? WALL_GIVE_UP : GIVE_UP)) attention = 0.0;
 		double follow = 1.0 - Math.pow(1.0 - FOLLOW, dt), fade = 1.0 - Math.pow(1.0 - FADE, dt);
 		if (attention > 0.0) {
-			yaw += (Math.max(-MAX_YAW, Math.min(MAX_YAW, wantYaw)) - yaw) * follow;
+			double most = upright ? WALL_YAW : MAX_YAW;
+			yaw += (Math.max(-most, Math.min(most, wantYaw)) - yaw) * follow;
 			pitch += (Math.max(-MAX_DOWN, Math.min(MAX_UP, wantPitch)) - pitch) * follow;
 		}
 		weight += (attention - weight) * fade;
-		balance += ((tailFree ? 1.0 : 0.0) - balance) * fade;
+		// hanging on a wall the tail hangs: no swing against the head's turn
+		balance += ((tailFree && !upright ? 1.0 : 0.0) - balance) * fade;
+	}
+
+	/**
+	 * On a wall ({@code true}): the whole turn is the head's, measured as its own joint's bends (the neck is
+	 * twisted there, and its lower joints turn about axes that would roll the head).
+	 */
+	public void upright(boolean upright) {
+		this.upright = upright;
+	}
+
+	private double neckShare(int segment) {
+		return upright ? 0.0 : NECK_SHARE[segment];
+	}
+
+	private double headShare() {
+		return upright ? 1.0 : HEAD_SHARE;
 	}
 
 	public double neckYaw(int segment) {
-		return weight * yaw * NECK_SHARE[segment];
+		return weight * yaw * neckShare(segment);
 	}
 
 	public double neckPitch(int segment) {
-		return weight * pitch * NECK_SHARE[segment];
+		return weight * pitch * neckShare(segment);
 	}
 
 	public double headYaw() {
-		return weight * yaw * HEAD_SHARE;
+		return weight * yaw * headShare();
 	}
 
 	public double headPitch() {
-		return weight * pitch * HEAD_SHARE;
+		return weight * pitch * headShare();
 	}
 
 	/** Yaw for each of {@code segments} tail segments (a tail's +Y swings its tip right). */
@@ -81,19 +106,19 @@ public final class HeadLook {
 
 	/** As {@link #neckYaw(int)}, {@code partial} of the way from before the last update to after it. */
 	public double neckYaw(int segment, double partial) {
-		return yaw(partial) * NECK_SHARE[segment];
+		return yaw(partial) * neckShare(segment);
 	}
 
 	public double neckPitch(int segment, double partial) {
-		return pitch(partial) * NECK_SHARE[segment];
+		return pitch(partial) * neckShare(segment);
 	}
 
 	public double headYaw(double partial) {
-		return yaw(partial) * HEAD_SHARE;
+		return yaw(partial) * headShare();
 	}
 
 	public double headPitch(double partial) {
-		return pitch(partial) * HEAD_SHARE;
+		return pitch(partial) * headShare();
 	}
 
 	public double tailYaw(int segments, double partial) {

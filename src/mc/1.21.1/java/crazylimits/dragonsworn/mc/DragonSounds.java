@@ -35,6 +35,11 @@ public final class DragonSounds {
 	public static final SoundEvent BREATH = variable("breath");
 	/** The stream of void flames pouring. */
 	public static final SoundEvent FLAMES = variable("flames");
+	/** The wing buffet's blast. */
+	public static final SoundEvent BUFFET = variable("buffet");
+	/** A projectile bouncing off a crystal's rune ward (not the dragon's: its own subtitle all the same). */
+	public static final SoundEvent WARD = SoundEvent.createVariableRangeEvent(
+			ResourceLocation.fromNamespaceAndPath(Dragonsworn.MOD_ID, "entity.end_crystal.ward"));
 
 	public static final Map<ResourceLocation, SoundEvent> ALL = Map.ofEntries(
 			Map.entry(ROAR.getLocation(), ROAR),
@@ -46,7 +51,9 @@ public final class DragonSounds {
 			Map.entry(CHEW.getLocation(), CHEW),
 			Map.entry(FLING.getLocation(), FLING),
 			Map.entry(BREATH.getLocation(), BREATH),
-			Map.entry(FLAMES.getLocation(), FLAMES));
+			Map.entry(FLAMES.getLocation(), FLAMES),
+			Map.entry(BUFFET.getLocation(), BUFFET),
+			Map.entry(WARD.getLocation(), WARD));
 
 	private DragonSounds() {}
 

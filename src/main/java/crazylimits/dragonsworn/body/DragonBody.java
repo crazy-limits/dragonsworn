@@ -3,6 +3,7 @@ package crazylimits.dragonsworn.body;
 import crazylimits.dragonsworn.limb.GroundFit;
 import crazylimits.dragonsworn.math.Angles;
 import crazylimits.dragonsworn.math.Maths;
+import crazylimits.dragonsworn.nav.Surface;
 
 /**
  * The procedural layer on top of the keyframes: how the whole body sits in the air and how the neck and
@@ -35,6 +36,11 @@ import crazylimits.dragonsworn.math.Maths;
 public final class DragonBody {
 	/** How the body sits over uneven ground (on its feet): pitch, roll and lift added to the flight's. */
 	public final GroundFit ground = new GroundFit();
+	/**
+	 * What it stands on, the ground or a wall: the whole body (model and hitboxes) turned onto the face's
+	 * frame, in which everything here works as on the ground. Ticked by the caller with the synced face.
+	 */
+	public final Surface surface = new Surface();
 
 	public enum Mode { FLIGHT, HOVER, GROUND }
 
@@ -52,6 +58,8 @@ public final class DragonBody {
 	public static final double WING_FLEX = 35.0;
 	/** Ticks of the current turn rate the head looks ahead by, and the most it leads (degrees). */
 	public static final double HEAD_LEAD = 5.0, MAX_HEAD_LEAD = 30.0;
+	/** The flare's share on each neck segment, base to tip ({@link Surface#flare}: all of it, the head as in the hover). */
+	static final double[] FLARE_SHARE = {0.2, 0.25, 0.3, 0.25};
 	/** How the head's lead is shared down the neck, base to head: the head end turns most. */
 	private static final double[] NECK_LEAD = {0.1, 0.2, 0.3, 0.4};
 	/** Degrees of rudder per degree/tick of tightening turn, on the first tail segments (root to tip). */
@@ -195,6 +203,9 @@ public final class DragonBody {
 			double share = j - 1 < RUDDER_SHARE.length ? RUDDER_SHARE[j - 1] : 0.0;
 			bend(at(yaw, older) - at(yaw, newer) + rudder * share, at(pitch, older) - at(pitch, newer), sin, cos, MAX_TAIL_BEND, tailX, tailY, j - 1);
 		}
+		// flared up in the air toward a wall (or just off one): the neck bends down by the flare, the head as in the hover
+		double flare = surface.flare(partialTick);
+		if (flare > 1e-3) for (int i = 0; i < neck && i < FLARE_SHARE.length; i++) neckX[i] -= flare * FLARE_SHARE[i];
 		// the jaw hold's shake, on top
 		double w = shakeWeight(partialTick);
 		if (w > 1e-3) {

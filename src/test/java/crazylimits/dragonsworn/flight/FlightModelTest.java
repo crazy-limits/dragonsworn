@@ -2,6 +2,7 @@ package crazylimits.dragonsworn.flight;
 
 import crazylimits.dragonsworn.flight.FlightModel.Force;
 import crazylimits.dragonsworn.flight.FlightModel.Mode;
+import crazylimits.dragonsworn.flight.FlightModel.Slope;
 import org.junit.jupiter.api.Test;
 
 import java.util.SplittableRandom;
@@ -109,5 +110,37 @@ class FlightModelTest {
 	void plansEncode() {
 		FlightModel.Plan p = new FlightModel.Plan(Mode.PUSH, 2, 99999);
 		assertEquals(p, FlightModel.Plan.decode(p.encode()));
+		FlightModel.Plan d = new FlightModel.Plan(Mode.GLIDE, 0, 77, Slope.DIVE);
+		assertEquals(d, FlightModel.Plan.decode(d.encode()));
+	}
+
+	@Test
+	void theWingsTakeTheShapeOfTheSlope() {
+		FlightModel m = new FlightModel();
+		assertEquals(Slope.CLIMB, m.update(0, 0.2, 0, 1.0, Force.NONE, random).slope());
+		// beating level (slow) is not a climb, from the next beat on
+		long beat = Math.round(FlightModel.BEAT_TICKS);
+		assertEquals(Slope.CLIMB, m.update(5, 0.0, 0, 0.4, Force.NONE, random).slope(), "the beat under way finishes");
+		assertEquals(Slope.LEVEL, m.update(beat, 0.0, 0, 0.4, Force.NONE, random).slope());
+		FlightModel g = new FlightModel();
+		assertEquals(Slope.LEVEL, g.update(0, -0.02, 0, 1.2, Force.NONE, random).slope());
+		assertEquals(Slope.DESCEND, g.update(20, -0.1, 0, 1.2, Force.NONE, random).slope());
+		assertEquals(Slope.DIVE, g.update(40, -0.3, 0, 1.2, Force.NONE, random).slope());
+		// steep but slow is a descent, not a stoop
+		FlightModel s = new FlightModel();
+		assertEquals(Slope.DESCEND, s.update(0, -0.3, 0, 0.3, Force.GLIDE, random).slope());
+	}
+
+	@Test
+	void theSlopeDoesNotFlickerAtItsEdge() {
+		FlightModel g = new FlightModel();
+		assertEquals(Slope.DESCEND, g.update(0, -0.1, 0, 1.2, Force.NONE, random).slope());
+		// just above the threshold again: still descending (hysteresis)
+		assertEquals(Slope.DESCEND, g.update(40, -0.04, 0, 1.2, Force.GLIDE, random).slope());
+		// level, but too soon after the last change: the wings keep their shape
+		FlightModel h = new FlightModel();
+		h.update(0, -0.1, 0, 1.2, Force.NONE, random);
+		assertEquals(Slope.DESCEND, h.update(3, 0.0, 0, 1.2, Force.GLIDE, random).slope());
+		assertEquals(Slope.LEVEL, h.update(FlightModel.SLOPE_HOLD, 0.0, 0, 1.2, Force.GLIDE, random).slope());
 	}
 }

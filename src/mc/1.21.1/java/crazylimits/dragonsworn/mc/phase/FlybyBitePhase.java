@@ -75,6 +75,11 @@ public class FlybyBitePhase extends AirAttackPhase {
 	}
 
 	@Override
+	protected boolean leaving() {
+		return stage == Stage.AWAY;
+	}
+
+	@Override
 	public void end() {
 		if (dragon.level().isClientSide) return;
 		DragonBrain brain = brain();

@@ -99,6 +99,15 @@ public final class BreathAttack {
 	 */
 	public static final double FIREBALL_CONE = 25.0;
 	public static final int FIREBALL_AIM_TICKS = 20;
+	/**
+	 * Once heated it fires at the target if that is within {@link #FIREBALL_FIRE_CONE} degrees of the head's
+	 * line, else down the line. It leads a moving target: the fireball covers about {@link #FIREBALL_SPEED}
+	 * blocks a tick on average (vanilla's accelerates from 0.1 toward 1.9), led for at most
+	 * {@link #FIREBALL_LEAD_TICKS}.
+	 */
+	public static final double FIREBALL_FIRE_CONE = 75.0;
+	public static final double FIREBALL_SPEED = 1.0;
+	public static final int FIREBALL_LEAD_TICKS = 40;
 
 	/** {@link #heat} for a fireball, {@code tick} (fractional) from the start of its windup. */
 	public static double fireballHeat(double tick) {

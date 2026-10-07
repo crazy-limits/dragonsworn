@@ -23,13 +23,14 @@ import java.util.Map;
  * columns are looked up once each.
  */
 public final class GroundClearance {
-	private final Level level;
+	private final Footing footing;
 	private final BodyFrame frame;
 	private final Map<Long, Double> columns = new HashMap<>();
 	private final double[] p = new double[3];
 
-	GroundClearance(Level level, BodyFrame frame) {
-		this.level = level;
+	/** {@code frame}: the model in the frame of the surface it stands on, as {@code footing} measures it. */
+	GroundClearance(Footing footing, BodyFrame frame) {
+		this.footing = footing;
 		this.frame = frame;
 	}
 
@@ -65,7 +66,7 @@ public final class GroundClearance {
 		long key = ((long) bx << 38) ^ ((long) (bz & 0x3FFFFFF) << 12) ^ (by & 0xFFF);
 		Double known = columns.get(key);
 		if (known == null) {
-			known = groundTop(level, x, y + 2.0, z);
+			known = footing.groundTop(x, y + 2.0, z);
 			columns.put(key, known);
 		}
 		return known;

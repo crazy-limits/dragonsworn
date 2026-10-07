@@ -14,7 +14,9 @@ import net.minecraft.world.entity.AreaEffectCloud;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.monster.zombie.Husk;
+import net.minecraft.world.entity.projectile.hurtingprojectile.DragonFireball;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
 import java.util.Locale;
@@ -79,6 +81,34 @@ final class BreathStage {
 			check(fire > 0 && fire <= 6 && outer == 0,
 					"the fireball leaves a little dragon fire, only right where it bursts (" + fire + " blocks, " + outer + " out of the middle)");
 		});
+		// the cloud of a fireball the dragon shot hurts the survival player it hits square in the chest at once,
+		// before they could walk out of it (vanilla's cloud waits a second); fire resistance keeps the dragon fire
+		// where it bursts out of the count
+		int cx = bx - 30;
+		command(String.format(Locale.ROOT, "summon minecraft:ender_dragon %d %d %d {NoAI:1b,Tags:[\"df_owner\"]}", cx, y + 30, bz + 40), 1);
+		command(String.format(Locale.ROOT, "tp @s %.1f %d %.1f 180 0", cx + 0.5, y, bz + 10.5), 2);
+		command("gamemode survival", 1);
+		command("effect give @s minecraft:fire_resistance 30 0 true", 2);
+		server(level -> {
+			var player = level.players().get(0);
+			player.setHealth(player.getMaxHealth());
+			for (EnderDragon d : level.getEntities(EntityType.ENDER_DRAGON, e -> e.getTags().contains("df_owner"))) {
+				DragonFireball fireball = new DragonFireball(level, d, new Vec3(0, 0, -1));
+				fireball.snapTo(cx + 0.5, y + 0.6, bz + 20.5, 0.0F, 0.0F);
+				level.addFreshEntity(fireball);
+			}
+		});
+		// ~10 ticks of flight, then the burst
+		serverUntil(30, level -> !level.getEntities(EntityType.AREA_EFFECT_CLOUD, e -> e.getX() == cx + 0.5).isEmpty());
+		STEPS.add(new Step(10, mc -> {}));
+		server(level -> {
+			var player = level.players().get(0);
+			float lost = player.getMaxHealth() - player.getHealth();
+			check(lost > 0.0F, String.format(Locale.ROOT, "the dragon's fireball cloud hurts the player it hits within half a second (%.1f health)", lost));
+		});
+		command("gamemode creative", 1);
+		command("effect clear @s", 1);
+		command("kill @e[tag=df_owner]", 2);
 		// dragon fire burns three times what fire does: a husk standing in it loses three times what one in
 		// vanilla fire beside it does (no armor, which takes a flat bit off each; with AI: a NoAI mob never moves, so it never touches the blocks it stands in)
 		int fx = bx + 30;

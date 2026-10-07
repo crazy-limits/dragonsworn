@@ -83,12 +83,20 @@ dependencies {
 	// none of them is needed at runtime
 	listOf("deps.modmenu", "deps.yacl", "deps.cloth-config").mapNotNull { optionalProp(it) }.forEach { modCompileOnly(it) { isTransitive = false } }
 	// `-Pdragonsworn.configLibs`: YACL and Cloth Config in the dev client too, to see their screens
-	if (providers.gradleProperty("dragonsworn.configLibs").isPresent) {
-		listOf("deps.yacl", "deps.cloth-config").mapNotNull { optionalProp(it) }.forEach { modLocalRuntime(it) { isTransitive = false } }
+	val configLibs = providers.gradleProperty("dragonsworn.configLibs").isPresent
+	// `-Pdragonsworn.enderscape`: Enderscape (+ Lithostitched, Apollib, Mixson, YACL) in the dev client, for compatibility checks
+	val enderscape = providers.gradleProperty("dragonsworn.enderscape").isPresent
+	if (configLibs) optionalProp("deps.cloth-config")?.let { modLocalRuntime(it) { isTransitive = false } }
+	if (configLibs || enderscape) optionalProp("deps.yacl")?.let {
+		modLocalRuntime(it) { isTransitive = false }
 		// YACL's own libraries (its released jar nests them; the Modrinth maven's dev classpath does not)
 		localRuntime("org.quiltmc.parsers:json:0.2.1")
 		localRuntime("org.quiltmc.parsers:gson:0.2.1")
-		localRuntime("me.shedaniel.cloth:basic-math:0.6.1")     // Cloth Config's, likewise
+	}
+	if (configLibs) localRuntime("me.shedaniel.cloth:basic-math:0.6.1")     // Cloth Config's, likewise
+	if (enderscape) {
+		optionalProp("deps.enderscape")?.split(',')?.forEach { modLocalRuntime(it.trim()) { isTransitive = false } }
+		localRuntime("de.marhali:json5-java:3.0.0")     // Apollib's, nested like YACL's
 	}
 }
 

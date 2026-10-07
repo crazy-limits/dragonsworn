@@ -36,7 +36,9 @@ final class WildDirector {
 	private static final int NO_GROUND_DROP = 20;
 
 	private final DragonBrain brain;
-	private int attackCooldown = DragonConfig.FIRST_ATTACK.get(), scanCooldown, landCooldown;
+	private int scanCooldown, landCooldown;
+	/** Ticks before the next air attack, counted down at the crowd's pace ({@code Crowd#pace}: more players, sooner). */
+	private double attackCooldown = DragonConfig.FIRST_ATTACK.get();
 	/** Ticks of roaming flight left before it looks for somewhere to land (a first short one). */
 	private int airLeft = FIRST_FLIGHT;
 	private boolean landed;
@@ -54,7 +56,7 @@ final class WildDirector {
 			dragon.getPhaseManager().setPhase(DragonPhases.ROAM);
 			return;
 		}
-		if (attackCooldown > 0) attackCooldown--;
+		if (attackCooldown > 0) attackCooldown -= brain.crowd.pace();
 		if (--scanCooldown <= 0) {
 			scanCooldown = SCAN_TICKS;
 			target = findTarget();
@@ -74,7 +76,8 @@ final class WildDirector {
 		if (!roam.idle()) return;
 		Tactics tactics = brain.tactics;
 		// a fight is the ground's (lazy dragons): come down beside the target whenever there is room
-		if (target != null && DragonConfig.LAND_TO_FIGHT.get() && brain.stance.grounded() && landCooldown <= 0 && !tactics.airborne(target)) {
+		if (target != null && DragonConfig.LAND_TO_FIGHT.get() && brain.stance.grounded() && landCooldown <= 0 && !tactics.airborne(target)
+				&& !tactics.isWalled(target)) {
 			landCooldown = DragonConfig.LANDING_RETRY.get();
 			if (target.onGround()) {
 				if (tactics.tryGroundAssault(target)) return;

@@ -59,6 +59,8 @@ public final class DragonRenderer extends GeoReplacedEntityRenderer<ReplacedEnde
 		float partialTick;
 		/** The body's lift, yaw, pitch and roll (blocks, degrees), as {@link DragonBody} gives them. */
 		double lift, yaw, pitch, roll;
+		/** Its turn onto the surface it stands on ({@code nav/Surface}), a quaternion {w, x, y, z}. */
+		double[] surface = {1.0, 0.0, 0.0, 0.0};
 		/** Ticks into vanilla's dying (0: alive), and the crystal beam's offset from the dragon (null: none). */
 		float deathTime;
 		Vec3 beamOffset;
@@ -107,6 +109,7 @@ public final class DragonRenderer extends GeoReplacedEntityRenderer<ReplacedEnde
 		state.dragon = dragon;
 		state.partialTick = partialTick;
 		DragonBody body = DragonswornDragon.brain(dragon).body;
+		state.surface = body.surface.quaternion(partialTick);
 		state.lift = body.lift(partialTick);
 		state.yaw = body.yaw(partialTick);
 		state.pitch = body.pitch(partialTick);
@@ -120,12 +123,15 @@ public final class DragonRenderer extends GeoReplacedEntityRenderer<ReplacedEnde
 	/**
 	 * The body's yaw, pitch and bank from the procedural layer ({@link DragonBody}): the body follows the
 	 * steering a few ticks late (the head leads), rolls into turns and pitches with the climb. Pitch and
-	 * roll turn the model about the middle of the torso. {@code PartSolver} places the hitboxes the
+	 * roll turn the model about the middle of the torso. All of it is turned onto the surface it stands on
+	 * first ({@code nav/Surface}: on a wall, the face's frame). {@code PartSolver} places the hitboxes the
 	 * same way.
 	 */
 	@Override
 	protected void applyRotations(RenderPassInfo<State> renderPassInfo, PoseStack poseStack, float nativeScale) {
 		State state = renderPassInfo.renderState();
+		double[] q = state.surface;
+		poseStack.mulPose(new Quaternionf((float) q[1], (float) q[2], (float) q[3], (float) q[0]));
 		poseStack.translate(0.0, state.lift, 0.0);
 		poseStack.mulPose(Axis.YP.rotationDegrees((float) -state.yaw));
 		poseStack.translate(0.0, BodyFrame.CENTER_Y, BodyFrame.CENTER_Z);

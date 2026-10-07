@@ -26,7 +26,7 @@ import base64
 import os
 import struct
 
-from chain import NECK, TAIL
+from chain import NECK, TAIL, expand
 from rig import to_editor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -134,6 +134,9 @@ def export(rig, track, animations, tails):
 		pivots += [(bone, [x, y, z]), (bone, [x + 16, y, z])]
 	x, y, z = rig.bones['body']['pivot']
 	pivots += [('body', [x, y, z]), ('body', [x, y, z - 16]), ('body', [x, y + 16, z])]
+	# the neck's keyed roll (degrees, neck_1..neck_4, head_group; the wall poses twist it), packed as two
+	# points: the game reads them back as rolls (PoseTrack.NECK_ROLL), not as places
+	rolls = [(None, [0, 1, 2]), (None, [3, 4, -1])]
 
 	data, meta = [], []
 	for name, (fn, length, loop, step) in animations.items():
@@ -144,6 +147,11 @@ def export(rig, track, animations, tails):
 			for bone, p in anchors + pivots:
 				x, y, z = rig.point(pose, bone, p, mats)
 				for v in (x, y, z):
+					raw += struct.pack('<h', max(-32768, min(32767, round(v / 16.0 * 256))))
+			full = expand(pose)
+			for _, slots in rolls:
+				for k in slots:
+					v = full.get(NECK_PIVOTS[k], {}).get('r', [0, 0, 0])[2] if k >= 0 else 0.0
 					raw += struct.pack('<h', max(-32768, min(32767, round(v / 16.0 * 256))))
 		data.append(base64.b64encode(bytes(raw)).decode('ascii'))
 		meta.append((name, length, loop is True, step, len(frames)))
@@ -177,7 +185,7 @@ def export(rig, track, animations, tails):
 		f'\tstatic final float[] PART_HEIGHT = {{{", ".join(fl(p[4]) for p in PARTS)}}};',
 		f'\tstatic final int[] PART_CHAIN = {{{", ".join(str(c[0]) for c in chains)}}};',
 		f'\tstatic final int[] PART_DEPTH = {{{", ".join(str(c[1]) for c in chains)}}};',
-		f'\tstatic final int NECK_PIVOTS = {len(NECK_PIVOTS)}, TAIL_PIVOTS = {len(TAIL)}, FRAME_POINTS = {2 * len(WINGS) + 3};',
+		f'\tstatic final int NECK_PIVOTS = {len(NECK_PIVOTS)}, TAIL_PIVOTS = {len(TAIL)}, FRAME_POINTS = {2 * len(WINGS) + 3 + 2};',
 		'\t/** Rest pivot of every tail segment, editor space, blocks: x, y, z. */',
 		f'\tstatic final double[] TAIL_REST = {{{", ".join(f"{v:g}" for v in tail_rest)}}};',
 		'\t/** Per tail segment, the capsule round its main cube at rest: axis start, axis end, radius (blocks). */',

@@ -147,8 +147,8 @@ public final class PreyHold {
 
 	/** The model as placed this tick (as the server's hitboxes and the client's model are). */
 	private BodyFrame frame() {
-		return new BodyFrame().set(dragon.getX(), dragon.getY() + brain.body.lift(1.0F), dragon.getZ(),
-				brain.body.yaw(1.0F), brain.body.pitch(1.0F), brain.body.roll(1.0F));
+		return new BodyFrame().set(dragon.getX(), dragon.getY(), dragon.getZ(), brain.body.yaw(1.0F), brain.body.pitch(1.0F), brain.body.roll(1.0F))
+				.surface(brain.body.surface.rotation(1.0F), brain.body.lift(1.0F));
 	}
 
 	// ---------------------------------------------------------------- server

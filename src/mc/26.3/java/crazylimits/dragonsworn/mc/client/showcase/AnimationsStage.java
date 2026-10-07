@@ -57,7 +57,7 @@ final class AnimationsStage {
 					for (int i = 0; i < 4; i++) shoot(front, name + "-front-" + i, 12);
 				}
 				// A wingbeat: four moments a quarter beat apart (1.6 s = 32 ticks), from the side.
-				case FLY, FLAP, GLIDE, HOVER -> {
+				case FLY, FLAP, GLIDE, HOVER, CLIMB, DESCEND, DIVE -> {
 					if (!airborne[0]) {
 						airborne[0] = true;
 						command(String.format(Locale.ROOT, "summon minecraft:ender_dragon %d %d %d {NoAI:1b}", ax, air, z), 30);
@@ -73,7 +73,8 @@ final class AnimationsStage {
 					for (int i = 0; i < 2; i++) shoot(front, name + "-front-" + i, 15);
 				}
 			}
-			boolean flying = anim == DragonAnim.FLY || anim == DragonAnim.FLAP || anim == DragonAnim.GLIDE || anim == DragonAnim.HOVER;
+			boolean flying = anim == DragonAnim.FLY || anim == DragonAnim.FLAP || anim == DragonAnim.GLIDE || anim == DragonAnim.HOVER
+					|| anim == DragonAnim.CLIMB || anim == DragonAnim.DESCEND || anim == DragonAnim.DIVE;
 			if (!flying && anim != DragonAnim.TAKEOFF && anim != DragonAnim.LAND) shoot(side, name + "-side", 6);
 			if (anim == DragonAnim.WALK || anim == DragonAnim.IDLE) shoot(top, name + "-top", 6);
 		}

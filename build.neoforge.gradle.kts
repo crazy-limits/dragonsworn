@@ -64,6 +64,10 @@ dependencies {
 	// config screens: built with YACL or Cloth Config when the player has one (else a plain screen);
 	// neither is needed at runtime
 	listOf("deps.yacl", "deps.cloth-config").mapNotNull { optionalProp(it) }.forEach { compileOnly(it) { isTransitive = false } }
+	// `-Pdragonsworn.irons`: Iron's Spells 'n Spellbooks (+ Iron's Lib, Curios, playerAnimator) in the dev client
+	if (providers.gradleProperty("dragonsworn.irons").isPresent) {
+		optionalProp("deps.irons")?.split(',')?.forEach { runtimeOnly(it.trim()) { isTransitive = false } }
+	}
 }
 
 neoForge {
@@ -129,6 +133,8 @@ tasks.processResources {
 		"java" to javaVersion.toString(),
 		"license" to prop("mod.license"),
 		"authors" to prop("mod.authors"),
+		// 26.x renamed the mods list's logo (and warns, waiting for a click, on the old key)
+		"iconKey" to if (stonecutter.current.parsed >= "26") "iconFile" else "logoFile",
 	)
 	inputs.properties(tokens)
 	filesMatching(listOf("META-INF/neoforge.mods.toml", "*.mixins.json")) { expand(tokens) }

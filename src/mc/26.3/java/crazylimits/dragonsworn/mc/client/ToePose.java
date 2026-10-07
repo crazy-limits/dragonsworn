@@ -38,13 +38,13 @@ final class ToePose {
 	 * and stir, reaching for the ground to land or for prey they open wide, and the right foot's close round
 	 * what it holds, each as far as the prey lets it, and stay so until it lets go.
 	 */
-	static void apply(GeoBones.Model model, EnderDragon dragon, DragonBrain brain, LimbAnimator.State state, BodyFrame frame, float partialTick, double dt) {
+	static void apply(GeoBones.Model model, EnderDragon dragon, DragonBrain brain, LimbAnimator.State state, BodyFrame frame, Footing footing, float partialTick, double dt) {
 		Grip.Hold hold = brain.prey.hold();
 		Entity prey = brain.prey.prey();
 		boolean reach = prey != null && hold == Grip.Hold.REACH, held = prey != null && hold == Grip.Hold.TALON;
 		boolean landing = brain.clock.anim() == DragonAnim.LAND && !brain.footing();
 		state.landingOpen += ((landing ? 1.0 : 0.0) - state.landingOpen) * (1.0 - Math.pow(0.85, dt));
-		GroundClearance ground = new GroundClearance(dragon.level(), frame);
+		GroundClearance ground = new GroundClearance(footing, frame);
 		Inside inPrey = null;
 		if (held) {
 			double w = prey.getBbWidth() / 2.0 + 0.02, h = prey.getBbHeight() / 2.0 + 0.02;

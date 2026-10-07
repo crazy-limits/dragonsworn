@@ -1,5 +1,6 @@
 package crazylimits.dragonsworn.mc.arena;
 
+import crazylimits.dragonsworn.arena.CrystalWard;
 import crazylimits.dragonsworn.arena.Monolith;
 import crazylimits.dragonsworn.mc.breath.DragonFire;
 import net.minecraft.core.BlockPos;
@@ -13,7 +14,11 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.feature.EndSpikeFeature;
 
-/** Places a {@link Monolith} for one of the End's spikes, and its crystal where vanilla puts it, over dragon fire. */
+/**
+ * Places a {@link Monolith} for one of the End's spikes, and its crystal where vanilla puts it, over dragon fire;
+ * on the shortest spires (more the harder the difficulty) the crystal is warded ({@link CrystalWard}) in place of
+ * vanilla's cage.
+ */
 public final class Monoliths {
 	/** The island's surface is looked for from here down (the spikes start well above it). */
 	private static final int SEARCH_TOP = 80, SEARCH_DEPTH = 40;
@@ -36,6 +41,7 @@ public final class Monoliths {
 			crystal.setBeamTarget(feature.crystalBeamTarget().orElse(null));
 			crystal.setPermanentlyInvulnerable(feature.crystalInvulnerable());
 			crystal.snapTo(spike.getCenterX() + 0.5, monolith.crystalY(), spike.getCenterZ() + 0.5, random.nextFloat() * 360.0F, 0.0F);
+			Wards.ward(crystal, CrystalWard.warded(spike.getHeight(), CrystalWard.count(level.getLevel().getDifficulty().getId())));
 			level.addFreshEntity(crystal);
 			BlockPos at = crystal.blockPosition();
 			level.setBlock(at.below(), Blocks.BEDROCK.defaultBlockState(), Block.UPDATE_ALL);

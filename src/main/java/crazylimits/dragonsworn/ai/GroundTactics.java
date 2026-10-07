@@ -3,8 +3,8 @@ package crazylimits.dragonsworn.ai;
 import crazylimits.dragonsworn.config.DragonConfig;
 
 /**
- * What a landed dragon does next against its target. One blow at a time: the bite and the tail strike
- * share one recovery ({@code attackReady}), so the head and the tail never strike together.
+ * What a landed dragon does next against its target. One blow at a time: the bite, the tail strike and
+ * the wing buffet share one recovery ({@code attackReady}), so the head and the tail never strike together.
  *
  * <p>Where the target is decides, by its bearing (degrees from straight ahead, right positive):
  * <ul>
@@ -16,14 +16,19 @@ import crazylimits.dragonsworn.config.DragonConfig;
  *       there ({@code provoked}), it answers with the tail.</li>
  * </ul>
  * Whether a blow reaches is the IK's answer ({@code body/Strike}): the jaws and the tail's tip cannot
- * reach everywhere (under the chin, close behind the hips), and those blind spots are left to the turn.
- * Further off in front: the <b>roar</b> now and then, else walk in.
+ * reach everywhere (under the chin, close beside the flanks, close behind the hips). Those blind spots get
+ * the <b>wing buffet</b> (it rears and beats both wings once, throwing everything round its body away),
+ * and when that is not ready either, the turn. Further off: the <b>roar</b> now and then at a target out of
+ * reach (only with nobody close: it slows whoever runs off or shoots from afar), else walk in.
+ *
+ * <p>Mobbed ({@code mobbed}: {@code mob_buffet} players within the buffet's reach, {@link Crowd}) it
+ * buffets first: the wings throw them all off at once, where a bite or the tail takes one.
  *
  * <p>Sat up on a narrow foothold ({@link Foothold#narrow}) it fights with the head alone: it bites what
  * is in reach and turns to face the rest, but never lashes its tail, roars or walks off its perch.
  */
 public final class GroundTactics {
-	public enum Action { NONE, BITE, TAIL_STRIKE, ROAR }
+	public enum Action { NONE, BITE, TAIL_STRIKE, WING_BUFFET, ROAR }
 
 	public enum Zone { FRONT, SIDE, BEHIND }
 
@@ -55,22 +60,30 @@ public final class GroundTactics {
 		return Math.hypot(right, forward - HEAD_FORWARD) <= Math.hypot(right, forward - TAIL_FORWARD);
 	}
 
-	/** As below, from a foothold: a narrow one only bites and turns. */
+	/**
+	 * As below, from a foothold: a narrow one only bites and turns. {@code mobbed}: players all round it,
+	 * enough of them within the buffet's reach ({@code mob_buffet}), get the buffet before any other blow.
+	 */
 	public static Decision decide(Foothold foothold, double distance, double bearing, boolean biteReaches, boolean tailReaches,
-			boolean attackReady, boolean roarReady, boolean provoked, double dice) {
-		if (!foothold.narrow()) return decide(distance, bearing, biteReaches, tailReaches, attackReady, roarReady, provoked, dice);
-		Decision d = decide(distance, bearing, biteReaches, false, attackReady, false, provoked, dice);
+			boolean buffetReaches, boolean mobbed, boolean attackReady, boolean roarReady, boolean provoked, double dice) {
+		if (!foothold.narrow()) {
+			if (mobbed && attackReady) return new Decision(Action.WING_BUFFET, false, false);
+			return decide(distance, bearing, biteReaches, tailReaches, buffetReaches, attackReady, roarReady, provoked, dice);
+		}
+		Decision d = decide(distance, bearing, biteReaches, false, false, attackReady, false, provoked, dice);
 		return d.walk() ? new Decision(d.action(), false, d.turn()) : d;
 	}
 
 	/**
-	 * @param biteReaches  the jaws can be put on the target ({@code Strike.solve} reaches)
-	 * @param tailReaches  the tail's tip can
-	 * @param attackReady  recovered from the last blow
-	 * @param provoked     the target hurt the dragon just now
-	 * @param dice         uniform 0..1, for the side choice
+	 * @param biteReaches    the jaws can be put on the target ({@code Strike.solve} reaches)
+	 * @param tailReaches    the tail's tip can
+	 * @param buffetReaches  it is within the wing buffet's reach round the body
+	 * @param attackReady    recovered from the last blow
+	 * @param roarReady      the roar has cooled down and nobody is close ({@code roar_quiet_range})
+	 * @param provoked       the target hurt the dragon just now
+	 * @param dice           uniform 0..1, for the side choice
 	 */
-	public static Decision decide(double distance, double bearing, boolean biteReaches, boolean tailReaches,
+	public static Decision decide(double distance, double bearing, boolean biteReaches, boolean tailReaches, boolean buffetReaches,
 			boolean attackReady, boolean roarReady, boolean provoked, double dice) {
 		Zone zone = zone(bearing);
 		if (attackReady) {
@@ -83,10 +96,15 @@ public final class GroundTactics {
 				}
 				case BEHIND -> provoked && tailReaches ? Action.TAIL_STRIKE : Action.NONE;
 			};
+			// a blind spot of the jaws and the tail, close to the body: the wings throw it off
+			if (blow == Action.NONE && buffetReaches) blow = Action.WING_BUFFET;
 			if (blow != Action.NONE) return new Decision(blow, false, false);
 		}
+		// out of reach and nobody close: the roar slows it down (running away, shooting from afar)
+		if (zone != Zone.BEHIND && roarReady && distance >= DragonConfig.ROAR_QUIET.get() && distance < DragonConfig.ROAR_RANGE.get()) {
+			return new Decision(Action.ROAR, false, false);
+		}
 		if (zone == Zone.FRONT) {
-			if (roarReady && distance > CLOSE_IN + 2.0 && distance < DragonConfig.ROAR_RANGE.get()) return new Decision(Action.ROAR, false, false);
 			boolean walk = distance > CLOSE_IN && !biteReaches;
 			return new Decision(Action.NONE, walk, Math.abs(bearing) > FACE_ARC);
 		}

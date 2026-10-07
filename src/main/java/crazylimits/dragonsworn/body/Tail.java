@@ -35,14 +35,18 @@ public final class Tail {
 	private static final int DIRECTIONS = 16;
 	static final int N = TailChain.SEGMENTS;
 
-	/** Where the dragon is and what is around it; null in a {@link #solve} for the flat ground, no blocks. */
+	/**
+	 * Where the dragon is and what is around it, in the frame of the surface it stands on (on a wall the
+	 * face's, where the wall is the ground: {@code nav/SurfaceGrid}); null in a {@link #solve} for the flat
+	 * ground, no blocks.
+	 */
 	public static final class World {
 		BlockGrid grid;
 		DragonBody body;
 		float partialTick;
 		double x, y, z, time;
 
-		/** The grid, the body as drawn, the dragon's position at {@code partialTick}, and the time (ticks). */
+		/** The grid, the body as drawn, the dragon's position at {@code partialTick} (both in the surface's frame), and the time (ticks). */
 		public World set(BlockGrid grid, DragonBody body, float partialTick, double x, double y, double z, double time) {
 			this.grid = grid;
 			this.body = body;
@@ -78,6 +82,16 @@ public final class Tail {
 		if (world == null || world.grid == null) {
 			chain.pose(outX, outY);
 			overlap = 0.0;
+			return;
+		}
+		// turning onto a wall (or off it) the tail is still the flight's, drooping into what is now the face: it is
+		// not pushed out of it (a held push would stick it out from the wall long after), but starts clear after
+		if (world.body.surface.turning()) {
+			java.util.Arrays.fill(avoidX, 0.0);
+			java.util.Arrays.fill(avoidY, 0.0);
+			chain.pose(outX, outY);
+			overlap = 0.0;
+			lastTime = world.time;
 			return;
 		}
 		double dt = Double.isNaN(lastTime) ? 1.0 : Math.max(0.0, Math.min(5.0, world.time - lastTime));
@@ -194,8 +208,8 @@ public final class Tail {
 	private double penetration(TailChain chain, World world, int s, double bx, double by, double[] away) {
 		if (!Double.isNaN(bx)) chain.segment(s, bx, by);
 		chain.capsule(s, cap);
-		PartSolver.toWorld(world.body, world.partialTick, cap, 0, this.world, 0);
-		PartSolver.toWorld(world.body, world.partialTick, cap, 1, this.world, 1);
+		PartSolver.toSurface(world.body, world.partialTick, cap, 0, this.world, 0);
+		PartSolver.toSurface(world.body, world.partialTick, cap, 1, this.world, 1);
 		double r = TailChain.radius(s);
 		double ax = this.world[0], ay = this.world[1], az = this.world[2];
 		double dx = this.world[3] - ax, dy = this.world[4] - ay, dz = this.world[5] - az;
@@ -239,10 +253,10 @@ public final class Tail {
 			}
 		}
 		if (away != null) {
-			// the world direction into the model's axes: toModel is affine, so take the difference of two points
+			// the direction into the model's axes: fromSurface is affine, so take the difference of two points
 			double[] m = new double[3], o = new double[3];
-			PartSolver.toModel(world.body, world.partialTick, ox, oy, oz, m);
-			PartSolver.toModel(world.body, world.partialTick, 0.0, 0.0, 0.0, o);
+			PartSolver.fromSurface(world.body, world.partialTick, ox, oy, oz, m);
+			PartSolver.fromSurface(world.body, world.partialTick, 0.0, 0.0, 0.0, o);
 			double mx = m[0] - o[0], my = m[1] - o[1], mz = m[2] - o[2], l = Math.sqrt(mx * mx + my * my + mz * mz);
 			if (l < 1e-9) {
 				mx = 0.0;

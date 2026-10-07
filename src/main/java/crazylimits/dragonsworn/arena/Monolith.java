@@ -8,8 +8,8 @@ import java.util.Set;
 import java.util.SplittableRandom;
 
 /**
- * One of the End's ten spires, rebuilt as a spiralling obsidian tower instead of vanilla's cylinder, with
- * vanilla's flat top. Every tower winds its own way (direction, turns, proportions), in one of two styles:
+ * One of the End's ten spires, rebuilt as an upright obsidian tower with a subtle twist instead of vanilla's
+ * cylinder, with vanilla's flat top. Every tower winds its own way (direction, turns, proportions), in one of two styles:
  * <ul>
  *   <li>{@link Kind#CROWN}: a twisted tower, its rounded rectangular section turning as it rises, two sharp
  *       corners winding up it;</li>
@@ -51,7 +51,10 @@ public final class Monolith {
 	public final int groundY;
 
 	private final Map<Long, Block> blocks = new LinkedHashMap<>();
-	/** Which way it winds (+1 or -1), where the spiral starts, and how many turns it makes up to the top. */
+	/**
+	 * Which way it winds (+1 or -1), where the spiral starts, and how many turns it makes up to the top (a
+	 * fraction of one, so the tower stands upright).
+	 */
 	private final double turn, start, turns;
 	/** The twisted tower's section: long over short side. */
 	private final double aspect;
@@ -71,8 +74,8 @@ public final class Monolith {
 		turn = random.nextBoolean() ? 1 : -1;
 		start = random.nextDouble() * 2 * Math.PI;
 		turns = switch (kind) {
-			case CROWN -> 0.35 + random.nextDouble() * 0.3;
-			case WINDOW -> 0.4 + random.nextDouble() * 0.35;
+			case CROWN -> 0.1 + random.nextDouble() * 0.08;
+			case WINDOW -> 0.12 + random.nextDouble() * 0.08;
 		};
 		aspect = 1.35 + random.nextDouble() * 0.4;
 		wings = radius >= 5 ? 3 + random.nextInt(2) : 2 + random.nextInt(2);

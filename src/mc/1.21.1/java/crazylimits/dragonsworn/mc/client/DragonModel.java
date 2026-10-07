@@ -12,6 +12,8 @@ import crazylimits.dragonsworn.debug.DragonDebug;
 import crazylimits.dragonsworn.mc.DragonBrain;
 import crazylimits.dragonsworn.mc.DragonswornDragon;
 import crazylimits.dragonsworn.mc.LevelGrid;
+import crazylimits.dragonsworn.nav.Surface;
+import crazylimits.dragonsworn.nav.SurfaceGrid;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
@@ -130,8 +132,12 @@ public final class DragonModel extends DefaultedEntityGeoModel<ReplacedEnderDrag
 		if (torso == null) return;
 		DragonBody body = DragonswornDragon.brain(dragon).body;
 		limbs.chain.body(GeoBones.matrix(torso));
-		limbs.world.set(new LevelGrid(dragon.level()), body, partialTick, Mth.lerp(partialTick, dragon.xo, dragon.getX()),
-				Mth.lerp(partialTick, dragon.yo, dragon.getY()), Mth.lerp(partialTick, dragon.zo, dragon.getZ()), dragon.tickCount + partialTick);
+		// in the frame of the surface it stands on, as the hitboxes' tail (on a wall the wall is the ground)
+		Surface.Face face = DragonswornDragon.brain(dragon).face();
+		double[] at = face.toLocal(new double[]{Mth.lerp(partialTick, dragon.xo, dragon.getX()), Mth.lerp(partialTick, dragon.yo, dragon.getY()),
+				Mth.lerp(partialTick, dragon.zo, dragon.getZ())}, new double[3]);
+		limbs.world.set(SurfaceGrid.around(new LevelGrid(dragon.level()), face, at[1]), body, partialTick, at[0], at[1], at[2],
+				dragon.tickCount + partialTick);
 		limbs.tail.solve(limbs.chain, limbs.motion, bendX, bendY, limbs.world, finalTailX, finalTailY);
 		for (int i = 0; i < TAIL.length; i++) add(TAIL[i], finalTailX[i], finalTailY[i], 0.0);
 	}

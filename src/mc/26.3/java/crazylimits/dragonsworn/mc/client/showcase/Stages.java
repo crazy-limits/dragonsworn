@@ -45,8 +45,11 @@ final class Stages {
 			NarrowStage.narrow(x, y, z + 150, Foothold.UPRIGHT);
 			NarrowStage.narrow(x + 150, y, z + 150, Foothold.CLING);
 		}));
+		SOLO.put("aim", new Solo(true, (x, y, z) -> AimStage.aim(x, y, z + 150)));
+		SOLO.put("climb", new Solo(true, (x, y, z) -> ClimbStage.climb(x, y, z + 150)));
 		SOLO.put("stance", new Solo(true, (x, y, z) -> StanceStage.stance(x, y, z + 150)));
 		SOLO.put("death", new Solo(true, (x, y, z) -> DeathStage.death(x, y, z + 150)));
+		SOLO.put("wards", new Solo(true, (x, y, z) -> WardsStage.wards(x, y, z + 150)));
 		// the AI's ground assault and takeoff, and the running landing
 		SOLO.put("landing", new Solo(true, (x, y, z) -> {
 			LandingStage.liveDragon(x, y, z + 150);
@@ -83,5 +86,7 @@ final class Stages {
 		CollisionStage.collision(x + 450, y, z + 600);
 		NarrowStage.narrow(x + 450, y, z + 150, Foothold.UPRIGHT);
 		NarrowStage.narrow(x + 450, y, z + 300, Foothold.CLING);
+		ClimbStage.climb(x + 600, y, z + 150);
+		WardsStage.wards(x + 600, y, z + 450);
 	}
 }

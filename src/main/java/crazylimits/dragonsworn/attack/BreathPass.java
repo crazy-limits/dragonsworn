@@ -33,10 +33,15 @@ public final class BreathPass {
 	/** The inhale starts this far short of the prey (horizontal blocks), the prey within {@link #LINE_UP} degrees of its facing. */
 	public static final double START_DISTANCE = 40.0, LINE_UP = 20.0;
 	/**
+	 * Nor any closer than this: the inhale's flight at the pass's speed and a little, so the stream starts short of
+	 * the prey. A dragon that gets no closer with still wings flies over it and comes round again.
+	 */
+	public static final double MIN_START = 26.0;
+	/**
 	 * Lined up, it glides in (wings still) from this much further out than {@link #START_DISTANCE}: a wingbeat
 	 * ({@code FlightModel.BEAT_TICKS}) outlasts the inhale, so one still under way would beat on into the stream.
 	 */
-	public static final double GLIDE_IN = 16.0;
+	public static final double GLIDE_IN = 32.0;
 	/** Glide speed it holds over the pass, blocks per tick: at most, and at least. */
 	public static final double MAX_SPEED = 0.95, MIN_SPEED = 0.6;
 	/** It never starts a pass at prey further than this. */
@@ -81,11 +86,11 @@ public final class BreathPass {
 
 	/**
 	 * Whether the pass starts now: the prey at (dx, dz) from the dragon is ahead within
-	 * {@link #START_DISTANCE} (but not already under it) and within {@link #LINE_UP} degrees of the facing.
+	 * {@link #START_DISTANCE} (but not within {@link #MIN_START}) and within {@link #LINE_UP} degrees of the facing.
 	 */
 	public static boolean linedUp(float yaw, double dx, double dz) {
 		double d = Math.hypot(dx, dz);
-		return d <= START_DISTANCE && d > START_DISTANCE * 0.4 && Math.abs(BreathAttack.offFacing(yaw, dx, dz)) <= LINE_UP;
+		return d <= START_DISTANCE && d > MIN_START && Math.abs(BreathAttack.offFacing(yaw, dx, dz)) <= LINE_UP;
 	}
 
 	/**
@@ -101,9 +106,12 @@ public final class BreathPass {
 		return new double[] {Maths.clampAbs(off, YAW_ARC), Math.max(PITCH_MIN, Math.min(PITCH_MAX, down))};
 	}
 
-	/** How far short of the prey (blocks along the run) the flames aim, the dragon {@code distance} from it (horizontal). */
-	public static double lead(double distance) {
-		return Math.max(0.0, Math.min(LEAD, (distance - CATCH) * LEAD_SHARE));
+	/**
+	 * How far short of the prey (blocks along the run) the flames aim, the dragon {@code along} blocks short of it
+	 * along the run (negative once past it: none).
+	 */
+	public static double lead(double along) {
+		return Math.max(0.0, Math.min(LEAD, (along - CATCH) * LEAD_SHARE));
 	}
 
 	/** {@code at} swung toward {@code want} by at most {@code step} degrees on each angle. */

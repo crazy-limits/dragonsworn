@@ -19,6 +19,8 @@ import java.util.random.RandomGenerator;
  * Speed is dynamic: thrust comes only from downstrokes ({@link #thrust}), so a dragon that stops
  * beating slows, one that dives accelerates, and turning bleeds speed ({@link #turnDrag}). A stroke that has started always finishes: a beating
  * mode changes only at the end of a beat, a push only when its strokes are done.
+ * <p>The plan also carries the flight's {@link Slope}: birds shape their wings differently going up and
+ * coming down, and the client plays the climb, the descent or the stoop for it.
  */
 public final class FlightModel {
 	public enum Mode { GLIDE, FLY, PUSH, HOVER }
@@ -26,15 +28,26 @@ public final class FlightModel {
 	/** What the current phase insists on; {@link #NONE} lets the model choose. */
 	public enum Force { NONE, FLY, GLIDE, HOVER }
 
+	/**
+	 * Which way the flight goes, for the wings' shape: {@link #CLIMB} beating upward ({@link Mode#FLY}),
+	 * {@link #DESCEND} gliding down on flexed wings, {@link #DIVE} the stoop, steep and fast, wings drawn
+	 * in ({@link Mode#GLIDE}); {@link #LEVEL} otherwise.
+	 */
+	public enum Slope { LEVEL, CLIMB, DESCEND, DIVE }
+
 	/** The animation plan the client plays. {@code sequence} changes whenever a beat pattern restarts. */
-	public record Plan(Mode mode, int flaps, int sequence) {
+	public record Plan(Mode mode, int flaps, int sequence, Slope slope) {
+		public Plan(Mode mode, int flaps, int sequence) {
+			this(mode, flaps, sequence, Slope.LEVEL);
+		}
+
 		public int encode() {
-			return mode.ordinal() | (flaps & 3) << 2 | (sequence & 0xFFFFF) << 4;
+			return mode.ordinal() | (flaps & 3) << 2 | slope.ordinal() << 4 | (sequence & 0xFFFFF) << 6;
 		}
 
 		public static Plan decode(int bits) {
 			Mode[] modes = Mode.values();
-			return new Plan(modes[Math.min(modes.length - 1, bits & 3)], bits >> 2 & 3, bits >>> 4);
+			return new Plan(modes[Math.min(modes.length - 1, bits & 3)], bits >> 2 & 3, bits >>> 6, Slope.values()[bits >> 4 & 3]);
 		}
 	}
 
@@ -42,6 +55,13 @@ public final class FlightModel {
 	public static final double CLIMB = 0.06;
 	/** Sinking faster than this (blocks/tick) is a glide down. */
 	public static final double SINK = 0.05;
+	/**
+	 * Slopes: sinking faster than DIVE_SINK (blocks/tick) at DIVE_SPEED or more is a stoop; each slope is
+	 * left only at SLOPE_EXIT of its threshold (no flicker at the edge), and a glide keeps its slope at
+	 * least SLOPE_HOLD ticks (the wings take that long to reshape).
+	 */
+	public static final double DIVE_SINK = 0.18, DIVE_SPEED = 0.6, SLOPE_EXIT = 0.6;
+	static final int SLOPE_HOLD = 10;
 	/** Turning faster than this (degrees/tick) needs beats. */
 	public static final double SHARP_TURN = 3.0;
 	/** In level flight, a push when slower than this (blocks/tick); continuous beats when slower than SLOW. */
@@ -67,6 +87,7 @@ public final class FlightModel {
 	private Plan plan = new Plan(Mode.GLIDE, 0, 0);
 	private long start;
 	private long nextPushAt;
+	private long slopeAt = -SLOPE_HOLD;
 
 	public Plan plan() {
 		return plan;
@@ -81,16 +102,35 @@ public final class FlightModel {
 	public Plan update(long tick, double vy, double yawRate, double speed, Force force, RandomGenerator random) {
 		Mode want = choose(vy, yawRate, speed, force, tick);
 		Mode now = plan.mode;
-		if (want == now) return plan;
+		Slope slope = slope(want, vy, speed);
+		if (want == now && slope == plan.slope) return plan;
 		if (!canChange(tick)) return plan;
+		if (want == now && want == Mode.GLIDE && tick - slopeAt < SLOPE_HOLD) return plan;
 		int flaps = 0;
 		if (want == Mode.PUSH) {
 			flaps = random.nextDouble() < DOUBLE_CHANCE ? 2 : 1;
 			nextPushAt = tick + Math.round(flaps * PUSH_TICKS) + MIN_GLIDE;
 		}
+		if (slope != plan.slope) slopeAt = tick;
 		start = tick;
-		plan = new Plan(want, flaps, plan.sequence + 1);
+		plan = new Plan(want, flaps, plan.sequence + 1, slope);
 		return plan;
+	}
+
+	/** The slope of flight in {@code mode}, kept until clearly past its threshold the other way. */
+	private Slope slope(Mode mode, double vy, double speed) {
+		Slope was = plan.slope;
+		return switch (mode) {
+			case FLY -> vy > (was == Slope.CLIMB ? CLIMB * SLOPE_EXIT : CLIMB) ? Slope.CLIMB : Slope.LEVEL;
+			case GLIDE -> {
+				if (vy < -(was == Slope.DIVE ? DIVE_SINK * SLOPE_EXIT : DIVE_SINK) && speed >= DIVE_SPEED * (was == Slope.DIVE ? SLOPE_EXIT : 1.0)) {
+					yield Slope.DIVE;
+				}
+				boolean down = was == Slope.DESCEND || was == Slope.DIVE;
+				yield vy < -(down ? SINK * SLOPE_EXIT : SINK) ? Slope.DESCEND : Slope.LEVEL;
+			}
+			default -> Slope.LEVEL;
+		};
 	}
 
 	private Mode choose(double vy, double yawRate, double speed, Force force, long tick) {

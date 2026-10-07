@@ -81,6 +81,13 @@ HOVER = Style(mid=10.0, amp=52.0, sweep=2.0, sweep_amp=18.0, sweep8=5.0, heave=7
 			  twist_amp=12.0)
 # One push out of a glide: a little shallower.
 PUSH = Style(amp=40.0, elbow_amp=20.0, heave=6.0, pitch=6.0, surge=3.5)
+# Climbing on the wings (a goose or an eagle gaining height): the stroke is wider at both ends (the wings
+# nearly meet over the back), the downstroke is driven forward and down under the raised chest, the wing
+# twists harder (it works at a steeper angle of attack) and the upstroke is a flexed recovery: the hand
+# folds in and the fan pleats nearly shut, so the wing slips up through the air it has just pushed. The
+# body is thrown about more by the harder strokes.
+CLIMB = Style(mid=12.0, amp=56.0, elbow=-12.0, elbow_amp=34.0, sweep=-2.0, sweep_amp=20.0, sweep8=5.0,
+			  twist=2.0, twist_amp=14.0, pleat_shut=58.0, heave=10.0, pitch=9.0, surge=4.0)
 
 
 def wings(style, u, gain=1.0):

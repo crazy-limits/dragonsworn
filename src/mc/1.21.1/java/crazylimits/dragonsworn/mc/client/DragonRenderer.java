@@ -50,13 +50,16 @@ public final class DragonRenderer extends GeoReplacedEntityRenderer<EnderDragon,
 	/**
 	 * The body's yaw, pitch and bank from the procedural layer ({@link DragonBody}): the body follows the
 	 * steering a few ticks late (the head leads), rolls into turns and pitches with the climb. Pitch and
-	 * roll turn the model about the middle of the torso. {@code PartSolver} places the hitboxes the
+	 * roll turn the model about the middle of the torso. All of it is turned onto the surface it stands on
+	 * first ({@code nav/Surface}: on a wall, the face's frame). {@code PartSolver} places the hitboxes the
 	 * same way.
 	 */
 	@Override
 	protected void applyRotations(ReplacedEnderDragon animatable, PoseStack poseStack, float ageInTicks, float rotationYaw,
 			float partialTick, float nativeScale) {
 		DragonBody body = DragonswornDragon.brain(this.currentEntity).body;
+		double[] q = body.surface.quaternion(partialTick);
+		poseStack.mulPose(new Quaternionf((float) q[1], (float) q[2], (float) q[3], (float) q[0]));
 		poseStack.translate(0.0, body.lift(partialTick), 0.0);
 		poseStack.mulPose(Axis.YP.rotationDegrees((float) -body.yaw(partialTick)));
 		poseStack.translate(0.0, BodyFrame.CENTER_Y, BodyFrame.CENTER_Z);

@@ -3,12 +3,7 @@ package crazylimits.dragonsworn.mc.client;
 import crazylimits.dragonsworn.limb.Affine;
 import crazylimits.dragonsworn.limb.BodyFrame;
 import crazylimits.dragonsworn.mc.DragonswornDragon;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
-import net.minecraft.util.Mth;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
-import net.minecraft.world.level.Level;
-import net.minecraft.world.phys.shapes.VoxelShape;
 import software.bernie.geckolib.cache.object.GeoBone;
 import software.bernie.geckolib.model.GeoModel;
 
@@ -56,8 +51,10 @@ public final class LimbContact {
 		// The model as drawn, by the same forward kinematics the limb layer uses (checked against
 		// GeckoLib's bone pivots). Not GeckoLib's tracked world matrix: in 4.9 it carries an extra twice
 		// the identity, so any point off a bone's pivot comes out twice as far from it.
-		BodyFrame frame = LimbAnimator.frame(dragon, partialTick);
-		GroundClearance clearance = new GroundClearance(dragon.level(), frame);
+		// in the frame of the surface it stands on (on a wall the wall is the ground)
+		BodyFrame frame = LimbAnimator.surfaceFrame(dragon, partialTick);
+		Footing footing = LimbAnimator.footing(dragon, partialTick);
+		GroundClearance clearance = new GroundClearance(footing, frame);
 		double[] gap = new double[ROOTS.length], ground = new double[ROOTS.length];
 		for (int i = 0; i < ROOTS.length; i++) {
 			Optional<GeoBone> root = model.getBone(ROOTS[i]);
@@ -68,7 +65,7 @@ public final class LimbContact {
 			// the ground under the limb's own pivot (the ankle, the hand's apex): flat or a step there
 			GeoBone b = root.get();
 			double[] at = frame.toWorld(Affine.apply(GeoBones.matrix(b), new double[]{b.getPivotX(), b.getPivotY(), b.getPivotZ()}, new double[3]), new double[3]);
-			ground[i] = groundTop(dragon.level(), at[0], at[1] + 2.0, at[2]);
+			ground[i] = footing.groundTop(at[0], at[1] + 2.0, at[2]);
 		}
 		String anim = DragonswornDragon.brain(dragon).choice().anim().name().toLowerCase(Locale.ROOT);
 		// where each foot (ankle, wrist claw) is drawn, and whether it is in a turn's step
@@ -84,15 +81,5 @@ public final class LimbContact {
 	private static void collect(GeoBone bone, List<GeoBone> out) {
 		out.add(bone);
 		for (GeoBone child : bone.getChildBones()) collect(child, out);
-	}
-
-	/** The top of the first solid block at or below a little above (x, y, z). */
-	private static double groundTop(Level level, double x, double y, double z) {
-		BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos(Mth.floor(x), Mth.floor(y) + 3, Mth.floor(z));
-		for (int i = 0; i < 12; i++, pos.move(Direction.DOWN)) {
-			VoxelShape shape = level.getBlockState(pos).getCollisionShape(level, pos);
-			if (!shape.isEmpty()) return pos.getY() + shape.max(Direction.Axis.Y);
-		}
-		return Double.NaN;
 	}
 }

@@ -3,15 +3,16 @@ package crazylimits.dragonsworn.mc;
 import crazylimits.dragonsworn.body.Parts;
 import crazylimits.dragonsworn.body.Tail;
 import crazylimits.dragonsworn.nav.BlockGrid;
+import crazylimits.dragonsworn.nav.Surface;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.MoverType;
-import net.minecraft.world.entity.boss.enderdragon.EnderDragonPart;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
-import net.minecraft.world.level.gamerules.GameRules;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragonPart;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.gamerules.GameRules;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
@@ -92,24 +93,32 @@ public final class HullCollision {
 	}
 
 	/**
-	 * A step on its feet by dx, dz (server): the body (head to hips) is stopped by solid blocks the
-	 * same way, sliding along a wall. Returns false when it was stopped (wholly or along one axis).
+	 * A step on its feet by dx, dz across the face it stands on (server; on the ground the world's x, z,
+	 * on a wall its face's frame): the body (head to hips) is stopped by solid blocks the same way,
+	 * sliding along a wall. Returns false when it was stopped (wholly or along one axis).
 	 */
 	public boolean walk(double dx, double dz) {
 		EnderDragon dragon = brain.dragon();
 		BlockGrid grid = brain.grid();
+		Surface.Face face = brain.face();
 		AABB[] hull = hull(WALK_HULL);
 		int inside = overlap(grid, hull, Vec3.ZERO);
-		Vec3 delta = new Vec3(dx, 0.0, dz);
 		double mx = dx, mz = dz;
-		if (overlap(grid, hull, delta) > inside) {
-			mx = overlap(grid, hull, new Vec3(dx, 0.0, 0.0)) > inside ? 0.0 : dx;
-			mz = overlap(grid, hull, new Vec3(mx, 0.0, dz)) > inside ? 0.0 : dz;
+		if (overlap(grid, hull, across(face, dx, dz)) > inside) {
+			mx = overlap(grid, hull, across(face, dx, 0.0)) > inside ? 0.0 : dx;
+			mz = overlap(grid, hull, across(face, mx, dz)) > inside ? 0.0 : dz;
 		}
-		dragon.setPos(dragon.getX() + mx, dragon.getY(), dragon.getZ() + mz);
+		Vec3 step = across(face, mx, mz);
+		dragon.setPos(dragon.getX() + step.x, dragon.getY() + step.y, dragon.getZ() + step.z);
 		boolean free = mx == dx && mz == dz;
 		dragon.horizontalCollision = !free;
 		return free;
+	}
+
+	/** A move by dx, dz across {@code face} (its frame's x, z), in the world. */
+	private static Vec3 across(Surface.Face face, double dx, double dz) {
+		double[] w = face.toWorld(new double[]{dx, 0.0, dz}, new double[3]);
+		return new Vec3(w[0], w[1], w[2]);
 	}
 
 	/** Ticks lately spent bumping into terrain (counts down while it moves freely). */
@@ -125,10 +134,10 @@ public final class HullCollision {
 	/**
 	 * The pose just placed may have turned or swung the hull into a wall (a turn swings the head and
 	 * hips, a wingbeat heaves the body): the dragon is pushed back out, a little per tick, the way that
-	 * frees the most. On its feet ({@code ground}) only sideways (its height is the ground's); in a phase
-	 * that does not {@code collide}, never.
+	 * frees the most. On its feet ({@code ground}) only sideways across the {@code face} it stands on (its
+	 * height off it is the face's); in a phase that does not {@code collide}, never.
 	 */
-	void pushOut(EnderDragonPart[] parts, boolean ground, boolean collide) {
+	void pushOut(EnderDragonPart[] parts, boolean ground, boolean collide, Surface.Face face) {
 		if (!ground && !collide) {
 			wedgedTicks = 0;
 			return;
@@ -144,7 +153,7 @@ public final class HullCollision {
 		int least = inside;
 		for (double d : PUSH_OUT) {
 			for (Vec3 dir : ground ? SIDEWAYS : AROUND) {
-				Vec3 shift = dir.scale(d);
+				Vec3 shift = (ground ? across(face, dir.x, dir.z) : dir).scale(d);
 				int n = overlap(grid, hull, shift);
 				if (n < least) {
 					least = n;

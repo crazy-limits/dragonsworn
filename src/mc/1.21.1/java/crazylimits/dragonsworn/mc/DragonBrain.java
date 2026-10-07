@@ -1,6 +1,7 @@
 package crazylimits.dragonsworn.mc;
 
 import crazylimits.dragonsworn.ai.CombatStance;
+import crazylimits.dragonsworn.ai.Crowd;
 import crazylimits.dragonsworn.ai.DeathFlight;
 import crazylimits.dragonsworn.ai.Foothold;
 import crazylimits.dragonsworn.ai.HitTally;
@@ -19,27 +20,39 @@ import crazylimits.dragonsworn.body.Strike;
 import crazylimits.dragonsworn.body.Tail;
 import crazylimits.dragonsworn.body.TailChain;
 import crazylimits.dragonsworn.body.TailMotion;
+import crazylimits.dragonsworn.config.DragonConfig;
 import crazylimits.dragonsworn.flight.FlightModel;
 import crazylimits.dragonsworn.limb.GroundFit;
 import crazylimits.dragonsworn.limb.HeadLook;
 import crazylimits.dragonsworn.mc.breath.BreathFlames;
 import crazylimits.dragonsworn.mc.breath.BreathStreamPhase;
+import crazylimits.dragonsworn.mc.phase.AttackTargeting;
 import crazylimits.dragonsworn.mc.phase.DragonswornPhase;
 import crazylimits.dragonsworn.nav.BlockGrid;
+import crazylimits.dragonsworn.nav.Surface;
+import crazylimits.dragonsworn.nav.SurfaceGrid;
+import crazylimits.dragonsworn.nav.SurfaceSites;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.boss.EnderDragonPart;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.boss.enderdragon.phases.DragonPhaseInstance;
 import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.feature.EndPodiumFeature;
 import net.minecraft.world.phys.Vec3;
+import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3f;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Everything Dragonsworn adds to one dragon. Lives on the entity (both sides); the server half decides
@@ -98,6 +111,8 @@ public final class DragonBrain {
 	public final CombatMemory combat = new CombatMemory(this);
 	/** How it goes at a target: on foot or one attack from the air (server). */
 	public final Tactics tactics = new Tactics(this);
+	/** The players fighting it: the more, the sooner its attacks; bunched together, its area attacks (server). */
+	public final Crowd crowd = new Crowd();
 	private final WildDirector wild = new WildDirector(this);
 	private final ArenaDirector arena = new ArenaDirector(this);
 	private final double[] groundHeights = new double[4];
@@ -107,6 +122,8 @@ public final class DragonBrain {
 	private final double[] offsets = new double[PoseTrack.PARTS * 3];
 	private int bodyTickedAt = Integer.MIN_VALUE;
 
+	/** Ticks between counts of the players near it. */
+	private static final int CROWD_TICKS = 10;
 	private Context context = Context.UNKNOWN;
 	private int actionSequence;
 	/** Ticks of flight left before the next roar (server). */
@@ -123,6 +140,12 @@ public final class DragonBrain {
 
 	public EnderDragon dragon() {
 		return dragon;
+	}
+
+	/** The End's dragon: the player threatening its crystals it is after (server); null for none, or a wild dragon. */
+	@Nullable
+	public Player guardTarget() {
+		return context == Context.ARENA ? arena.guardTarget() : null;
 	}
 
 	public Context context() {
@@ -167,7 +190,8 @@ public final class DragonBrain {
 
 	public DragonAnimSelector.Choice choice() {
 		int bits = dragon.getEntityData().get(DragonData.ACTION);
-		return DragonAnimSelector.select(kind(), foothold(), DragonAnimSelector.actionAnim(bits), DragonAnimSelector.actionSequence(bits),
+		// on a wall its own stance (DragonAnimSelector), whatever foothold it stood on before
+		return DragonAnimSelector.select(kind(), face().wall() ? Foothold.WALL : foothold(), DragonAnimSelector.actionAnim(bits), DragonAnimSelector.actionSequence(bits),
 				flightPlan(), gait.walking());
 	}
 
@@ -181,8 +205,77 @@ public final class DragonBrain {
 		if (foothold() != foothold) dragon.getEntityData().set(DragonData.FOOTHOLD, foothold.ordinal());
 	}
 
+	/** When it gripped the wall it is on ({@link #setFace}, tick count). */
+	private int wallSince;
+
+	/** What it stands on (synced: {@link DragonData#SURFACE}'s low bits): the ground, or a wall it clings to ({@link Surface}). */
+	public Surface.Face face() {
+		return Surface.Face.of(dragon.getEntityData().get(DragonData.SURFACE) & 31);
+	}
+
+	/** The wall it flares toward in the air, flying in to grip it or just off it (synced, the high bits); the floor: none ({@link Surface#LEAN}). */
+	public Surface.Face leaning() {
+		return Surface.Face.of(dragon.getEntityData().get(DragonData.SURFACE) >> 5);
+	}
+
+	/** Server: what it stands on from now on (the body turns onto it over {@link Surface#TURN_TICKS}), leaning toward nothing. */
+	public void setFace(Surface.Face face) {
+		setFace(face, Surface.Face.FLOOR);
+	}
+
+	/** Server: as {@link #setFace(Surface.Face)}, on the floor leaning toward wall {@code lean} (in the air, flying in to it or off it). */
+	public void setFace(Surface.Face face, Surface.Face lean) {
+		if (face() == face && leaning() == lean) return;
+		if (face.wall() && face() != face) wallSince = dragon.tickCount;
+		dragon.getEntityData().set(DragonData.SURFACE, face.ordinal() | (face.wall() ? 0 : lean.ordinal() << 5));
+	}
+
+	/** Server: ticks since it gripped the wall it is on (0 off walls; long when it was loaded on one). */
+	public int wallTicks() {
+		return face().wall() ? dragon.tickCount - wallSince : 0;
+	}
+
+	/**
+	 * Server: whether it still has something under its hind feet ({@code SurfaceSites#standsOn}); on the
+	 * ground always (its walk keeps to the ground under it).
+	 */
+	public boolean standsOn() {
+		Vec3 at = local();
+		return SurfaceSites.standsOn(localGrid(), face(), at.x, at.y, at.z);
+	}
+
+	/** A world point in the frame of the face it stands on (a wall's: where the wall is the ground). */
+	public Vec3 local(double x, double y, double z) {
+		double[] l = face().toLocal(new double[]{x, y, z}, new double[3]);
+		return new Vec3(l[0], l[1], l[2]);
+	}
+
+	public Vec3 local(Vec3 world) {
+		return local(world.x, world.y, world.z);
+	}
+
+	/** The dragon's position in the frame of the face it stands on. */
+	public Vec3 local() {
+		return local(dragon.getX(), dragon.getY(), dragon.getZ());
+	}
+
+	/** The inverse of {@link #local}: a point in the face's frame into the world. */
+	public Vec3 world(double x, double y, double z) {
+		double[] w = face().toWorld(new double[]{x, y, z}, new double[3]);
+		return new Vec3(w[0], w[1], w[2]);
+	}
+
+	/** The world as the face it stands on sees it, where a wall is the ground ({@link SurfaceGrid}); the world on the ground. */
+	public BlockGrid localGrid() {
+		return SurfaceGrid.around(grid(), face(), local().y);
+	}
+
+	/** Its speed across the face it stands on (the ground's horizontal speed; up a wall, the climb's). */
 	public double horizontalSpeed() {
-		return Math.hypot(dragon.getX() - dragon.xo, dragon.getZ() - dragon.zo);
+		Surface.Face face = face();
+		if (!face.wall()) return Math.hypot(dragon.getX() - dragon.xo, dragon.getZ() - dragon.zo);
+		double[] d = face.toLocal(new double[]{dragon.getX() - dragon.xo, dragon.getY() - dragon.yo, dragon.getZ() - dragon.zo}, new double[3]);
+		return Math.hypot(d[0], d[2]);
 	}
 
 	/**
@@ -250,7 +343,7 @@ public final class DragonBrain {
 	/** The strike's aim from the synced data, for the animation playing. */
 	private void updateStrike() {
 		Vector3f aim = dragon.getEntityData().get(DragonData.STRIKE);
-		DragonAnim anim = action() != null ? action() : kind() == Kind.PERCH_BREATH ? DragonAnim.BREATH : null;
+		DragonAnim anim = action() != null ? action() : kind() == Kind.PERCH_BREATH ? (face().wall() ? DragonAnim.WALL_BREATH : DragonAnim.BREATH) : null;
 		if (Strike.strikes(anim) && Float.isFinite(aim.x())) strike.aim(anim, aim.x(), aim.y(), aim.z());
 		else strike.clear();
 	}
@@ -261,6 +354,7 @@ public final class DragonBrain {
 		if (bodyTickedAt == dragon.tickCount) return;
 		bodyTickedAt = dragon.tickCount;
 		body.setShaking(prey.hold() == Grip.Hold.JAW);
+		body.surface.tick(face(), leaning());
 		body.tick(dragon.getYRot(), dragon.getX(), dragon.getY(), dragon.getZ(), bodyMode());
 		gait.tick(horizontalSpeed());
 		clock.tick(choice(), flightPlan(), horizontalSpeed());
@@ -268,24 +362,25 @@ public final class DragonBrain {
 		updateLook();
 		boolean standing = footing();
 		if (standing) sampleGround();
-		body.ground.tick(standing, groundHeights, dragon.getY());
+		body.ground.tick(standing, groundHeights, local().y);
 	}
 
 	/**
 	 * The ground under each foot of the footprint ({@link GroundFit#FOOTPRINT}), relative to the dragon's
 	 * position; NaN where there is none or it is a cliff away. Both sides see the same blocks, so the
-	 * body (and its hitboxes) tilt the same way on both.
+	 * body (and its hitboxes) tilt the same way on both. On a wall, in its face's frame (the wall is the ground).
 	 */
 	private void sampleGround() {
-		BlockGrid grid = grid();
+		BlockGrid grid = localGrid();
+		Vec3 at = local();
 		double yaw = Math.toRadians(-body.yaw(1.0F)), c = Math.cos(yaw), s = Math.sin(yaw);
 		// sat up on its hind feet, nothing stands where the front feet would
 		int feet = onGround() && foothold().narrow() ? 2 : 4;
 		for (int i = feet; i < 4; i++) groundHeights[i] = Double.NaN;
 		for (int i = 0; i < feet; i++) {
 			double mx = GroundFit.FOOTPRINT[i][0], mz = GroundFit.FOOTPRINT[i][1];
-			int g = grid.ground(Mth.floor(dragon.getX() + mx * c + mz * s), Mth.floor(dragon.getZ() - mx * s + mz * c));
-			double h = g == BlockGrid.NO_GROUND ? Double.NaN : g - dragon.getY();
+			int g = grid.ground(Mth.floor(at.x + mx * c + mz * s), Mth.floor(at.z - mx * s + mz * c));
+			double h = g == BlockGrid.NO_GROUND ? Double.NaN : g - at.y;
 			groundHeights[i] = Math.abs(h) > 4.0 ? Double.NaN : h;
 		}
 	}
@@ -293,13 +388,47 @@ public final class DragonBrain {
 	/** The entity the dragon is paying attention to (synced), or null. */
 	public Entity lookTarget() {
 		int id = dragon.getEntityData().get(DragonData.LOOK);
+		if (id <= -2) id = -2 - id;
 		return id < 0 ? null : dragon.level().getEntity(id);
 	}
 
-	/** Server: what the head should turn to (null: nothing in particular). */
+	/** Both sides: the head is on whom it attacks ({@link #attackTarget}): it turns all the way, in flight too. */
+	public boolean lookingHard() {
+		return dragon.getEntityData().get(DragonData.LOOK) <= -2;
+	}
+
+	/** Server: what the head should turn to (null: nothing in particular). Whom it attacks stays looked at hard. */
 	public void setLookTarget(LivingEntity entity) {
-		int id = entity == null ? -1 : entity.getId();
+		Entity now = lookTarget();
+		if (entity != null && entity == now) return;
+		setLook(entity, false);
+	}
+
+	/** {@link DragonData#LOOK}: the entity's id, -2 - the id while it attacks it ({@code hard}), -1 for none. */
+	private void setLook(LivingEntity entity, boolean hard) {
+		int id = entity == null ? -1 : hard ? -2 - entity.getId() : entity.getId();
 		if (dragon.getEntityData().get(DragonData.LOOK) != id) dragon.getEntityData().set(DragonData.LOOK, id);
+	}
+
+	/**
+	 * Server: whom its phase attacks or closes in on to attack (an air attack until it flies away, the hunt
+	 * of the roam, coming down to fight, the fight on foot, vanilla's strafe and charge); null for nobody,
+	 * or while it holds prey.
+	 */
+	@Nullable
+	private LivingEntity attackTarget() {
+		if (prey.hold() != Grip.Hold.NONE) return null;
+		DragonPhaseInstance current = dragon.getPhaseManager().getCurrentPhase();
+		LivingEntity target = current instanceof DragonswornPhase p ? p.attackTarget()
+				: current instanceof AttackTargeting a ? a.dragonsworn$attackTarget()
+				: current.getPhase() == EnderDragonPhase.CHARGING_PLAYER ? chargeTarget(current.getFlyTargetLocation()) : null;
+		return target != null && target.isAlive() && target.level() == dragon.level() && !Targets.untouchable(target) ? target : null;
+	}
+
+	/** Vanilla's charge aims at a place: the player standing there. */
+	@Nullable
+	private LivingEntity chargeTarget(@Nullable Vec3 at) {
+		return at == null ? null : dragon.level().getNearestPlayer(at.x, at.y, at.z, 8.0, false);
 	}
 
 	/**
@@ -312,7 +441,8 @@ public final class DragonBrain {
 		// the pose the model shows: the animation BLEND_TICKS late, blended out of the last one
 		double shown = clock.shownSeconds(1.0F);
 		TailMotion.sample(clock.anim(), shown, clock.from(), clock.fromSeconds(), clock.blend(1.0F), tailMotion);
-		tailWorld.set(grid(), body, 1.0F, dragon.getX(), dragon.getY(), dragon.getZ(), dragon.tickCount + 1.0);
+		Vec3 at = local();
+		tailWorld.set(localGrid(), body, 1.0F, at.x, at.y, at.z, dragon.tickCount + 1.0);
 		solver.solve(clock.anim(), shown, new PartSolver.Blend(clock.from(), clock.fromShownSeconds(), clock.blend(1.0F), clock.changes()),
 				body, strike, 1.0F, tailMotion, tailWorld, offsets);
 		EnderDragonPart[] parts = dragon.getSubEntities();
@@ -322,7 +452,7 @@ public final class DragonBrain {
 		}
 		if (!dragon.level().isClientSide) {
 			hull.breakSoftBlocks(parts);
-			hull.pushOut(parts, onGround(), Flight.collides(dragon.getPhaseManager().getCurrentPhase()));
+			hull.pushOut(parts, onGround(), Flight.collides(dragon.getPhaseManager().getCurrentPhase()), face());
 		}
 		// the hitboxes are soft: what stands in them is pushed out, as mobs push each other (each side what it moves)
 		PartCollision.push(dragon, parts);
@@ -352,7 +482,9 @@ public final class DragonBrain {
 				wantPitch = lookWant[1];
 			}
 		}
-		look.update(dragon.tickCount, wantYaw, wantPitch, free ? (kind == Kind.AIR && !aiming ? 0.7 : 1.0) : 0.0, !tailStrike);
+		// on a wall the head turns alone (its neck is twisted to hold it upright)
+		look.upright(face().wall());
+		look.update(dragon.tickCount, wantYaw, wantPitch, free ? (kind == Kind.AIR && !aiming && !lookingHard() ? 0.7 : 1.0) : 0.0, !tailStrike);
 		for (int i = 0; i < PoseTrack.NECK_PIVOTS - 1; i++) {
 			solver.lookX[i] = look.neckPitch(i);
 			solver.lookY[i] = look.neckYaw(i);
@@ -380,16 +512,51 @@ public final class DragonBrain {
 			fireballs.clientTick();
 			return;
 		}
+		maxHealth();
 		// a dying dragon lets go of what it holds
 		if ((dragon.isDeadOrDying() || dying()) && prey.hold() != Grip.Hold.NONE) prey.release(null);
 		prey.tick();
 		fireballs.tick();
 		flames.tick();
 		if (dragon.isNoAi() || dragon.isDeadOrDying() || dying()) return;
+		letGoOfWall();
+		// whom it attacks, or closes in on to attack, it keeps its eyes on (a charging fireball turns the head itself)
+		LivingEntity attacked = fireballs.charging() ? null : attackTarget();
+		if (attacked != null) {
+			setLook(attacked, true);
+		} else if (lookingHard() && !fireballs.charging()) {
+			// the attack is over: our phases keep watching it as they please, vanilla's let it go
+			setLook(dragon.getPhaseManager().getCurrentPhase() instanceof DragonswornPhase && lookTarget() instanceof LivingEntity living ? living : null, false);
+		}
 		updateContext();
 		roarTick();
+		if (dragon.tickCount % CROWD_TICKS == 0) countCrowd();
 		if (context == Context.WILD) wild.tick();
 		else if (context == Context.ARENA) arena.tick();
+	}
+
+	/**
+	 * Max health from {@code dragon.max_health}: a new dragon (vanilla's 200 of 200) starts full, one already
+	 * hurt, or a config reload, keeps the share of health it had.
+	 */
+	private void maxHealth() {
+		AttributeInstance max = dragon.getAttribute(Attributes.MAX_HEALTH);
+		double health = DragonConfig.MAX_HEALTH.get();
+		if (max == null || max.getBaseValue() == health) return;
+		float share = dragon.getHealth() / dragon.getMaxHealth();
+		max.setBaseValue(health);
+		if (dragon.getHealth() > 0.0F) dragon.setHealth(share * dragon.getMaxHealth());
+	}
+
+	/** The survival players within {@code crowd.range} ({@link Crowd}), and whether one is at its crystals. */
+	private void countCrowd() {
+		double range = DragonConfig.CROWD_RANGE.get();
+		List<double[]> near = new ArrayList<>();
+		for (Player player : dragon.level().players()) {
+			if (!player.isAlive() || Targets.untouchable(player) || player.distanceToSqr(dragon) > range * range) continue;
+			near.add(new double[]{player.getX(), player.getY(), player.getZ()});
+		}
+		crowd.update(near, guardTarget() != null);
 	}
 
 	/**
@@ -406,6 +573,14 @@ public final class DragonBrain {
 	/** A roar now, in flight (the jaw opens with it on every client). */
 	public void roar() {
 		dragon.getEntityData().set(DragonData.VOICE, dragon.getEntityData().get(DragonData.VOICE) + 1);
+	}
+
+	/** Only the phases that stand on a wall hold on to it: any other (one forced on it) lets go. */
+	private void letGoOfWall() {
+		if (!face().wall() && !leaning().wall()) return;
+		EnderDragonPhase<?> phase = dragon.getPhaseManager().getCurrentPhase().getPhase();
+		if (phase != DragonPhases.GROUND_FIGHT && phase != DragonPhases.BREATH_STREAM && phase != DragonPhases.HOP
+				&& phase != DragonPhases.LIFTOFF) setFace(Surface.Face.FLOOR);
 	}
 
 	private void updateContext() {
@@ -464,6 +639,7 @@ public final class DragonBrain {
 	public void startDeathFlight() {
 		clearAction();
 		setFoothold(Foothold.STAND);
+		setFace(Surface.Face.FLOOR);
 		if (prey.hold() != Grip.Hold.NONE) prey.release(null);
 		setLookTarget(null);
 		roar();
@@ -494,6 +670,7 @@ public final class DragonBrain {
 	public void save(CompoundTag tag) {
 		CompoundTag own = new CompoundTag();
 		own.putString("Context", context.name());
+		own.putString("Surface", face().name());
 		tag.put("Dragonsworn", own);
 	}
 
@@ -506,5 +683,14 @@ public final class DragonBrain {
 			context = Context.UNKNOWN;
 		}
 		if (context == Context.ARENA) context = Context.UNKNOWN;   // re-detected from the End fight
+		loadFace(own.getString("Surface"));
+	}
+
+	/** Back on the face it was saved on, already turned onto it. */
+	private void loadFace(String name) {
+		Surface.Face face = Surface.Face.FLOOR;
+		for (Surface.Face f : Surface.Face.values()) if (f.name().equals(name)) face = f;
+		dragon.getEntityData().set(DragonData.SURFACE, face.ordinal());
+		body.surface.reset(face);
 	}
 }

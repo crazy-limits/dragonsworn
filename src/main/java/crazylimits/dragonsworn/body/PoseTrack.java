@@ -16,7 +16,9 @@ import java.util.Map;
  * holds {@link #POINTS} points: first the {@link #PARTS} part anchors, then the {@link #NECK_PIVOTS}
  * neck pivots (neck_1..neck_4, head_group), then the {@link #TAIL_PIVOTS} tail pivots (tail_1..tail_9),
  * then from {@link #FRAME_START}: the left shoulder's pivot and a point one block along its X axis, the
- * same for the right shoulder, the body's pivot, a point one block ahead of it and one block above it.
+ * same for the right shoulder, the body's pivot, a point one block ahead of it and one block above it,
+ * then at {@link #NECK_ROLL} two points that are not places: the keyed roll of neck_1..neck_4 and head_group
+ * ({@link #neckRoll}; the wall poses twist the upper neck so the head is upright).
  * The tail is keyed straight: its points are where the body carries a straight tail ({@link TailChain}
  * bends it).
  */
@@ -27,6 +29,8 @@ public final class PoseTrack {
 	public static final int FRAME_START = TAIL_START + TAIL_PIVOTS;
 	public static final int LEFT_SHOULDER = FRAME_START, RIGHT_SHOULDER = FRAME_START + 2, BODY_AXIS = FRAME_START + 4;
 	public static final int POINTS = FRAME_START + PoseData.FRAME_POINTS;
+	/** The two points holding the neck's keyed roll, after the frame points. */
+	public static final int NECK_ROLL = BODY_AXIS + 3;
 	/** Part chains: not on a chain, on the neck (head included), on the tail, on a wing. */
 	public static final int CHAIN_NONE = 0, CHAIN_NECK = 1, CHAIN_TAIL = 2, CHAIN_LEFT_WING = 3, CHAIN_RIGHT_WING = 4;
 
@@ -48,6 +52,11 @@ public final class PoseTrack {
 	}
 
 	private PoseTrack() {}
+
+	/** The keyed roll (degrees, editor Z) of neck joint {@code joint} (0..3 neck_1..neck_4, 4 head_group) in a frame. */
+	public static double neckRoll(double[] frame, int joint) {
+		return frame[(NECK_ROLL + joint / 3) * 3 + joint % 3] * 16.0;
+	}
 
 	public static String partName(int part) {
 		return PoseData.PART_NAMES[part];

@@ -13,7 +13,7 @@ The dragon's model and texture derive from the "Ender Dragon Reborn" resource pa
 - `tools/source/dragon.png`, `tools/source/dragon_eyes.png`, `tools/source/dragon_raw.geo.json`
 - everything generated from them by `tools/build_assets.py`: the GeckoLib model and animations
   (`src/gecko4/resources/**`, `src/gecko5/resources/**`), the entity texture, glowmask and heat frames
-  (`src/mc/shared/resources/assets/dragonsworn/textures/entity/**`), and the hitbox data
+  (`src/mc/shared/resources/assets/dragonsworn/textures/entity/**`, except `crystal_ward.png`), and the hitbox data
   `src/main/java/crazylimits/dragonsworn/body/PoseData.java`
 
 ## Derived from Minecraft (Mojang): Minecraft EULA
@@ -23,6 +23,10 @@ The dragon's model and texture derive from the "Ender Dragon Reborn" resource pa
 - the dragon fire textures (`textures/block/dragon_fire_*`), Minecraft's soul fire recoloured by `tools/dragon_fire.py`
 - the End crystal beam texture's runes, drawn from Minecraft's Standard Galactic Alphabet glyphs by
   `tools/crystal_beam.py`
+- the End crystals' rune ward texture (`textures/entity/crystal_ward.png`), its runes drawn from the same glyphs by
+  `tools/crystal_ward.py`
+- the End crystal's entity and item textures (`assets/minecraft/textures/entity/end_crystal/end_crystal.png`,
+  `assets/minecraft/textures/item/end_crystal.png`), Minecraft's own with amethyst block texels for glass, by `tools/end_crystal.py`
 
 The tools that make these files are LGPL. The game assets they read are Mojang's, so the tools never ship those
 assets: they read them from the Minecraft jar in your Gradle cache.

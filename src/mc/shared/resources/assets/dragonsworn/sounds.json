@@ -136,5 +136,23 @@
 				"type": "event"
 			}
 		]
+	},
+	"entity.ender_dragon.buffet": {
+		"subtitle": "subtitles.dragonsworn.entity.ender_dragon.buffet",
+		"sounds": [
+			{
+				"name": "minecraft:entity.ender_dragon.flap",
+				"type": "event"
+			}
+		]
+	},
+	"entity.end_crystal.ward": {
+		"subtitle": "subtitles.dragonsworn.entity.end_crystal.ward",
+		"sounds": [
+			{
+				"name": "minecraft:entity.breeze.deflect",
+				"type": "event"
+			}
+		]
 	}
 }

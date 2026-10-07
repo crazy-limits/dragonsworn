@@ -15,8 +15,9 @@ import net.minecraft.world.phys.Vec3;
  * target first, and only once it points there ({@link BreathAttack#FIREBALL_CONE}) does the dragon heat up,
  * the stream breath's glow played {@link BreathAttack#FIREBALL_SPEEDUP} times faster; the fireball flies from
  * the mouth when the glow reaches the jaw. A head that does not come round within
- * {@link BreathAttack#FIREBALL_AIM_TICKS} drops the shot before any glow; once glowing it always fires.
- * Synced as {@link DragonData#FIREBALL}: a count of charges x {@link #STAGES} + the stage.
+ * {@link BreathAttack#FIREBALL_AIM_TICKS} drops the shot before any glow; once glowing it always fires, at the
+ * target (led by its motion) unless the target got behind the head ({@link BreathAttack#FIREBALL_FIRE_CONE}).
+ * The attack that charged it holds its course until the shot ({@link #charging}). Synced as {@link DragonData#FIREBALL}: a count of charges x {@link #STAGES} + the stage.
  */
 public final class Fireballs {
 	/** How far in front of the head's center the fireball leaves the mouth (blocks). */
@@ -28,6 +29,8 @@ public final class Fireballs {
 	/** The fireball charging (server): what it is for and ticks into its stage; null for none. */
 	private LivingEntity target;
 	private int ticks;
+	/** Where the target stood as the glow started (server): its motion over the windup leads the shot. */
+	private Vec3 heatFrom;
 	/** What the head watched before the fireball turned it to its target (server; -1: nothing). */
 	private int lookBefore = -1;
 	/**
@@ -43,13 +46,19 @@ public final class Fireballs {
 		this.brain = brain;
 	}
 
+	/** Server: a fireball is charging (the head turning, or heating up): the attack holds its course until it flies. */
+	public boolean charging() {
+		return target != null;
+	}
+
 	/** Server: starts charging a fireball at {@code target}: the head turns to it first. Ignored while one is charging. */
 	public void charge(LivingEntity target) {
 		if (this.target != null) return;
 		EnderDragon dragon = brain.dragon();
 		this.target = target;
 		ticks = 0;
-		lookBefore = dragon.getEntityData().get(DragonData.LOOK);
+		Entity before = brain.lookTarget();
+		lookBefore = before == null ? -1 : before.getId();
 		sync(dragon.getEntityData().get(DragonData.FIREBALL) / STAGES + 1, TURNING);
 	}
 
@@ -95,6 +104,7 @@ public final class Fireballs {
 			if (headPointsAt(target)) {
 				sync(count, HEATING);
 				ticks = 0;
+				heatFrom = target.position();
 			} else if (ticks >= BreathAttack.FIREBALL_AIM_TICKS) {
 				sync(count, NONE);
 				end();
@@ -105,17 +115,27 @@ public final class Fireballs {
 		LivingEntity at = target;
 		end();
 		Vec3 head = brain.partCenter(Parts.HEAD);
-		// at the target; if it slipped out of the head's line (or died) while the dragon heated up, down the head's line
-		// (it never glows for nothing, nor shoots backwards over its own body)
-		Vec3 dir = !gone && headPointsAt(at)
-				? new Vec3(at.getX() - head.x, at.getY(0.5) - head.y, at.getZ() - head.z).normalize()
-				: head.subtract(brain.partCenter(Parts.NECK_UPPER)).normalize();
+		Vec3 line = head.subtract(brain.partCenter(Parts.NECK_UPPER)).normalize();
+		// at where the target will be (it never glows for nothing); down the head's line only when the target died or
+		// got behind the head, so it never shoots backwards over its own body
+		Vec3 aim = gone ? null : lead(at, head, at.position().subtract(heatFrom).multiply(1, 0, 1).scale(1.0 / ticks));
+		Vec3 dir = aim != null && aim.dot(line) > Math.cos(Math.toRadians(BreathAttack.FIREBALL_FIRE_CONE)) ? aim : line;
 		// out of the mouth, in front of the head
 		Vec3 from = head.add(dir.scale(MUZZLE));
 		if (!dragon.isSilent()) dragon.level().levelEvent(null, LevelEvent.SOUND_DRAGON_FIREBALL, dragon.blockPosition(), 0);
 		DragonFireball fireball = new DragonFireball(dragon.level(), dragon, dir);
 		fireball.moveTo(from.x, from.y, from.z, 0.0F, 0.0F);
 		dragon.level().addFreshEntity(fireball);
+	}
+
+	/**
+	 * The way from {@code head} to where {@code target}'s middle will be when the fireball gets there (unit):
+	 * {@code motion} (blocks per tick across the ground; up and down is mostly a jump's) for the ticks it flies.
+	 */
+	private static Vec3 lead(LivingEntity target, Vec3 head, Vec3 motion) {
+		Vec3 to = new Vec3(target.getX() - head.x, target.getY(0.5) - head.y, target.getZ() - head.z);
+		double flight = Math.min(to.length() / BreathAttack.FIREBALL_SPEED, BreathAttack.FIREBALL_LEAD_TICKS);
+		return to.add(motion.scale(flight)).normalize();
 	}
 
 	private void end() {

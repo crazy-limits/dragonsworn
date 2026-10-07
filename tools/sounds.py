@@ -153,6 +153,11 @@ ALIASES = {
 	'fling': ('entity.player.attack.sweep', 'Ender Dragon flings its prey'),
 	'breath': ('entity.ender_dragon.shoot', 'Ender Dragon breathes fire'),
 	'flames': ('entity.blaze.shoot', 'Void flames roar'),
+	'buffet': ('entity.ender_dragon.flap', 'Ender Dragon buffets with its wings'),
+}
+# events of the End crystals' (entity.end_crystal.<name>), each pointing at vanilla's: (vanilla event, subtitle)
+CRYSTAL_ALIASES = {
+	'ward': ('entity.breeze.deflect', 'Crystal ward deflects'),
 }
 
 
@@ -172,6 +177,9 @@ def build():
 	for event, (vanilla, _) in ALIASES.items():
 		sounds[f'entity.ender_dragon.{event}'] = {'subtitle': f'subtitles.dragonsworn.entity.ender_dragon.{event}',
 			'sounds': [{'name': f'minecraft:{vanilla}', 'type': 'event'}]}
+	for event, (vanilla, _) in CRYSTAL_ALIASES.items():
+		sounds[f'entity.end_crystal.{event}'] = {'subtitle': f'subtitles.dragonsworn.entity.end_crystal.{event}',
+			'sounds': [{'name': f'minecraft:{vanilla}', 'type': 'event'}]}
 	with open(os.path.join(ASSETS, 'sounds.json'), 'w') as f:
 		json.dump(sounds, f, indent='\t')
 		f.write('\n')
@@ -181,6 +189,8 @@ def build():
 	subtitles.update({event: subtitle for event, (_, subtitle) in ALIASES.items()})
 	for event, subtitle in subtitles.items():
 		entries[f'subtitles.dragonsworn.entity.ender_dragon.{event}'] = subtitle
+	for event, (_, subtitle) in CRYSTAL_ALIASES.items():
+		entries[f'subtitles.dragonsworn.entity.end_crystal.{event}'] = subtitle
 	os.makedirs(os.path.dirname(lang), exist_ok=True)
 	with open(lang, 'w') as f:
 		json.dump(entries, f, indent='\t')

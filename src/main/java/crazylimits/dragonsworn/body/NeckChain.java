@@ -15,16 +15,16 @@ public final class NeckChain {
 
 	/**
 	 * The neck's bones at rest (blocks, editor space, x = 0): the pivots of neck_1..neck_4 and head_group,
-	 * then the head part's anchor. No neck bone has a rest rotation, and no animation keys their roll or
-	 * position (only the death rolls the head), so each bone's keyed pitch and yaw follow from where the
-	 * frame puts its pivot and the next one.
+	 * then the head part's anchor. No neck bone has a rest rotation or a keyed position; their keyed roll is
+	 * in the frame ({@link PoseTrack#neckRoll}: the wall poses twist the upper neck), so each bone's keyed pitch
+	 * and yaw follow from where the frame puts its pivot and the next one, under that roll.
 	 */
 	private static final double[][] NECK_REST = {{0, 53.125 / 16, -29 / 16.0}, {0, 53.125 / 16, -44 / 16.0},
 			{0, 55.125 / 16, -58.5 / 16}, {0, 55.125 / 16, -72 / 16.0}, PartSolver.HEAD_PIVOT, PartSolver.HEAD_ANCHOR};
 
 	/**
 	 * The neck bent exactly as GeckoLib draws it: bone {@code i} (neck_1..neck_4, then head_group) is turned
-	 * by Rz Ry Rx of its keyed angles, and the renderer adds {@code bendY[i]} to its Y and {@code bendX[i]}
+	 * by Rz Ry Rx of its keyed angles (Z the frame's roll), and the renderer adds {@code bendY[i]} to its Y and {@code bendX[i]}
 	 * to its X, so the yaw turns about the bone's axis as tilted by its parents (and the yaw part of its
 	 * own key), the pitch about its own X. The keyed angles are recovered from the frame (pivot to next
 	 * pivot, through the body's frame), so with no bends the frame is left exactly as it was.
@@ -58,7 +58,7 @@ public final class NeckChain {
 		Neck neck = new Neck(points, bendX, bendY, joint);
 		double[] rest = NECK_REST[joint], next = NECK_REST[joint + 1];
 		double dy = next[1] - rest[1], dz = next[2] - rest[2];
-		double[] v = Mat3.mulT(neck.bent, direction);
+		double[] v = Mat3.mulT(Mat3.z(neck.roll(joint)), Mat3.mulT(neck.bent, direction));
 		double scale = Math.hypot(dy, dz) / Math.max(1e-9, Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]));
 		double[] want = keyedAngles(dy, dz, v[0] * scale, v[1] * scale, v[2] * scale);
 		double[] keyed = neck.keyedAngles(joint);
@@ -96,9 +96,9 @@ public final class NeckChain {
 			moved[0] = pivot[0].clone();
 			for (int k = 0; k < joints; k++) {
 				double[] angles = keyedAngles(k);
-				double bx = k < bendX.length ? bendX[k] : 0.0, by = k < bendY.length ? bendY[k] : 0.0;
-				keyed = Mat3.mul(keyed, Mat3.yx(angles[1], angles[0]));
-				bent = Mat3.mul(bent, Mat3.yx(angles[1] + Math.toRadians(by), angles[0] + Math.toRadians(bx)));
+				double bx = k < bendX.length ? bendX[k] : 0.0, by = k < bendY.length ? bendY[k] : 0.0, roll = roll(k);
+				keyed = Mat3.mul(keyed, Mat3.zyx(roll, angles[1], angles[0]));
+				bent = Mat3.mul(bent, Mat3.zyx(roll, angles[1] + Math.toRadians(by), angles[0] + Math.toRadians(bx)));
 				// what this bone carries: from where the frame has it to where the bend puts it
 				turn[k] = Mat3.mul(bent, Mat3.transpose(keyed));
 				double[] d = Mat3.mulV(turn[k], segment(k));
@@ -106,11 +106,16 @@ public final class NeckChain {
 			}
 		}
 
-		/** Joint {@code k}'s keyed angles (radians: X, Y), in its parent's keyed frame (joints before it run). */
+		/** Joint {@code k}'s keyed roll (radians), from the frame. */
+		double roll(int k) {
+			return Math.toRadians(PoseTrack.neckRoll(frame, k));
+		}
+
+		/** Joint {@code k}'s keyed angles (radians: X, Y), in its parent's keyed frame (joints before it run), under its roll. */
 		double[] keyedAngles(int k) {
 			double[] rest = NECK_REST[k], next = NECK_REST[k + 1];
 			double dy = next[1] - rest[1], dz = next[2] - rest[2];
-			double[] v = Mat3.mulT(keyed, segment(k));
+			double[] v = Mat3.mulT(Mat3.z(roll(k)), Mat3.mulT(keyed, segment(k)));
 			double scale = Math.hypot(dy, dz) / Math.max(1e-9, Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]));
 			return NeckChain.keyedAngles(dy, dz, v[0] * scale, v[1] * scale, v[2] * scale);
 		}

@@ -33,19 +33,22 @@ public final class AirTactics {
 
 	/** Every attack from the air, each switched on or off by the server ({@code [attacks]}). */
 	public enum Attack {
-		SNATCH(DragonConfig.SNATCH),
-		BREATH_PASS(DragonConfig.BREATH_PASS),
-		FIREBALL_PASS(DragonConfig.FIREBALL_PASS),
-		CHARGE(DragonConfig.CHARGE),
-		BARRAGE(DragonConfig.BARRAGE),
-		FLYBY_BITE(DragonConfig.FLYBY_BITE),
-		HOVER_BITE(DragonConfig.HOVER_BITE),
-		HOVER_BREATH(DragonConfig.HOVER_BREATH);
+		SNATCH(DragonConfig.SNATCH, false),
+		BREATH_PASS(DragonConfig.BREATH_PASS, true),
+		FIREBALL_PASS(DragonConfig.FIREBALL_PASS, true),
+		CHARGE(DragonConfig.CHARGE, false),
+		BARRAGE(DragonConfig.BARRAGE, true),
+		FLYBY_BITE(DragonConfig.FLYBY_BITE, false),
+		HOVER_BITE(DragonConfig.HOVER_BITE, false),
+		HOVER_BREATH(DragonConfig.HOVER_BREATH, true);
 
 		private final DragonConfig.Flag allowed;
+		/** It hits everything round where it lands (flame, a fireball's cloud), not just the one target. */
+		public final boolean area;
 
-		Attack(DragonConfig.Flag allowed) {
+		Attack(DragonConfig.Flag allowed, boolean area) {
 			this.allowed = allowed;
+			this.area = area;
 		}
 
 		/** Whether the server lets the dragon use it at all. */
@@ -89,23 +92,30 @@ public final class AirTactics {
 		return airborne ? Reach.AIR : canLand ? Reach.GROUND : Reach.WALL;
 	}
 
+	/** As below, on a target alone. */
+	public static List<Attack> choices(Reach reach, double roll) {
+		return choices(reach, roll, 1.0);
+	}
+
 	/**
 	 * The attacks to try on a target at {@code reach}, first choice first: the one {@code roll} (0..1)
 	 * picks by the odds, then the rest of the repertoire after it, ending with one that always starts (the
 	 * barrage, unless the server disabled it). Empty when every attack of the repertoire is disabled.
+	 * {@code areaBias} ({@link Crowd#areaBias}) multiplies the odds of the {@link Attack#area} attacks:
+	 * players bunched together draw the breath and the fireballs.
 	 */
-	public static List<Attack> choices(Reach reach, double roll) {
+	public static List<Attack> choices(Reach reach, double roll, double areaBias) {
 		// a disabled attack is out altogether, not even a fallback
 		List<Option> options = new ArrayList<>();
 		for (Option o : REPERTOIRES.get(reach)) if (o.attack.enabled()) options.add(o);
 		if (options.isEmpty()) return List.of();
 		double total = 0.0;
-		for (Option o : options) total += o.weight.get();
+		for (Option o : options) total += weight(o, areaBias);
 		int pick = options.size() - 1;
 		if (total > 0.0) {
 			double sum = 0.0;
 			for (int i = 0; i < options.size(); i++) {
-				sum += options.get(i).weight.get() / total;
+				sum += weight(options.get(i), areaBias) / total;
 				if (roll < sum) {
 					pick = i;
 					break;
@@ -115,6 +125,10 @@ public final class AirTactics {
 		List<Attack> attacks = new ArrayList<>();
 		for (Option o : options.subList(pick, options.size())) attacks.add(o.attack);
 		return List.copyOf(attacks);
+	}
+
+	private static double weight(Option o, double areaBias) {
+		return o.attack.area ? o.weight.get() * areaBias : o.weight.get();
 	}
 
 	/** The weight of {@code attack} being the first choice at {@code reach} (0 where it is not in the repertoire). */

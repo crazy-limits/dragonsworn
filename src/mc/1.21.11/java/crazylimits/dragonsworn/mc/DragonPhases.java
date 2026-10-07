@@ -6,10 +6,12 @@ import crazylimits.dragonsworn.mc.phase.BreathPassPhase;
 import crazylimits.dragonsworn.mc.phase.FlybyBitePhase;
 import crazylimits.dragonsworn.mc.phase.GroundApproachPhase;
 import crazylimits.dragonsworn.mc.phase.GroundFightPhase;
+import crazylimits.dragonsworn.mc.phase.HopPhase;
 import crazylimits.dragonsworn.mc.phase.HoverAttackPhase;
 import crazylimits.dragonsworn.mc.phase.LiftoffPhase;
 import crazylimits.dragonsworn.mc.phase.RoamPhase;
 import crazylimits.dragonsworn.mc.phase.SnatchPhase;
+import crazylimits.dragonsworn.mc.phase.WallApproachPhase;
 import net.minecraft.world.entity.boss.enderdragon.phases.DragonPhaseInstance;
 import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
 
@@ -40,6 +42,10 @@ public final class DragonPhases {
 	public static EnderDragonPhase<FlybyBitePhase> FLYBY_BITE;
 	/** Stands in the air beside prey it cannot land by, biting it or pouring the breath at it. */
 	public static EnderDragonPhase<HoverAttackPhase> HOVER_ATTACK;
+	/** Hops onto another surface: onto a wall, over its top, round a corner, down off it. */
+	public static EnderDragonPhase<HopPhase> HOP;
+	/** Flies in to a wall beside its prey, hovers in front of it and hops on. */
+	public static EnderDragonPhase<WallApproachPhase> WALL_APPROACH;
 
 	private DragonPhases() {}
 
@@ -55,6 +61,8 @@ public final class DragonPhases {
 		BREATH_PASS = create(BreathPassPhase.class, "DragonswornBreathPass");
 		FLYBY_BITE = create(FlybyBitePhase.class, "DragonswornFlybyBite");
 		HOVER_ATTACK = create(HoverAttackPhase.class, "DragonswornHoverAttack");
+		HOP = create(HopPhase.class, "DragonswornHop");
+		WALL_APPROACH = create(WallApproachPhase.class, "DragonswornWallApproach");
 	}
 
 	private static <T extends DragonPhaseInstance> EnderDragonPhase<T> create(Class<T> phase, String name) {

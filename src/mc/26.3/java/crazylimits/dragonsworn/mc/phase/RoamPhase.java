@@ -29,9 +29,16 @@ import java.util.random.RandomGenerator;
  *   <li><b>pass</b>: a low run at the target, one fireball when lined up, then on past it;</li>
  *   <li><b>barrage</b>: hovers off to one side of the target, facing it, and fires a few fireballs ({@code [fireballs]}).</li>
  * </ul>
+ * Each holds its course while a fireball heats up, and turns away only once it has flown. A target that
+ * hides from it ({@link #BLIND_TICKS}) or that it overflies without a shot is left.
  */
 public class RoamPhase extends AbstractDragonPhaseInstance implements DragonswornPhase {
 	private enum Hunt { NONE, PASS, BARRAGE }
+
+	/** Ticks the target may stay out of sight of a barrage's standoff before it gives up. */
+	private static final int BLIND_TICKS = 60;
+	/** A pass that comes this close across the ground (blocks) without a shot has missed its chance. */
+	private static final double OVERFLOWN = 8.0;
 
 	@Nullable
 	private Vec3 waypoint;
@@ -39,7 +46,9 @@ public class RoamPhase extends AbstractDragonPhaseInstance implements Dragonswor
 	private Hunt hunt = Hunt.NONE;
 	@Nullable
 	private LivingEntity target;
-	private int huntTicks, charge, shots;
+	private int huntTicks, charge, shots, blindTicks;
+	/** The pass's fireball is charging: it flies on at the target until it is out. */
+	private boolean fired;
 	@Nullable
 	private Vec3 standoff;
 
@@ -84,15 +93,22 @@ public class RoamPhase extends AbstractDragonPhaseInstance implements Dragonswor
 		this.target = target;
 		hunt = Hunt.PASS;
 		huntTicks = charge = 0;
+		fired = false;
 	}
 
 	public void startBarrage(LivingEntity target) {
 		this.target = target;
 		hunt = Hunt.BARRAGE;
-		huntTicks = shots = 0;
+		huntTicks = shots = blindTicks = 0;
 		// hover 22 blocks from the target, on the side the dragon comes from, 12 up
 		Vec3 away = dragon.position().subtract(target.position()).multiply(1, 0, 1).normalize();
 		standoff = target.position().add(away.scale(22.0)).add(0.0, 12.0, 0.0);
+	}
+
+	@Nullable
+	@Override
+	public LivingEntity attackTarget() {
+		return hunt != Hunt.NONE ? target : null;
 	}
 
 	/** What a hovering dragon keeps its head toward. */
@@ -166,33 +182,60 @@ public class RoamPhase extends AbstractDragonPhaseInstance implements Dragonswor
 		// vanilla strafe's line: lower as it gets closer
 		double up = Math.min(0.4 + distance / 80.0 - 1.0, 10.0) + 6.0;
 		waypoint = new Vec3(target.getX(), target.getY() + up, target.getZ());
+		Vec3 facing = Targets.facing(dragon.getYRot());
+		if (fired) {
+			// on at the target while the fireball heats up; once it is out, on past the target
+			if (!brain().fireballs.charging()) passOn(facing);
+			return;
+		}
+		if (distance < OVERFLOWN) {
+			passOn(facing);
+			return;
+		}
 		if (distance < 64 && dragon.hasLineOfSight(target)) {
 			charge++;
 			Vec3 to = new Vec3(dx, 0, dz).normalize();
-			Vec3 facing = Targets.facing(dragon.getYRot());
 			if (charge >= 5 && facing.dot(to) > Math.cos(Math.toRadians(10))) {
 				fireball();
-				hunt = Hunt.NONE;
-				// carry on past the target, and wander on from there
-				waypoint = dragon.position().add(facing.scale(40.0)).add(0.0, 10.0, 0.0);
-				heading = Math.atan2(facing.z, facing.x);
+				fired = true;
 			}
 		} else if (charge > 0) {
 			charge--;
 		}
 	}
 
+	/** The pass is over: carry on past the target the way it faces, and wander on from there. */
+	private void passOn(Vec3 facing) {
+		hunt = Hunt.NONE;
+		waypoint = dragon.position().add(facing.scale(40.0)).add(0.0, 10.0, 0.0);
+		heading = Math.atan2(facing.z, facing.x);
+	}
+
 	private void barrage() {
 		waypoint = standoff;
-		if (standoff.distanceToSqr(dragon.position()) > 10 * 10 || !dragon.hasLineOfSight(target)) return;
-		if (huntTicks % DragonConfig.BARRAGE_INTERVAL.get() == 0) {
+		// the last shot heats up facing the target: away only once it is out
+		if (shots >= DragonConfig.BARRAGE_SHOTS.get()) {
+			if (!brain().fireballs.charging()) {
+				hunt = Hunt.NONE;
+				waypoint = null;
+			}
+			return;
+		}
+		if (standoff.distanceToSqr(dragon.position()) > 10 * 10) return;
+		// the target hides behind something: no hovering there staring at the cover
+		if (!dragon.hasLineOfSight(target)) {
+			if (++blindTicks > BLIND_TICKS && !brain().fireballs.charging()) {
+				hunt = Hunt.NONE;
+				waypoint = null;
+			}
+			return;
+		}
+		blindTicks = 0;
+		if (huntTicks % DragonConfig.BARRAGE_INTERVAL.get() == 0 && !brain().fireballs.charging()) {
 			Vec3 to = target.position().subtract(dragon.position()).multiply(1, 0, 1).normalize();
 			if (Targets.facing(dragon.getYRot()).dot(to) > Math.cos(Math.toRadians(25))) {
 				fireball();
-				if (++shots >= DragonConfig.BARRAGE_SHOTS.get()) {
-					hunt = Hunt.NONE;
-					waypoint = null;
-				}
+				shots++;
 			}
 		}
 	}

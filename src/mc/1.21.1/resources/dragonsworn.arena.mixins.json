@@ -7,9 +7,12 @@
 	"mixins": [
 		"EndCrystalMixin",
 		"EndPlatformFeatureMixin",
+		"FireworkRocketEntityAccessor",
+		"ProjectileWardMixin",
 		"SpikeFeatureMixin"
 	],
 	"client": [
+		"client.EndCrystalRendererMixin",
 		"client.EnderDragonRendererMixin"
 	]
 }

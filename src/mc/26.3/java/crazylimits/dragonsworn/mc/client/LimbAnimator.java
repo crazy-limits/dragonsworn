@@ -12,6 +12,7 @@ import crazylimits.dragonsworn.body.TailMotion;
 import crazylimits.dragonsworn.limb.Affine;
 import crazylimits.dragonsworn.limb.BodyFrame;
 import crazylimits.dragonsworn.limb.HeadLook;
+import crazylimits.dragonsworn.limb.HeadUpright;
 import crazylimits.dragonsworn.limb.Joint;
 import crazylimits.dragonsworn.limb.LimbIK;
 import crazylimits.dragonsworn.limb.Toes;
@@ -19,9 +20,9 @@ import crazylimits.dragonsworn.limb.TurnSteps;
 import crazylimits.dragonsworn.math.Maths;
 import crazylimits.dragonsworn.mc.DragonBrain;
 import crazylimits.dragonsworn.mc.DragonswornDragon;
+import crazylimits.dragonsworn.nav.Surface;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
-import net.minecraft.world.level.Level;
 
 import org.joml.Vector3f;
 import java.util.Arrays;
@@ -109,7 +110,8 @@ public final class LimbAnimator {
 	/** Animations that stand still on their feet: a turn on the spot steps round in them. */
 	private static boolean planted(DragonAnim anim) {
 		return anim == DragonAnim.IDLE || anim == DragonAnim.ATTACK || anim == DragonAnim.ROAR || anim == DragonAnim.BREATH
-				|| anim == DragonAnim.UPRIGHT || anim == DragonAnim.UPRIGHT_BITE || anim == DragonAnim.CLING || anim == DragonAnim.CLING_BITE;
+				|| anim == DragonAnim.UPRIGHT || anim == DragonAnim.UPRIGHT_BITE || anim == DragonAnim.CLING || anim == DragonAnim.CLING_BITE
+				|| anim == DragonAnim.WALL || anim == DragonAnim.WALL_BITE || anim == DragonAnim.WALL_ROAR || anim == DragonAnim.WALL_BREATH;
 	}
 
 	private static final Map<EnderDragon, State> STATES = new WeakHashMap<>();
@@ -134,33 +136,72 @@ public final class LimbAnimator {
 		if (!standing && state.footing < 0.01) state.footing = 0.0;
 
 		BodyFrame frame = frame(dragon, partialTick);
+		// the feet and toes work in the frame of the surface it stands on: on a wall the wall is the ground
+		BodyFrame local = surfaceFrame(dragon, partialTick);
+		Footing footing = footing(dragon, partialTick);
 
 		look(model, dragon, brain, state, frame, partialTick);
+		upright(model, brain, frame, partialTick);
 		TalonPose.apply(model, brain, state, frame, partialTick, dt);
 		if (state.footing <= 0.0) {
 			Arrays.fill(state.shift, 0.0);
 		} else {
 			boolean turning = standing && kind != Kind.AIR && planted(brain.clock.anim()) && brain.prey.hold() == Grip.Hold.NONE;
-			feet(model, dragon, state, frame, dt, turning);
+			feet(model, dragon, state, local, footing, dt, turning);
 		}
-		ToePose.apply(model, dragon, brain, state, frame, partialTick, dt);
+		ToePose.apply(model, dragon, brain, state, local, footing, partialTick, dt);
+	}
+
+	/**
+	 * On a wall the head's crown is up in the world however it is aimed ({@link HeadUpright}): the head's
+	 * last turn, after the strike's aim and the look.
+	 */
+	private static void upright(GeoBones.Model model, DragonBrain brain, BodyFrame frame, float partialTick) {
+		double wall = brain.body.surface.wallness(partialTick);
+		if (wall <= 0.0) return;
+		GeoBones.Bone head = GeoBones.bone(model, "head_group");
+		if (head == null || head.getParent() == null) return;
+		double[] at = frame.toWorld(new double[3], new double[3]);
+		double[] base = frame.toModel(at, new double[3]);
+		double[] above = frame.toModel(new double[]{at[0], at[1] + 1.0, at[2]}, new double[3]);
+		double[] up = {above[0] - base[0], above[1] - base[1], above[2] - base[2]};
+		Joint joint = GeoBones.joint(head);
+		double[] rot = HeadUpright.turn(GeoBones.matrix(head.getParent()), joint.rot, up, wall);
+		System.arraycopy(rot, 0, joint.rot, 0, 3);
+		GeoBones.setRotation(head, joint);
 	}
 
 	/** Where the model is drawn this frame: as the renderer places it ({@code DragonRenderer#applyRotations}). */
 	public static BodyFrame frame(EnderDragon dragon, float partialTick) {
 		DragonBody body = DragonswornDragon.brain(dragon).body;
 		return new BodyFrame().set(Mth.lerp(partialTick, dragon.xo, dragon.getX()),
-				Mth.lerp(partialTick, dragon.yo, dragon.getY()) + body.lift(partialTick), Mth.lerp(partialTick, dragon.zo, dragon.getZ()),
-				body.yaw(partialTick), body.pitch(partialTick), body.roll(partialTick));
+				Mth.lerp(partialTick, dragon.yo, dragon.getY()), Mth.lerp(partialTick, dragon.zo, dragon.getZ()),
+				body.yaw(partialTick), body.pitch(partialTick), body.roll(partialTick)).surface(body.surface.rotation(partialTick), body.lift(partialTick));
+	}
+
+	/**
+	 * The model as drawn, in the frame of the surface it stands on ({@code nav/Surface}: on a wall its face's,
+	 * where the wall is the ground; the world on the ground): what the feet stand in ({@link Footing}).
+	 */
+	static BodyFrame surfaceFrame(EnderDragon dragon, float partialTick) {
+		DragonBody body = DragonswornDragon.brain(dragon).body;
+		double[] at = Surface.applyInverse(body.surface.rotation(partialTick), new double[]{Mth.lerp(partialTick, dragon.xo, dragon.getX()),
+				Mth.lerp(partialTick, dragon.yo, dragon.getY()), Mth.lerp(partialTick, dragon.zo, dragon.getZ())}, new double[3]);
+		return new BodyFrame().set(at[0], at[1] + body.lift(partialTick), at[2], body.yaw(partialTick), body.pitch(partialTick), body.roll(partialTick));
+	}
+
+	/** What the feet stand on, in {@link #surfaceFrame}'s frame. */
+	static Footing footing(EnderDragon dragon, float partialTick) {
+		DragonBrain brain = DragonswornDragon.brain(dragon);
+		return new Footing(dragon.level(), brain.face(), brain.body.surface.rotation(partialTick));
 	}
 
 	// ---------------------------------------------------------------- the feet
 
-	private static void feet(GeoBones.Model model, EnderDragon dragon, State state, BodyFrame frame, double dt, boolean turning) {
+	private static void feet(GeoBones.Model model, EnderDragon dragon, State state, BodyFrame frame, Footing footing, double dt, boolean turning) {
 		GeoBones.Bone bodyBone = GeoBones.bone(model, "body");
 		if (bodyBone == null) return;
 		double[] bodyM = GeoBones.matrix(bodyBone);
-		Level level = dragon.level();
 		// where the animation puts each foot: the hind ankles, the wrist claws
 		GeoBones.Bone[][] legBones = new GeoBones.Bone[2][3];
 		double[][] points = new double[4][];
@@ -187,7 +228,7 @@ public final class LimbAnimator {
 		double[] middle = frame.toWorld(new double[]{0.0, 0.0, 0.0}, new double[3]);
 		state.steps.update(dt, places, middle[0], middle[2], turning, foot -> DragonAudio.play(dragon, foot < 2 ? DragonVoice.Cue.STEP_HIND : DragonVoice.Cue.STEP_FRONT));
 
-		GroundClearance ground = new GroundClearance(level, frame);
+		GroundClearance ground = new GroundClearance(footing, frame);
 		for (int s = 0; s < 2; s++) {
 			// hind leg: the ankle (the foot's pivot) is carried by the ground's difference under it
 			GeoBones.Bone[] bones = legBones[s];
@@ -196,7 +237,7 @@ public final class LimbAnimator {
 			double[] ankle = points[s];
 			double held = held(ankle[1] - 3.0);
 			double[] moved = stepped(frame, state, s, ankle, held);
-			double[] target = shifted(level, frame, state, s, moved, ankle[1] - 3.0, ground.of(bones[2], shins[s]), dt);
+			double[] target = shifted(footing, frame, state, s, moved, ankle[1] - 3.0, ground.of(bones[2], shins[s]), dt);
 			target = lifted(state, s, moved, target, held);
 			if (target != null && moved != ankle) {
 				// carried round in a turn: where it goes may be higher ground than the animation's place,
@@ -208,7 +249,7 @@ public final class LimbAnimator {
 					double left = LimbIK.solveLegReach(bodyM, leg[0], leg[1], leg[2], target);
 					if (pass == 0 && left > STRAIN && !state.steps.stepping(s)) state.steps.strain(s);
 					for (int k = 0; k < 3; k++) GeoBones.setRotation(bones[k], leg[k]);
-					double inside = new GroundClearance(level, frame).of(bones[2], Affine.mul(Affine.mul(bodyM, leg[0].local()), leg[1].local())) * held * state.footing;
+					double inside = new GroundClearance(footing, frame).of(bones[2], Affine.mul(Affine.mul(bodyM, leg[0].local()), leg[1].local())) * held * state.footing;
 					if (!(inside >= 0.01)) break; // NaN too: -Infinity (no ground near) times a lifted foot's 0
 					target[1] += inside * 16.0;
 				}
@@ -231,7 +272,7 @@ public final class LimbAnimator {
 			double[] apexMoved = stepped(frame, state, 2 + s, apex, apexHeld);
 			boolean handMoved = apexMoved != apex;
 			double[] clawMoved = handMoved ? new double[]{clawPoint[0] + apexMoved[0] - apex[0], clawPoint[1] + apexMoved[1] - apex[1], clawPoint[2] + apexMoved[2] - apex[2]} : clawPoint;
-			target = shifted(level, frame, state, 2 + s, clawMoved, clawPoint[1], handClear, dt);
+			target = shifted(footing, frame, state, 2 + s, clawMoved, clawPoint[1], handClear, dt);
 			target = lifted(state, 2 + s, clawMoved, target, apexHeld);
 			GeoBones.Bone elbowBone = GeoBones.bone(model, ELBOWS[s]);
 			if (target != null) {
@@ -261,7 +302,7 @@ public final class LimbAnimator {
 					}
 					GeoBones.setRotation(shoulderBone, shoulder);
 					if (hand == null || hand.getParent() == null) break;
-					double inside = new GroundClearance(level, frame).of(hand, GeoBones.matrix(hand.getParent())) * held(clawPoint[1]) * state.footing;
+					double inside = new GroundClearance(footing, frame).of(hand, GeoBones.matrix(hand.getParent())) * held(clawPoint[1]) * state.footing;
 					if (!(inside >= 0.01)) break; // NaN too: -Infinity (no ground near) times a lifted foot's 0
 					rise += inside * 16.0;
 				}
@@ -274,7 +315,7 @@ public final class LimbAnimator {
 	 * when the model lacks the bones. For the showcase's check that planted feet do not slide.
 	 */
 	static double[] footPoint(GeoBones.Model model, EnderDragon dragon, int i, float partialTick) {
-		BodyFrame frame = frame(dragon, partialTick);
+		BodyFrame frame = surfaceFrame(dragon, partialTick);
 		int s = i % 2;
 		if (i < 2) {
 			GeoBones.Bone shin = GeoBones.bone(model, LEGS[s][1]), foot = GeoBones.bone(model, LEGS[s][2]);
@@ -323,9 +364,9 @@ public final class LimbAnimator {
 	 * limb is inside the ground under it (a heel or toe, the edge of a folded hand over a step).
 	 * {@code sole}: the model height of the foot's bottom. Null when there is nothing to do.
 	 */
-	private static double[] shifted(Level level, BodyFrame frame, State state, int i, double[] point, double sole, double clear, double dt) {
+	private static double[] shifted(Footing footing, BodyFrame frame, State state, int i, double[] point, double sole, double clear, double dt) {
 		double[] flat = frame.toWorld(new double[]{point[0], 0.0, point[2]}, new double[3]);
-		double ground = GroundClearance.groundTop(level, flat[0], flat[1] + 2.0, flat[2]);
+		double ground = footing.groundTop(flat[0], flat[1] + 2.0, flat[2]);
 		double want = Double.isNaN(ground) ? 0.0 : ground - flat[1];
 		want = Math.max(-MAX_SHIFT, Math.min(MAX_SHIFT, Math.max(want, clear)));
 		// a foot lifted high on purpose is the animation's

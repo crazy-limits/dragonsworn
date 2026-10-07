@@ -33,10 +33,17 @@ public final class DragonConfig {
 	private static Path file;
 
 	static {
+		section("dragon", "The dragon itself.");
 		section("targeting", "Who the dragon goes after.");
 		section("wandering", "A wild dragon with nothing to hunt roams: long spells on foot, short flights between them.");
 		section("stance", "A wild dragon fights on foot; hurt too much there it takes a break in the air, then comes back down.");
+		section("crowd", """
+				The more players fight it, the fiercer it gets: its attacks come sooner, and players bunched together
+				draw its area attacks (breath, fireballs, the wing buffet).""");
 		section("ground_combat", "Fighting on its feet: bite, tail strike, roar, the seize (a bite that holds on), narrow footholds.");
+		section("climbing", """
+				Walls: it flies in and grips a cliff, a spire or a pillar where its feet find a block to stand on, for a
+				short while, to reach prey there or hiding in tunnels dug into it; then it flies off again.""");
 		section("air_combat", "A wild dragon's attacks from the air, and when it lands to fight instead.");
 		section("attacks", "Which air attacks exist at all. A disabled attack is never used, not even as a fallback.");
 		section("attacks.open_ground", """
@@ -51,8 +58,13 @@ public final class DragonConfig {
 		section("hover_attacks", "Hovering in close to bite or breathe.");
 		section("breath", "The void-flame breath (perched stream, breath pass, hovering breath) and the fire it leaves.");
 		section("arena", "The End fight's dragon: vanilla's fight, plus landings beside players and air attacks.");
-		section("end_island", "The End island's shape (worldgen; the respawn ritual rebuilds the spires the same way).");
+		section("end_island", "The End island's shape and its crystals' wards (worldgen; the respawn ritual rebuilds the spires the same way).");
 	}
+
+	// ---------------------------------------------------------------- dragon
+
+	public static final Num MAX_HEALTH = num("dragon", "max_health", 500.0, 1.0, 1024.0,
+			"Health points (2 = one heart), on every difficulty: 500 as the Warden (vanilla's dragon has 200).");
 
 	// ---------------------------------------------------------------- targeting
 
@@ -102,11 +114,30 @@ public final class DragonConfig {
 			"That many hits ...");
 	public static final Int OVERWHELM_WINDOW = num("stance", "overwhelm_window", 50, 1, 1200, "... within this many ticks.");
 
+	// ---------------------------------------------------------------- crowd
+
+	public static final Num CROWD_RANGE = num("crowd", "range", 48.0, 8.0, 256.0,
+			"Blocks from the dragon a survival player counts toward the crowd it fights.");
+	public static final Num PACE_PER_PLAYER = num("crowd", "pace_per_player", 0.35, 0.0, 4.0,
+			"Each player past the first speeds up its attacks by this much (0.35: against two, the pauses between attacks run 1.35 times as fast; 0 = off).");
+	public static final Num MAX_PACE = num("crowd", "max_pace", 2.5, 1.0, 10.0, "Its attacks come at most this many times as fast as against one player.");
+	public static final Num GUARD_PACE = num("crowd", "guard_pace", 2.0, 1.0, 10.0,
+			"The End's dragon with a player at its crystals: its attacks come at least this many times as fast (1 = no faster).");
+	public static final Num GROUP_RADIUS = num("crowd", "group_radius", 6.0, 1.0, 32.0,
+			"Blocks: players this close to the one it attacks count as bunched together with it.");
+	public static final Num AREA_BIAS = num("crowd", "area_bias", 1.0, 0.0, 10.0,
+			"Each player bunched with its target makes an area attack (breath pass, hovering breath, fireballs) this much likelier to be its first choice (1: twice as likely with two players, three times with three; 0 = off).");
+	public static final Int MOB_BUFFET = num("crowd", "mob_buffet", 2, 0, 16,
+			"On the ground: that many players within its wing buffet's reach get the buffet before any bite or tail strike (0 = never).");
+
 	// ---------------------------------------------------------------- ground combat
 
 	public static final Flag BITE = flag("ground_combat", "bite", true, "Bite what is in front of it.");
 	public static final Flag TAIL_STRIKE = flag("ground_combat", "tail_strike", true, "Lash its tail at what is beside or behind it.");
-	public static final Flag ROAR = flag("ground_combat", "roar", true, "Roar now and then (slows and pushes back everything close).");
+	public static final Flag ROAR = flag("ground_combat", "roar", true,
+			"Roar at a target out of reach while nobody is close: slows everything in its range (whoever runs away or shoots from afar).");
+	public static final Flag WING_BUFFET = flag("ground_combat", "wing_buffet", true,
+			"Beat both wings at what is too close to bite or lash (under its chin, at its flanks, behind its hips): it throws everything round its body away.");
 	public static final Flag SEIZE = flag("ground_combat", "seize", true, "Bites may hold on: the prey is shaken, chewed and flung.");
 	public static final Flag NARROW_FOOTHOLDS = flag("ground_combat", "narrow_footholds", true,
 			"Come down on a ledge or a pillar's top beside its prey (sat up, or clinging) where all four feet do not fit.");
@@ -114,11 +145,16 @@ public final class DragonConfig {
 			"A target to its side, nearer the head than the tail: the chance it bites rather than lashes its tail.");
 	public static final Int BITE_RECOVERY = num("ground_combat", "bite_recovery", 12, 0, 1200, "Ticks after a bite before the next blow.");
 	public static final Int TAIL_RECOVERY = num("ground_combat", "tail_recovery", 20, 0, 1200, "Ticks after a tail strike before the next blow.");
+	public static final Int BUFFET_RECOVERY = num("ground_combat", "wing_buffet_recovery", 40, 0, 1200, "Ticks after a wing buffet before the next blow.");
 	public static final Int REACTION_TICKS = num("ground_combat", "dodge_window", 7, 0, 20,
 			"Ticks before a bite or tail strike lands that its aim is committed: the window to step out of the way.");
 	public static final Int ROAR_COOLDOWN_MIN = num("ground_combat", "roar_cooldown_min", 360, 20, 72000, "Ticks between roars: at least ...");
 	public static final Int ROAR_COOLDOWN_MAX = num("ground_combat", "roar_cooldown_max", 560, 20, 72000, "... and at most.");
-	public static final Num ROAR_RANGE = num("ground_combat", "roar_range", 18.0, 0.0, 64.0, "Blocks: it roars only at a target in front of it closer than this.");
+	public static final Num ROAR_RANGE = num("ground_combat", "roar_range", 32.0, 0.0, 64.0,
+			"Blocks: it roars only at a target closer than this, and the roar slows everything this close.");
+	public static final Num ROAR_QUIET = num("ground_combat", "roar_quiet_range", 12.0, 0.0, 64.0,
+			"Blocks: it roars only while no target is this close (one in reach gets a blow instead).");
+	public static final Int ROAR_SLOW_TICKS = num("ground_combat", "roar_slowness", 140, 0, 1200, "Ticks the roar slows whoever it reaches.");
 	public static final Int PROVOKED_TICKS = num("ground_combat", "provoked_ticks", 40, 0, 1200,
 			"Ticks a hit counts: hurt from behind this recently, it answers with its tail instead of turning round.");
 	public static final Num SEIZE_CHANCE = num("ground_combat", "seize_chance", 0.35, 0.0, 1.0, "The chance a bite is a seize.");
@@ -130,6 +166,11 @@ public final class DragonConfig {
 	public static final Num BITE_RADIUS = num("ground_combat", "bite_radius", 2.0, 0.5, 8.0,
 			"Blocks: how close the jaws must come to a body to hit it (standing and hovering bites).");
 	public static final Num TAIL_DAMAGE = num("ground_combat", "tail_damage", 9.0, 0.0, 1000.0, "Damage of a tail strike.");
+	public static final Num BUFFET_DAMAGE = num("ground_combat", "wing_buffet_damage", 5.0, 0.0, 1000.0, "Damage of a wing buffet.");
+	public static final Num BUFFET_RANGE = num("ground_combat", "wing_buffet_range", 7.0, 2.0, 16.0,
+			"Blocks from its middle the wing buffet reaches (and a target this close in a blind spot gets it).");
+	public static final Num BUFFET_KNOCKBACK = num("ground_combat", "wing_buffet_knockback", 1.6, 0.0, 5.0,
+			"How hard the wing buffet throws what it hits away (blocks a tick).");
 	public static final Num SEIZE_DAMAGE = num("ground_combat", "seize_damage", 4.0, 0.0, 1000.0, "Damage of the bite that seizes.");
 	public static final Num CHEW_DAMAGE = num("ground_combat", "chew_damage", 3.0, 0.0, 1000.0, "Damage of each chew.");
 	public static final Num LOSE_DISTANCE = num("ground_combat", "lose_distance", 40.0, 8.0, 256.0,
@@ -137,10 +178,30 @@ public final class DragonConfig {
 	public static final Int LOSE_TICKS = num("ground_combat", "lose_ticks", 60, 1, 6000, "... for this many ticks is given up: it takes off.");
 	public static final Int NARROW_PATIENCE = num("ground_combat", "narrow_patience", 100, 1, 6000,
 			"Ticks its prey may stay out of its jaws' reach while it is on a narrow foothold before it takes off.");
+	public static final Int UNREACHED_PATIENCE = num("ground_combat", "unreached_patience", 160, 1, 6000,
+			"Ticks its prey may stay out of reach of its blows (up a pillar, across a ditch) while it cannot walk any closer before it takes off to fight from the air.");
 	public static final Int CLING_MAX = num("ground_combat", "cling_max", 500, 1, 72000, "Ticks it clings to a pillar's top at most.");
 	public static final Int ARENA_STAY_MIN = num("ground_combat", "arena_stay_min", 400, 20, 72000,
 			"The End's dragon: ticks it stays on the ground once landed: at least ...");
 	public static final Int ARENA_STAY_MAX = num("ground_combat", "arena_stay_max", 700, 20, 72000, "... and at most.");
+
+	// ---------------------------------------------------------------- climbing
+
+	public static final Flag CLIMBING = flag("climbing", "climbing", true,
+			"Climb: grip walls it flies to (wall_landing), hop onto ledges and down off them, reach prey hiding in tunnels.");
+	public static final Flag WALL_LANDING = flag("climbing", "wall_landing", true,
+			"Fly in and grip a wall beside prey it cannot land by (on a cliff, a spire's flank, in a tunnel's mouth).");
+	public static final Num HOP_RANGE = num("climbing", "hop_range", 12.0, 4.0, 24.0, "Blocks: the furthest it hops across the ground (onto a ledge, down off one).");
+	public static final Int HOP_PATIENCE = num("climbing", "hop_patience", 30, 1, 6000,
+			"Ticks its prey may stay out of reach while it cannot walk any closer before it looks for a hop toward it.");
+	public static final Num TUNNEL_REACH = num("climbing", "tunnel_reach", 3.0, 0.0, 8.0,
+			"Blocks: how far into a tunnel too narrow for its head its bite reaches past the mouth.");
+	public static final Flag TUNNEL_BREATH = flag("climbing", "tunnel_breath", true, "Pour its breath down a tunnel its prey hides in beyond its bite.");
+	public static final Int TUNNEL_BREATH_COOLDOWN = num("climbing", "tunnel_breath_cooldown", 200, 0, 72000,
+			"Ticks after a breath down a tunnel before the next.");
+	public static final Int WALL_REST = num("climbing", "wall_rest", 100, 1, 6000, "Ticks it stays on a wall with nobody to fight.");
+	public static final Int WALL_TIME = num("climbing", "wall_time", 160, 20, 6000,
+			"Ticks it stays on a wall at most, fighting or not, before it flies off again.");
 
 	// ---------------------------------------------------------------- air combat
 
@@ -222,6 +283,16 @@ public final class DragonConfig {
 	// ---------------------------------------------------------------- arena
 
 	public static final Flag ARENA_GROUND_ASSAULT = flag("arena", "ground_assault", true, "Now and then it lands beside a player on the island to fight on foot.");
+	public static final Flag GUARD_CRYSTALS = flag("arena", "guard_crystals", true,
+			"It guards its crystals: it goes after the player nearest a crystal (and nearest itself) first, one at a time, and comes sooner.");
+	public static final Num GUARD_RADIUS = num("arena", "guard_radius", 24.0, 4.0, 128.0, "Blocks from a crystal a player counts as a threat to it.");
+	public static final Num GUARD_DRAGON_WEIGHT = num("arena", "guard_dragon_weight", 0.5, 0.0, 4.0,
+			"Picking whom to go after: how much nearness to the dragon counts, against nearness to a crystal (0 = the crystals alone).");
+	public static final Num GUARD_SWITCH = num("arena", "guard_switch", 12.0, 0.0, 128.0,
+			"Blocks nearer a crystal another player must be to draw it off the one it is after.");
+	public static final Int GUARD_RETRY = num("arena", "guard_retry", 40, 1, 72000, "Ticks before it goes at a player threatening its crystals again.");
+	public static final Flag PERCH_FIGHT_BACK = flag("arena", "perch_fight_back", true,
+			"Perched and hit by someone close, it gets up and fights them on foot rather than sitting still.");
 	public static final Num ARENA_SNATCH_CHANCE = num("arena", "snatch_chance", 0.3, 0.0, 1.0,
 			"When it goes for a player on the ground: the chance of a snatch instead of a landing ...");
 	public static final Num ARENA_BREATH_PASS_CHANCE = num("arena", "breath_pass_chance", 0.25, 0.0, 1.0, "... and of a breath pass.");
@@ -248,6 +319,10 @@ public final class DragonConfig {
 			"Spiral obsidian spires in place of vanilla's obsidian pillars (crystals stay where vanilla puts them).");
 	public static final Flag ENTRANCE_PLATFORM = flag("end_island", "entrance_platform", true,
 			"The spherical obsidian arrival platform in place of vanilla's flat one.");
+	public static final Int WARDED_EASY = num("end_island", "warded_crystals_easy", 2, 0, 10,
+			"Crystals warded by three turning rings of runes (projectiles bounce off them; break them up close) on Easy and Peaceful: those on the shortest spires, the ones vanilla cages (needs the spires; 0 = none) ...");
+	public static final Int WARDED_NORMAL = num("end_island", "warded_crystals_normal", 3, 0, 10, "... on Normal ...");
+	public static final Int WARDED_HARD = num("end_island", "warded_crystals_hard", 4, 0, 10, "... and on Hard.");
 
 	private DragonConfig() {}
 

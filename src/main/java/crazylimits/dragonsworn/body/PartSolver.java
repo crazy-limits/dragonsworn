@@ -39,6 +39,14 @@ public final class PartSolver {
 	/** The head as posed without the look (model space, blocks): its pivot, eyes and forward; valid after a solve. */
 	private final double[] headPivot = new double[3], headEyes = new double[3], headForward = {0.0, 0.0, -1.0};
 	private boolean headPosed;
+	/**
+	 * On a wall (the body upright on the face, the upper neck twisted: {@code anims.wall_*}) the look is the
+	 * head's own turn, solved exactly ({@link NeckChain#aim}) on this frame and these bends, not angles off the
+	 * body's level: the unbent frame and the neck's bends without the look, as last solved.
+	 */
+	private boolean upright;
+	private final double[] aimFrame = new double[PoseTrack.POINTS * 3];
+	private final double[] aimBendX = new double[PoseTrack.NECK_PIVOTS], aimBendY = new double[PoseTrack.NECK_PIVOTS];
 
 	/**
 	 * The head at rest (blocks): head_group's pivot, the head part's anchor (tools/parts.py) and between the
@@ -96,6 +104,10 @@ public final class PartSolver {
 		neckHeadX[neckX.length] = neckHeadY[neckY.length] = 0.0;
 		if (strike != null) strike.addBends(anim, seconds, body, partialTick, neckHeadX, neckHeadY, tailX, tailY);
 		// where the head points without the look: what the look turns it from
+		upright = body.surface.face().wall();
+		System.arraycopy(points, 0, aimFrame, 0, points.length);
+		System.arraycopy(neckHeadX, 0, aimBendX, 0, aimBendX.length);
+		System.arraycopy(neckHeadY, 0, aimBendY, 0, aimBendY.length);
 		System.arraycopy(points, 0, fromPoints, 0, points.length);
 		bendChain(fromPoints, PoseTrack.CHAIN_NECK, neckHeadX, neckHeadY);
 		poseHead(fromPoints);
@@ -123,9 +135,23 @@ public final class PartSolver {
 
 	/**
 	 * Model point {@code i} of {@code model} into world axes relative to the dragon's position, as
-	 * {@code out}'s point {@code o}: rolled and pitched about {@link BodyFrame#CENTER_Y}/{@link BodyFrame#CENTER_Z}, yawed, lifted.
+	 * {@code out}'s point {@code o}: rolled and pitched about {@link BodyFrame#CENTER_Y}/{@link BodyFrame#CENTER_Z}, yawed, lifted,
+	 * then turned onto the surface it stands on ({@code nav/Surface}: a wall's frame).
 	 */
 	public static void toWorld(DragonBody body, float partialTick, double[] model, int i, double[] out, int o) {
+		toSurface(body, partialTick, model, i, out, o);
+		double[] r = body.surface.rotation(partialTick);
+		double x = out[o * 3], y = out[o * 3 + 1], z = out[o * 3 + 2];
+		out[o * 3] = r[0] * x + r[1] * y + r[2] * z;
+		out[o * 3 + 1] = r[3] * x + r[4] * y + r[5] * z;
+		out[o * 3 + 2] = r[6] * x + r[7] * y + r[8] * z;
+	}
+
+	/**
+	 * As {@link #toWorld}, but in the axes of the surface it stands on (the face's own frame, where a wall is
+	 * the ground): what the tail is laid in and kept out of blocks in.
+	 */
+	public static void toSurface(DragonBody body, float partialTick, double[] model, int i, double[] out, int o) {
 		double roll = Math.toRadians(-body.roll(partialTick)), pitch = Math.toRadians(body.pitch(partialTick));
 		double yaw = Math.toRadians(-body.yaw(partialTick));
 		double cr = Math.cos(roll), sr = Math.sin(roll), cp = Math.cos(pitch), sp = Math.sin(pitch);
@@ -145,6 +171,13 @@ public final class PartSolver {
 
 	/** The inverse of {@link #toWorld}: a point relative to the dragon's position (world axes) into model space. */
 	public static void toModel(DragonBody body, float partialTick, double wx, double wy, double wz, double[] out) {
+		double[] r = body.surface.rotation(partialTick);
+		fromSurface(body, partialTick, r[0] * wx + r[3] * wy + r[6] * wz, r[1] * wx + r[4] * wy + r[7] * wz,
+				r[2] * wx + r[5] * wy + r[8] * wz, out);
+	}
+
+	/** The inverse of {@link #toSurface}. */
+	public static void fromSurface(DragonBody body, float partialTick, double wx, double wy, double wz, double[] out) {
 		double roll = Math.toRadians(-body.roll(partialTick)), pitch = Math.toRadians(body.pitch(partialTick));
 		double yaw = Math.toRadians(-body.yaw(partialTick));
 		double cr = Math.cos(roll), sr = Math.sin(roll), cp = Math.cos(pitch), sp = Math.sin(pitch);
@@ -218,11 +251,19 @@ public final class PartSolver {
 
 	/**
 	 * Where a point (model space, blocks) is from the eyes of the head as last solved, against where the
-	 * head points without its look: {@code out} = yaw (left positive), pitch (up positive), degrees.
-	 * False before the first solve.
+	 * head points without its look: {@code out} = yaw (left positive), pitch (up positive), degrees. On a
+	 * wall: the bends of the head's own joint that turn it onto the point. False before the first solve.
 	 */
 	public boolean lookAngles(double x, double y, double z, double[] out) {
 		if (!headPosed) return false;
+		if (upright) {
+			// the head's own turn onto the point (it alone looks: HeadLook#upright), as bends of its joint
+			int head = PoseTrack.NECK_PIVOTS - 1;
+			double[] turn = NeckChain.aim(aimFrame, aimBendX, aimBendY, head, new double[]{x - headPivot[0], y - headPivot[1], z - headPivot[2]});
+			out[0] = Angles.wrapDegrees(turn[1] - aimBendY[head]);
+			out[1] = Angles.wrapDegrees(turn[0] - aimBendX[head]);
+			return true;
+		}
 		double dx = x - headEyes[0], dy = y - headEyes[1], dz = z - headEyes[2];
 		double fx = headForward[0], fy = headForward[1], fz = headForward[2];
 		double yaw = Math.toDegrees(Math.atan2(-dx, -dz) - Math.atan2(-fx, -fz));

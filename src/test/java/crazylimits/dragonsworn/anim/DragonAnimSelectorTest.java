@@ -58,6 +58,13 @@ class DragonAnimSelectorTest {
 	}
 
 	@Test
+	void upAndDownHaveTheirOwnWings() {
+		assertEquals(DragonAnim.CLIMB, select(Kind.AIR, null, 0, new FlightModel.Plan(FlightModel.Mode.FLY, 0, 4, FlightModel.Slope.CLIMB), 1).anim());
+		assertEquals(DragonAnim.DESCEND, select(Kind.AIR, null, 0, new FlightModel.Plan(FlightModel.Mode.GLIDE, 0, 4, FlightModel.Slope.DESCEND), 1).anim());
+		assertEquals(DragonAnim.DIVE, select(Kind.AIR, null, 0, new FlightModel.Plan(FlightModel.Mode.GLIDE, 0, 4, FlightModel.Slope.DIVE), 1).anim());
+	}
+
+	@Test
 	void actionCodesRoundTrip() {
 		int bits = encodeAction(DragonAnim.TAIL_SWEEP, 12345);
 		assertEquals(DragonAnim.TAIL_SWEEP, actionAnim(bits));
@@ -129,7 +136,21 @@ class DragonAnimSelectorTest {
 		assertEquals(DragonAnim.HOVER, DragonAnim.TAKEOFF.then());
 		for (DragonAnim anim : DragonAnim.values()) {
 			assertEquals(anim == DragonAnim.ATTACK || anim == DragonAnim.UPRIGHT_BITE || anim == DragonAnim.CLING_BITE
-					|| anim == DragonAnim.GLIDE_BITE || anim == DragonAnim.HOVER_BITE, anim.bites(), anim.name());
+					|| anim == DragonAnim.GLIDE_BITE || anim == DragonAnim.HOVER_BITE || anim == DragonAnim.WALL_BITE, anim.bites(), anim.name());
 		}
+		assertEquals(DragonAnim.WALL, DragonAnim.WALL_BITE.then());
+		assertEquals(DragonAnim.WALL, DragonAnim.WALL_ROAR.then());
+		assertEquals(DragonAnim.WALL, DragonAnim.WALL_BREATH.then());
+	}
+
+	@Test
+	void onAWallItHangsClimbsAndBreathesItsOwnWay() {
+		assertEquals(DragonAnim.WALL, select(Kind.GROUND, Foothold.WALL, null, 0, GLIDING, 0).anim());
+		assertEquals(DragonAnim.WALL_CLIMB, select(Kind.GROUND, Foothold.WALL, null, 0, GLIDING, 0.2).anim());
+		assertEquals(DragonAnim.WALL_BREATH, select(Kind.PERCH_BREATH, Foothold.WALL, null, 0, GLIDING, 0).anim());
+		assertEquals(DragonAnim.WALL_ROAR, select(Kind.GROUND, Foothold.WALL, DragonAnim.WALL_ROAR, 2, GLIDING, 0).anim());
+		assertFalse(Foothold.WALL.narrow(), "it climbs and fights on a wall");
+		// the climb is the walk's gait: it plays at the climbing speed the same way
+		assertEquals(DragonAnimSelector.playbackSpeed(DragonAnim.WALK, 0.1), DragonAnimSelector.playbackSpeed(DragonAnim.WALL_CLIMB, 0.1), 1e-12);
 	}
 }

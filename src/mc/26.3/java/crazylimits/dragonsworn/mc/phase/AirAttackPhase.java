@@ -108,6 +108,15 @@ public abstract class AirAttackPhase extends AbstractDragonPhaseInstance impleme
 		return true;
 	}
 
+	/** Flying away after the attack (its last stage): no longer after the target. */
+	protected abstract boolean leaving();
+
+	@Nullable
+	@Override
+	public LivingEntity attackTarget() {
+		return leaving() ? null : target;
+	}
+
 	@Nullable
 	@Override
 	public Vec3 getFlyTargetLocation() {

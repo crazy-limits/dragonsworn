@@ -74,6 +74,11 @@ public class BreathPassPhase extends AirAttackPhase {
 	}
 
 	@Override
+	protected boolean leaving() {
+		return stage == Stage.AWAY;
+	}
+
+	@Override
 	public void end() {
 		if (dragon.level().isClientSide()) return;
 		DragonBrain brain = brain();
@@ -173,7 +178,7 @@ public class BreathPassPhase extends AirAttackPhase {
 		Vec3 base = dragon.position().add(b[0], b[1], b[2]);
 		double[] prey = {0.0, BreathPass.PITCH_REST};
 		if (!lost) {
-			double lead = BreathPass.lead(Math.hypot(target.getX() - dragon.getX(), target.getZ() - dragon.getZ()));
+			double lead = BreathPass.lead((target.getX() - dragon.getX()) * heading.x + (target.getZ() - dragon.getZ()) * heading.z);
 			Vec3 at = target.position().add(-heading.x * lead, target.getBbHeight() * 0.3, -heading.z * lead).subtract(base);
 			prey = BreathPass.angles(yaw, at.x, at.y, at.z);
 		}

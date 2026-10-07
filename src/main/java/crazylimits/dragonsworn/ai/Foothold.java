@@ -16,11 +16,16 @@ package crazylimits.dragonsworn.ai;
  * never walks, lashes its tail or roars. It takes off once its prey is out of reach.
  */
 public enum Foothold {
-	STAND, UPRIGHT, CLING;
+	STAND, UPRIGHT, CLING,
+	/**
+	 * On a wall ({@code nav/Surface}): hanging from its arms on the face, its feet braced below, upright
+	 * (head up the face). Never synced: it is what the surface says. It climbs, bites, roars and breathes there.
+	 */
+	WALL;
 
 	/** On its hind feet alone: no walking, no tail. */
 	public boolean narrow() {
-		return this != STAND;
+		return this == UPRIGHT || this == CLING;
 	}
 
 	/** From its {@link #ordinal}; {@link #STAND} for anything else. */

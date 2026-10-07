@@ -66,16 +66,17 @@ public final class DragonVoice {
 	public static Cue due(DragonAnim anim, double before, double after) {
 		double blend = DragonAnim.BLEND_TICKS / 20.0;
 		return switch (anim) {
-			case ROAR -> once(DragonAnim.ROAR_SECONDS + blend, before, after) ? Cue.ROAR : null;
-			case FLY, HOVER, CLING, CLING_BITE, HOVER_BITE, HOVER_BREATH -> every(Wingbeat.FLAP_SECONDS, WING_PHASE * Wingbeat.FLAP_SECONDS + blend, before, after) ? Cue.WING : null;
+			case ROAR, WALL_ROAR -> once(DragonAnim.ROAR_SECONDS + blend, before, after) ? Cue.ROAR : null;
+			case FLY, CLIMB, HOVER, CLING, CLING_BITE, HOVER_BITE, HOVER_BREATH -> every(Wingbeat.FLAP_SECONDS, WING_PHASE * Wingbeat.FLAP_SECONDS + blend, before, after) ? Cue.WING : null;
 			case FLAP -> every(Wingbeat.PUSH_SECONDS, WING_PHASE * Wingbeat.FLAP_SECONDS + blend, before, after) ? Cue.WING : null;
 			case TAKEOFF -> once(TAKEOFF_WING + blend, before, after) ? Cue.WING
 					: once(TAKEOFF_STEP + blend, before, after) ? Cue.STEP_HIND : null;
 			case LAND -> once(LAND_WING + blend, before, after) ? Cue.WING
 					: once(LAND_STEP + blend, before, after) ? Cue.STEP_HIND
 					: once(LAND_HANDS + blend, before, after) ? Cue.STEP_FRONT : null;
+			case WING_BUFFET -> once(DragonAnim.BUFFET_SECONDS + blend, before, after) ? Cue.WING : null;
 			case UPRIGHT -> every(DragonAnim.UPRIGHT_SECONDS, UPRIGHT_WING + blend, before, after) ? Cue.WING : null;
-			case WALK -> {
+			case WALK, WALL_CLIMB -> {
 				for (int i = 0; i < WALK_PLANTS.length; i++) {
 					if (every(WALK_CYCLE, WALK_PLANTS[i] % WALK_CYCLE + blend, before, after)) yield WALK_FEET[i];
 				}
@@ -87,7 +88,7 @@ public final class DragonVoice {
 
 	/** An attack: a roar going on fades out, and the dragon does not start one. */
 	public static boolean attacking(DragonAnim anim) {
-		return anim != null && (anim.bites() || anim == DragonAnim.TAIL_SWEEP || anim == DragonAnim.BREATH || anim.breathesInFlight());
+		return anim != null && (anim.bites() || anim == DragonAnim.TAIL_SWEEP || anim == DragonAnim.WING_BUFFET || anim.breathesStanding() || anim.breathesInFlight());
 	}
 
 	private static boolean once(double at, double before, double after) {

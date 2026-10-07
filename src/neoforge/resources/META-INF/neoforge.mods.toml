@@ -8,7 +8,7 @@ version = "${version}"
 displayName = "${name}"
 description = '''${description}'''
 authors = "${authors}"
-logoFile = "assets/dragonsworn/icon.png"
+${iconKey} = "assets/dragonsworn/icon.png"
 
 [[mixins]]
 config = "dragonsworn.mixins.json"

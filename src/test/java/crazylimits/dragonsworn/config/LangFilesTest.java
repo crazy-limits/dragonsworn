@@ -47,7 +47,7 @@ class LangFilesTest {
 			assertTrue(english.containsKey(event.group(2)), event.group(1) + "'s subtitle " + event.group(2) + " is not in en_us.json");
 		}
 		// every event must carry a subtitle: count the events without one too
-		int all = (int) Pattern.compile("\"entity\\.ender_dragon\\.[a-z_]+\"\\s*:").matcher(sounds).results().count();
+		int all = (int) Pattern.compile("\"entity\\.(ender_dragon|end_crystal)\\.[a-z_]+\"\\s*:").matcher(sounds).results().count();
 		assertEquals(all, events, "a sound event without a subtitle");
 	}
 

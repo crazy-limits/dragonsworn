@@ -65,14 +65,14 @@ public final class Strike {
 
 	/** A stream breath: aimed by direction, the neck straightened onto the aim ({@link #straighten}). */
 	static boolean breathes(DragonAnim anim) {
-		return anim == DragonAnim.BREATH || anim.breathesInFlight();
+		return anim.breathesStanding() || anim.breathesInFlight();
 	}
 
 	/** The moment (animation seconds) the blow lands: the frame the aim is solved on. */
 	public static double hitSeconds(DragonAnim anim) {
 		return switch (anim) {
 			case TAIL_SWEEP -> DragonAnim.TAIL_HIT_SECONDS;
-			case BREATH -> BREATH_FRAME;
+			case BREATH, WALL_BREATH -> BREATH_FRAME;
 			case GLIDE_BREATH, HOVER_BREATH -> BreathPass.AIM_SECONDS;
 			default -> DragonAnim.BITE_SECONDS;
 		};
@@ -257,7 +257,7 @@ public final class Strike {
 			if (seconds <= hit) return Maths.smoothstep(seconds / hit);
 			return 1.0 - Maths.smoothstep((seconds - hit - 0.1) / 0.5);
 		}
-		if (anim == DragonAnim.BREATH) {
+		if (anim.breathesStanding()) {
 			// the neck stretches out at the end of the inhale and holds through the stream (see BreathAttack)
 			return Maths.smoothstep((seconds - 0.6) / 0.45) * (1.0 - Maths.smoothstep((seconds - 4.0) / 0.6));
 		}

@@ -46,6 +46,8 @@ deps.geckolib = "software.bernie.geckolib:geckolib-fabric-1.21.1:4.9.3"
 # config screens (compile-only, all optional at runtime)
 deps.modmenu = "maven.modrinth:modmenu:11.0.5"
 deps.yacl = "maven.modrinth:yacl:3.8.2+1.21.1-fabric"
+# `-Pdragonsworn.enderscape`: Enderscape and its requirements in the dev client (compatibility checks; YACL comes from deps.yacl; Apollib and Mixson ship nested in the released jars)
+deps.enderscape = "maven.modrinth:enderscape:2.1.0,maven.modrinth:lithostitched:1.8.0-fabric-21.1,maven.modrinth:apollib:1.2.0-fabric-21.1,maven.modrinth:mixson:1.4.0"
 deps.cloth-config = "maven.modrinth:cloth-config:15.0.140+fabric"
 
 [neoforge]
@@ -71,3 +73,5 @@ deps.geckolib = "software.bernie.geckolib:geckolib-neoforge-1.21.1:4.9.3"
 # config screens (compile-only, all optional at runtime)
 deps.yacl = "maven.modrinth:yacl:3.8.2+1.21.1-neoforge"
 deps.cloth-config = "maven.modrinth:cloth-config:15.0.140+neoforge"
+# `-Pdragonsworn.irons`: Iron's Spells 'n Spellbooks and its requirements in the dev client (compatibility checks)
+deps.irons = "maven.modrinth:irons-spells-n-spellbooks:1.21.1-3.16.3,maven.modrinth:irons-lib:1.21.1-2.2.0,maven.modrinth:curios:9.5.1+1.21.1,maven.modrinth:playeranimator:2.0.4+1.21.1-forge"

@@ -84,7 +84,7 @@ public final class TailLay {
 				if (world == null || world.grid == null) {
 					gap = cap[e * 3 + 1] - r;
 				} else {
-					PartSolver.toWorld(world.body, world.partialTick, cap, e, cap, 2);
+					PartSolver.toSurface(world.body, world.partialTick, cap, e, cap, 2);
 					double wx = world.x + cap[6], wy = world.y + cap[7], wz = world.z + cap[8];
 					double ground = groundBelow(world.grid, wx, wy, wz);
 					// nothing under it near enough: it does not rest there

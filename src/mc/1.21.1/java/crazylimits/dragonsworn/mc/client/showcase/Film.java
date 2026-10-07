@@ -2,6 +2,7 @@ package crazylimits.dragonsworn.mc.client.showcase;
 
 import crazylimits.dragonsworn.attack.BreathAttack;
 import crazylimits.dragonsworn.anim.DragonAnim;
+import crazylimits.dragonsworn.arena.CrystalWard;
 import crazylimits.dragonsworn.body.Grip;
 import crazylimits.dragonsworn.body.Parts;
 import crazylimits.dragonsworn.debug.DragonDebug;
@@ -9,6 +10,7 @@ import crazylimits.dragonsworn.mc.DragonPhases;
 import crazylimits.dragonsworn.mc.DragonswornDragon;
 import crazylimits.dragonsworn.mc.LevelGrid;
 import crazylimits.dragonsworn.mc.PreyHold;
+import crazylimits.dragonsworn.mc.arena.Wards;
 import crazylimits.dragonsworn.mc.breath.DragonFire;
 import crazylimits.dragonsworn.mc.phase.BreathPassPhase;
 import crazylimits.dragonsworn.mc.phase.GroundApproachPhase;
@@ -27,6 +29,7 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
 import net.minecraft.world.entity.player.Player;
@@ -35,6 +38,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.feature.SpikeFeature;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import java.io.File;
@@ -136,7 +140,8 @@ public final class Film {
 			jaws("jaw-grab", false);
 			jaws("jaw-grab-first-person", true);
 		}
-		// the stills only when asked for (-Pdragonsworn.film=gallery)
+		// the stills only when asked for (-Pdragonsworn.film=gallery; the ward's alone: =ward)
+		if (ONLY.contains("gallery") || ONLY.contains("ward")) ward(mc);
 		if (ONLY.contains("gallery")) gallery(mc);
 		reset();
 		STEPS.add(new Step(1, m -> REPORT.add("INFO frames: " + FRAMES)));
@@ -497,6 +502,45 @@ public final class Film {
 		STEPS.add(new Step(1, m -> {
 			m.options.fov().set(fov[0]);
 			m.options.gamma().set(gamma[0]);
+		}));
+	}
+
+	/**
+	 * A warded crystal ({@link CrystalWard}) on the shortest spire, the island and the other spires behind it: from
+	 * just off the spire's top on its outer side, a little above the rings, the rings turning through the burst. The
+	 * crystal is warded here too (an End made before the wards has none).
+	 */
+	private static void ward(Minecraft mc) {
+		SpikeFeature.EndSpike spike = onServer(mc, server -> SpikeFeature.getSpikesForLevel(server.getLevel(Level.END))).stream()
+				.min(java.util.Comparator.comparingInt(SpikeFeature.EndSpike::getHeight)).orElseThrow();
+		Vec3 out = new Vec3(spike.getCenterX(), 0.0, spike.getCenterZ()).normalize();
+		double gamma = mc.options.gamma().get();
+		int fov = mc.options.fov().get();
+		reset();
+		// near it first: its chunks and the crystal loaded
+		command(String.format(Locale.ROOT, "tp @s %.1f %d %.1f", spike.getCenterX() + out.x * 12.0, spike.getHeight() + 6, spike.getCenterZ() + out.z * 12.0), 60);
+		Vec3[] ward = new Vec3[1];
+		end(level -> {
+			AABB column = new AABB(spike.getCenterX() - 2, level.getMinBuildHeight(), spike.getCenterZ() - 2,
+					spike.getCenterX() + 3, level.getMaxBuildHeight(), spike.getCenterZ() + 3);
+			List<EndCrystal> crystals = level.getEntitiesOfClass(EndCrystal.class, column);
+			check(!crystals.isEmpty(), "ward: a crystal stands on the shortest spire");
+			if (crystals.isEmpty()) return;
+			EndCrystal crystal = crystals.get(0);
+			Wards.ward(crystal, true);
+			ward[0] = crystal.position().add(0.0, CrystalWard.CENTER, 0.0);
+		});
+		STEPS.add(new Step(20, m -> {
+			m.options.gamma().set(1.0);
+			m.options.fov().set(50);
+		}));
+		Vec3 side = right(out);
+		burst("ward", 60, 3, m -> {
+			if (ward[0] != null) look(m, Vec3.ZERO, ward[0].add(out.scale(6.0)).add(side.scale(2.5)).add(0.0, 1.8, 0.0), ward[0].subtract(0.0, 0.2, 0.0), 1.0);
+		}, null);
+		STEPS.add(new Step(1, m -> {
+			m.options.gamma().set(gamma);
+			m.options.fov().set(fov);
 		}));
 	}
 

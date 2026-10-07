@@ -276,6 +276,13 @@ public class GroundApproachPhase extends AbstractDragonPhaseInstance implements 
 		}
 	}
 
+	/** Coming down to fight it: its head is on it all the way. */
+	@Nullable
+	@Override
+	public LivingEntity attackTarget() {
+		return target;
+	}
+
 	/** On its feet: perches, or fights (rests). The landing's thud has sounded already. */
 	private void touchDown() {
 		if (perch) dragon.getPhaseManager().setPhase(EnderDragonPhase.SITTING_SCANNING);

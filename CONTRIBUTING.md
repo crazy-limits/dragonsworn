@@ -36,8 +36,8 @@ must also pass the **showcase**, the in-game test. It runs on your machine and o
 ./gradlew :1.21.1-fabric:runClient -Pdragonsworn.showcase=<stage>
 ```
 
-Stages: `air`, `breath`, `collision`, `config`, `death`, `grabs`, `hitboxes`, `landing`, `narrow`, `pass`,
-`stance`, `walls`. Leave off `=<stage>` to run them all. Read `run/1.21.1-fabric/showcase-report.txt`: its last line must
+Stages: `aim`, `air`, `breath`, `collision`, `config`, `death`, `grabs`, `hitboxes`, `landing`, `narrow`, `pass`,
+`stance`, `walls`, `wards`. Leave off `=<stage>` to run them all. Read `run/1.21.1-fabric/showcase-report.txt`: its last line must
 say `RESULT PASS`. Look at the screenshots in `run/1.21.1-fabric/screenshots/` too. For changes to the End spires, run
 `-Pdragonsworn.arena`.
 
@@ -54,7 +54,7 @@ python3 tools/build_assets.py     # about 7 minutes, almost all of it the standi
 python3 tools/sounds.py           # only for sound changes
 ```
 
-Some tools (`dragon_fire.py`, `crystal_beam.py`, `sounds.py`) read Minecraft's own assets from Loom's cache, so run
+Some tools (`dragon_fire.py`, `crystal_beam.py`, `crystal_ward.py`, `end_crystal.py`, `sounds.py`) read Minecraft's own assets from Loom's cache, so run
 a Gradle build once first. Commit the generated files together with the tool change.
 
 The dragon's model and texture are **All Rights Reserved** (see [LICENSE-ASSETS.md](LICENSE-ASSETS.md)). Do not

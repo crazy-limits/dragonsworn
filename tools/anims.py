@@ -246,6 +246,73 @@ def hover(t, L):
 	return flight_pose(hover_q(t / L))
 
 
+# Up and down: birds fly a climb and a descent with differently shaped wings, not just a tilted body (the
+# game pitches the body along its path, body/DragonBody). Each keeps the beat (or the glide) the game
+# moves the dragon with: CLIMB beats on FLY's phase, DESCEND and DIVE are glides.
+CLIMB_PITCH = 6.0                                # chest raised on top of the path's pitch
+NECK_CLIMB, HEAD_CLIMB = [4.0, 2.0, 0.0, -1.0], -2.0   # the head up, looking where it climbs to
+
+
+def climb_q(u):
+	"""Climbing on the wings (flight.CLIMB): deep strokes with a flexed upstroke, the chest raised, the
+	head up, the legs tucked tight and the tail lowered and fanned (it lifts the rear)."""
+	q = beat_q(flight.CLIMB, u)
+	q.update(pitch=CLIMB_PITCH + q['pitch'], still=CLIMB_PITCH, neck=NECK_CLIMB, head=HEAD_CLIMB, droop=0.5)
+	q['lag'] = (q['lag'][0], CLIMB_PITCH + q['lag'][1])
+	return q
+
+
+def climb(t, L):
+	return flight_pose(climb_q(t / L))
+
+
+# The glide down (a vulture or an eagle letting itself down): the wings are flexed, the arms raised and
+# the hands swept back and dropped from the wrists (the gull's M seen from ahead), the fan half closed:
+# less span and less lift, so it sinks faster without beating. The wings steer in quick small trims, the
+# body rocks less than in the level glide, the head looks down at where it is going, the legs hang a
+# little (air brakes) and the tail spreads down.
+DESCEND_WING = {'shoulder': 20.0, 'elbow': -32.0, 'sweep': 24.0, 'twist': -3.0, 'pleat': 30.0}
+NECK_DESCEND, HEAD_DESCEND = [0.0, -1.0, -2.0, -2.0], -12.0
+DESCEND_LEGS = 0.3      # share of the way from tucked to dangling
+
+
+def descend(t, L):
+	w = PI2 * t / L
+	q = dict(DESCEND_WING)
+	# the trims: twice as quick as the level glide's teeter and smaller; the hands work against each other
+	q.update(shoulder=20 + 1.5 * S(2 * w + 0.5), elbow=-32 - 2.5 * S(2 * w), sweep=24 + 2 * S(w + 1.2),
+			 pleats=[30 + 4 * S(2 * w - 0.4 * g) for g in range(3)], twist=-3 + 1.5 * S(2 * w + 1.0),
+			 heave=0.8 * S(2 * w), pitch=-3.0 + 0.6 * S(2 * w + 0.7), still=-3.0, surge=0.0, roll=2 * S(w), yaw=0.0,
+			 neck=NECK_DESCEND, head=HEAD_DESCEND, neck_yaw=(1.0 * S(w), 1.0 * S(w), 0.0, 0.0), head_yaw=3 * S(w + 0.5),
+			 jaw=-1.5, sway=0.6 * S(w), droop=0.5,
+			 legs=tuple(a + (b - a) * DESCEND_LEGS for a, b in zip(LEGS_TUCKED, LEGS_DANGLE)))
+	q['lag'] = (0.8 * S(2 * w - 0.4), -3.0 + 0.6 * S(2 * w + 0.3))
+	return flight_pose(q)
+
+
+# The stoop (a falcon's dive): the wings drawn in and swept far back along the flanks, the hands folded
+# down onto them and the fan nearly shut, a narrow arrowhead that cuts the air. The tips shiver in the
+# rush of air, the body is stiff, the neck stretched ahead with the head down the line of the dive, the
+# legs pressed back under the tail and the tail closed.
+DIVE_WING = {'shoulder': 2.0, 'elbow': -24.0, 'sweep': 42.0, 'twist': -4.0, 'pleat': 64.0}
+NECK_DIVE, HEAD_DIVE = [-1.0, -1.0, 0.0, 0.0], -6.0
+SHIVER = 6              # tip shivers per loop
+
+
+def dive(t, L):
+	w = PI2 * t / L
+	f = PI2 * SHIVER * t / L
+	q = dict(DIVE_WING)
+	q.update(shoulder=2 + 0.8 * S(w), elbow=-24 - 1.5 * S(f), sweep=42 + 1.0 * S(w + 0.8),
+			 pleats=[64 + 3 * S(f - 0.8 * g) for g in range(3)], twist=-4 + 0.8 * S(f + 0.5),
+			 heave=0.3 * S(f), pitch=-2.0, still=-2.0, surge=0.0, roll=0.8 * S(w), yaw=0.0,
+			 neck=NECK_DIVE, head=HEAD_DIVE, jaw=-1.0, sway=0.15 * S(w),
+			 legs=(LEGS_TUCKED[0] - 8.0, LEGS_TUCKED[1], LEGS_TUCKED[2] - 10.0))
+	q['lag'] = (0.3 * S(f - 0.5), -2.0)
+	q['follow'] = (0.1, 0.1)
+	return flight_pose(q)
+
+
 def blend(a, b, k):
 	"""Per-bone linear blend of two poses, k = 0 -> a, 1 -> b (tail hints included)."""
 	out = {}
@@ -484,6 +551,39 @@ def tail_sweep(t, L):
 	# body/Strike.java cocks it away from the prey and whips it onto it by IK. The head stays out of it.
 	wind = ease(t / 0.6) * (1 - ease((t - 0.6) / 0.3))
 	return standing('tail_sweep').pose(body_pitch=-3 * wind, body_lift=-2 * wind)
+
+
+# The wing buffet, for what is too close to bite or lash (under the chin, beside the flanks, at the hips):
+# 0.05-0.5 the chest rears and both hands leave the ground, the wings opening up to the top of a stroke;
+# 0.5-0.75 one hard downstroke forward and down (BUFFET_AT: the blast knocks everything round the body
+# away; DragonAnim.BUFFET_SECONDS mirrors it), stopped short of the ground (BUFFET_DEPTH of the hover's
+# downstroke); 0.95-1.7 the wings rise a little and fold back down onto their marks (straight from the
+# stroke's end the blend would sweep the hands through the ground). The hind feet stay planted throughout.
+BUFFET_AT = 0.7
+BUFFET_LENGTH = 1.7
+BUFFET_GAIN = 1.25      # the hover's stroke, deeper
+BUFFET_DEPTH, BUFFET_RISE = 0.75, 0.4     # shares of the downstroke: where the stroke stops, where it folds from
+BUFFET_UP = _wings(flight_pose(hover_q(flight.U_TOP, BUFFET_GAIN)))
+BUFFET_DOWN = _wings(flight_pose(hover_q(flight.U_TOP + BUFFET_DEPTH * flight.DOWN, BUFFET_GAIN)))
+BUFFET_FOLD = _wings(flight_pose(hover_q(flight.U_TOP + BUFFET_RISE * flight.DOWN, BUFFET_GAIN)))
+
+
+def wing_buffet(t, L):
+	up = ease((t - 0.05) / 0.45)
+	down = ease((t - 0.5) / 0.25)
+	rise = ease((t - 0.95) / 0.3)
+	back = ease((t - 1.2) / 0.5)
+	k = up * (1 - back)
+	sw = stand.SWAN
+	kw = dict(body_pitch=10 * k - 6 * down * (1 - back), body_lift=4 * k - 2 * down * (1 - back),
+			  swan=[sw[0] + 8 * k, sw[1] + 6 * k, sw[2] + 18 * k, sw[3] + 14 * k],
+			  head=stand.HEAD + 10 * k, jaw=-1.5 - 14 * k)
+	# the arms as they stand (hands on their marks) at this frame's body, then out into the stroke and back
+	planted = _wings(standing('wing_buffet_planted').pose(**kw))
+	wings = blend(blend(blend(blend(planted, BUFFET_UP, up), BUFFET_DOWN, down), BUFFET_FOLD, rise), planted, back)
+	if back >= 1.0 or up <= 0.0:
+		return standing('wing_buffet').pose(**kw)
+	return standing('wing_buffet').pose(wings=wings, **kw)
 
 
 BREATH_WINDUP, BREATH_STREAM, BREATH_RECOVER = 2.0, 3.0, 0.8   # seconds; BreathAttack.java mirrors these
@@ -838,6 +938,138 @@ def _cocoon():
 	return p
 
 
+# On a wall (the game: nav/Surface). The game turns a wall into ground: a wall pose is made like a standing
+# one, model y out of the face and -z straight up it, so gravity pulls toward +z. It is not the stance turned
+# on its side: the dragon hangs from its arms. The body lies close along the face, the chest only a little
+# out; the wrists grip high up and out to the sides, the elbows bent (the hands still laid on the face, the
+# membranes fanned against it); the hind feet brace below the hips. The neck curves out from the face so the
+# head is level in the world. Hanging there the neck rises straight along the face and the head bends forward
+# to face the wall (WALL_REST: crown up, no twist; the game turns it to a target near by); the attacks swing it
+# out from the face and back (`rest`). The climb is the wing-walk's gait on
+# these marks (walk.py's stride and timing: DragonAnim.WALK_BLOCKS_PER_SECOND holds for it too). A head turned
+# out from the face by pitch alone would hang upside down (its crown to the ground): out there (the attacks)
+# the upper neck twists along its length (WALL_TWIST, keyed roll; parts.py exports it for the game's neck,
+# body/NeckChain) so the crown is up. The roar
+# throws the head back until it points straight up (up in the world); the bite and the breath reach out from
+# the face, the game's IK (body/Strike) putting the jaws or the stream on the aim.
+WALL_PITCH = 8.0        # the body nearly along the face
+WALL_LIFT = -18.0       # and close to it (from the stance's lift)
+# the hind feet: game nav/SurfaceSites.HEEL is their lowest point below the position (re-derive if they move)
+WALL_FEET = {'lh': [-22.0, 3.0, 24.0], 'rh': [22.0, 3.0, 24.0], 'lf': [-88.0, 0.0, -78.0], 'rf': [88.0, 0.0, -78.0]}
+WALL_LIFTS = {'lh': 9.0, 'rh': 9.0, 'lf': 16.0, 'rf': 16.0}   # a limb's lift off the face as it reaches
+# the neck rising out from the face and twisting half round along its upper part (roll per neck_1..neck_4,
+# head_group), so the head looks straight out from the face, level, its crown up (solved on the rig)
+WALL_SWAN = [44.7, 20.6, 6.4, -6.0]
+WALL_HEAD = -10.3
+WALL_TWIST = (0.0, 0.0, 60.0, 60.0, 60.0)
+# hanging: the neck straight along the face, the head bent forward to face the wall, level, its crown up, no
+# twist (neck_1..neck_4, head_group: pitch, yaw, roll; solved on the rig)
+WALL_REST_SWAN = [0.0, 0.0, 0.0, 0.0]
+WALL_REST_HEAD = -96.1
+WALL_REST_YAW = (0.0, 0.0, 0.0, 0.0, 0.0)
+WALL_REST_ROLL = (0.0, 0.0, 0.0, 0.0, 0.0)
+WALL_ROAR_PITCH = 6.0
+WALL_ROAR_SWAN = [-6.0, -6.0, -4.0, -2.0]   # the neck stretched up the face
+WALL_BREATH_OUT = 100.0                    # the stream's line from the face: straight out and 10 degrees down
+
+
+def wall_pose(key, pitch=0.0, lift=0.0, z=0.0, swan=None, head=None, feet=None, twist=1.0, rest=1.0, **kw):
+	"""Hanging on the face, offsets from the wall stance; `feet` moves limbs off their marks (the climb);
+	`twist` how much of the upper neck's twist (WALL_TWIST) it has out from the face (the roar lets it go);
+	`rest` how far the head is in its hanging pose facing the wall (WALL_REST_*: 1 hanging, 0 out from the
+	face, twisted, for an attack)."""
+	pose = standing(key).pose(body_pitch=WALL_PITCH - stand.PITCH + pitch, body_lift=WALL_LIFT + lift, body_z=z,
+							  feet=feet or WALL_FEET, swan=swan or WALL_SWAN, head=WALL_HEAD if head is None else head, **kw)
+	out = WALL_SWAN + [WALL_HEAD]
+	to = WALL_REST_SWAN + [WALL_REST_HEAD]
+	for i, (bone, roll) in enumerate(zip(NECK + ['head_group'], WALL_TWIST)):
+		r = pose[bone]['r']
+		r[0] += rest * (to[i] - out[i])
+		r[1] += rest * WALL_REST_YAW[i]
+		r[2] = twist * roll + rest * (WALL_REST_ROLL[i] - twist * roll)
+	return pose
+
+
+def wall_out(t, L, into=0.25, back=0.3):
+	"""The head swung out from the face for an attack: 0 hanging (facing the wall), 1 out, over `into` from
+	the start and `back` before the end."""
+	return ease(t / into) * (1 - ease((t - (L - back)) / back))
+
+
+def wall(t, L):
+	# Breathing against the face, facing it, the neck swaying (the head's own turn would tilt it: the game turns it).
+	w = PI2 * t / L
+	sw = WALL_SWAN
+	return wall_pose(
+		'wall', pitch=1.0 * S(w), lift=0.6 * S(w),
+		swan=[sw[0] + 2 * S(w + 0.3), sw[1] + 1.5 * S(w + 0.6), sw[2] - 1.5 * S(w + 0.9), sw[3] - 1.5 * S(w + 1.2)],
+		neck_yaw=(3 * S(w), 4 * S(w + 0.4), 5 * S(w + 0.8), 6 * S(w + 1.2)))
+
+
+def wall_climb_feet(t):
+	"""Each limb's mark at time t: the wing-walk's lateral sequence on the wall's marks, lifted off the face as it reaches."""
+	out = {}
+	swing = 1 - walk.DUTY
+	for limb, (hx, hy, hz) in WALL_FEET.items():
+		phase = (t / walk.LENGTH - walk.SWING_START[limb]) % 1.0
+		if phase < swing:
+			u = phase / swing
+			out[limb] = [hx, hy + WALL_LIFTS[limb] * math.sin(math.pi * u), hz + walk.STRIDE / 2 - walk.STRIDE * ease(u)]
+		else:
+			u = (phase - swing) / walk.DUTY
+			out[limb] = [hx, hy, hz - walk.STRIDE / 2 + walk.STRIDE * u]
+	return out
+
+
+def wall_climb(t, L):
+	# Two heaves per cycle as each hind foot pushes; the head held steady against the body's rocking.
+	w = PI2 * t / L
+	return wall_pose('wall_climb', pitch=1.5 * S(2 * w + 0.6), lift=1.2 * C(2 * w), feet=wall_climb_feet(t),
+					 neck_yaw=(-3 * S(w), -2.5 * S(w + 0.4), 0, 0), head_yaw=3 * S(w + 0.8))
+
+
+def wall_bite(t, L):
+	# The bite off the face (attack's rhythm): the neck coils in, then the chest pushes out and the head dashes out.
+	coil, strike, jaw = _bite(t)
+	sw = WALL_SWAN
+	return wall_pose(
+		'wall_bite', rest=1 - wall_out(t, L), pitch=4 * coil + 6 * strike, lift=2 * coil + 2 * strike,
+		swan=[sw[0] + 8 * coil - 20 * strike, sw[1] + 10 * coil - 10 * strike, sw[2] - 10 * coil + 10 * strike, sw[3] - 4 * coil + 10 * strike],
+		head=WALL_HEAD + 14 * coil, jaw=-1.5 - jaw)
+
+
+def wall_roar(t, L):
+	# The roar's timing (roar): the neck stretches up the face and the head is thrown back until it points
+	# straight up (up in the world), the wings spread on the face; the jaw snaps open at ROAR_AT.
+	k = ease(t / ROAR_AT) * (1 - ease((t - 2.3) / 0.7))
+	snap = ease((t - ROAR_AT + 0.08) / 0.15)
+	close = ease((t - ROAR_CLOSE) / 0.4)
+	jaw = 4 * ease(t / ROAR_AT) * (1 - snap) + (40 + 2 * S(t * 31)) * snap * (1 - close)
+	fade = 1 - ease((t - 1.6) / (ROAR_CLOSE - 1.6))
+	shake = 2 * S(t * 40) * snap * fade
+	up = -(WALL_PITCH + WALL_ROAR_PITCH) - sum(WALL_ROAR_SWAN)
+	swan = [a + (b - a) * k for a, b in zip(WALL_SWAN, WALL_ROAR_SWAN)]
+	swan[3] += shake
+	return wall_pose('wall_roar', rest=1 - k, pitch=WALL_ROAR_PITCH * k, lift=3 * k, swan=swan, fan=stand.FAN - 10 * k, twist=1 - k,
+					 head=WALL_HEAD + (up - WALL_HEAD) * k + shake, head_yaw=shake, jaw=-1.5 - jaw)
+
+
+def wall_breath(t, L):
+	# The stream breath's timing (breath): inhale with the neck coiled in, then the neck straight out from the
+	# face and a little down, the head in line with it, the jaw wide; no sway (the game aims the straight neck).
+	end = BREATH_WINDUP + BREATH_STREAM
+	pour = ease((t - BREATH_WINDUP + BREATH_LUNGE) / 0.3) * (1 - ease((t - end) / BREATH_RECOVER))
+	inhale = ease(t / BREATH_WINDUP) * (1 - pour)
+	jaw = 14 * ease(t / BREATH_WINDUP) * (1 - pour) + 38 * pour
+	shake = 1.2 * S(t * 47) * pour
+	sw = WALL_SWAN
+	coiled = [sw[0] + 8 * inhale, sw[1] + 10 * inhale, sw[2] - 8 * inhale, sw[3] - 4 * inhale]
+	straight = [WALL_BREATH_OUT - WALL_PITCH - 4, 0.0, 0.0, 0.0]
+	return wall_pose('wall_breath', rest=1 - wall_out(t, L, into=0.5, back=BREATH_RECOVER), pitch=5 * inhale + 4 * pour, lift=2 * inhale,
+					 swan=[c + (st - c) * pour for c, st in zip(coiled, straight)],
+					 head=(WALL_HEAD + 14 * inhale) * (1 - pour) + shake, head_yaw=shake, jaw=-1.5 - jaw)
+
+
 # ---------------------------------------------------------------- the flying tail (for the game)
 # The flight animations' tails are made here and run by the game (body/TailMotion.java via
 # TailTrack): the tail is a rope hung from the body. Each point along it is where a stiff tail would
@@ -845,7 +1077,7 @@ def _cocoon():
 # body runs down it as a wave. On top: it drops a little on each downstroke (birds lower the tail
 # as the wings push), hangs (droop) when the body stands up or brakes, sways with the glide, and
 # blends into the standing tail (curled, laid on the ground: TailMotion.standing) on the ground.
-TAIL_ANIMS = ('fly', 'flap', 'glide', 'hover', 'takeoff', 'land', 'cling', 'cling_bite', 'glide_breath',
+TAIL_ANIMS = ('fly', 'flap', 'glide', 'hover', 'climb', 'descend', 'dive', 'takeoff', 'land', 'cling', 'cling_bite', 'glide_breath',
 			  'glide_bite', 'hover_bite', 'hover_breath')
 TAIL_DELAY = 0.32       # seconds for the body's motion to reach the tip
 _TAIL_PIVOTS = [walk.rig.bones[s]['pivot'] for s in TAIL] + [[0, 60, 194]]
@@ -910,6 +1142,9 @@ ANIMATIONS = {
 	'flap': (flap, FLAP, False, 0.04),
 	'glide': (glide, 3.0, True, 0.05),
 	'hover': (hover, FLAP, True, 0.04),
+	'climb': (climb, FLAP, True, 0.04),
+	'descend': (descend, 3.0, True, 0.05),
+	'dive': (dive, 2.0, True, 0.04),
 	'takeoff': (takeoff, TAKEOFF_LENGTH, False, 0.04),
 	'land': (land, LAND_LENGTH, False, 0.04),
 	'roar': (roar, 3.0, False, 0.025),
@@ -925,6 +1160,12 @@ ANIMATIONS = {
 	'glide_bite': (glide_bite, 1.3, False, 0.04),
 	'hover_bite': (hover_bite, FLAP, False, 0.04),
 	'hover_breath': (hover_breath, HOVER_BREATH_LENGTH, False, 0.04),
+	'wing_buffet': (wing_buffet, BUFFET_LENGTH, False, 0.025),
+	'wall': (wall, 4.0, True, 0.05),
+	'wall_climb': (wall_climb, walk.LENGTH, True, 0.05),
+	'wall_bite': (wall_bite, 1.3, False, 0.05),
+	'wall_roar': (wall_roar, 3.0, False, 0.025),
+	'wall_breath': (wall_breath, BREATH_WINDUP + BREATH_STREAM + BREATH_RECOVER, False, 0.025),
 }
 
 PREFIX = 'animation.ender_dragon.'

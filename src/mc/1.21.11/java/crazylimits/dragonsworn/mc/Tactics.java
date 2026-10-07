@@ -1,6 +1,7 @@
 package crazylimits.dragonsworn.mc;
 
 import crazylimits.dragonsworn.ai.AirTactics;
+import crazylimits.dragonsworn.ai.Crowd;
 import crazylimits.dragonsworn.ai.Foothold;
 import crazylimits.dragonsworn.config.DragonConfig;
 import crazylimits.dragonsworn.mc.phase.BreathPassPhase;
@@ -9,7 +10,11 @@ import crazylimits.dragonsworn.mc.phase.GroundApproachPhase;
 import crazylimits.dragonsworn.mc.phase.HoverAttackPhase;
 import crazylimits.dragonsworn.mc.phase.RoamPhase;
 import crazylimits.dragonsworn.mc.phase.SnatchPhase;
+import crazylimits.dragonsworn.mc.phase.WallApproachPhase;
+import crazylimits.dragonsworn.nav.Burrow;
 import crazylimits.dragonsworn.nav.LandingSite;
+import crazylimits.dragonsworn.nav.SurfaceSites;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
@@ -28,6 +33,14 @@ public final class Tactics {
 	 * cannot walk in from there, so within the bite's reach (the jaws strike ~6 blocks ahead).
 	 */
 	private static final double[] NARROW_RANGE = {4.0, 6.5, 5.0};
+	/**
+	 * A wall to grip beside its prey: this far from it across the face at least, at most and preferably
+	 * (blocks; within the bite's reach), and at most {@link #WALL_HEIGHT} out of or into the face from it.
+	 */
+	private static final double[] WALL_RANGE = {3.0, 7.0, 5.0};
+	private static final double WALL_HEIGHT = 5.0;
+	/** The air it hovers in before the hop onto the wall: blocks out from the face. */
+	private static final int WALL_APPROACH = 9;
 	/** A landing site beside the target: this far from it at least, at most and preferably (blocks). */
 	private static final double SITE_MIN = 8, SITE_MAX = 17, SITE_PREFER = 12;
 	/** ... and at most this far above or below it (blocks). */
@@ -54,16 +67,35 @@ public final class Tactics {
 			GroundApproachPhase.start(dragon, site, target, Foothold.STAND);
 			return true;
 		}
-		if (!DragonConfig.NARROW_FOOTHOLDS.get()) return false;
-		LandingSite sites = new LandingSite(brain.grid());
-		for (Foothold foothold : new Foothold[]{Foothold.UPRIGHT, Foothold.CLING}) {
-			site = sites.near(target.getX(), target.getY(), target.getZ(), NARROW_RANGE[0], NARROW_RANGE[1], NARROW_RANGE[2],
-					dragon.getX(), dragon.getZ(), foothold);
-			if (site == null || !brain.ticking(site[0], site[2])) continue;
-			GroundApproachPhase.start(dragon, site, target, foothold);
-			return true;
+		if (DragonConfig.NARROW_FOOTHOLDS.get()) {
+			LandingSite sites = new LandingSite(brain.grid());
+			for (Foothold foothold : new Foothold[]{Foothold.UPRIGHT, Foothold.CLING}) {
+				site = sites.near(target.getX(), target.getY(), target.getZ(), NARROW_RANGE[0], NARROW_RANGE[1], NARROW_RANGE[2],
+						dragon.getX(), dragon.getZ(), foothold);
+				if (site == null || !brain.ticking(site[0], site[2])) continue;
+				GroundApproachPhase.start(dragon, site, target, foothold);
+				return true;
+			}
 		}
-		return false;
+		return tryWall(target);
+	}
+
+	/**
+	 * Grips a wall within a bite of {@code target} (or of the mouth of the tunnel it hides in): a cliff, a
+	 * spire's flank. False when climbing is off or no wall there fits.
+	 */
+	public boolean tryWall(LivingEntity target) {
+		if (!DragonConfig.CLIMBING.get() || !DragonConfig.WALL_LANDING.get()) return false;
+		EnderDragon dragon = brain.dragon();
+		Burrow burrow = Burrow.find(brain.grid(), target.getX(), target.getY(), target.getZ());
+		double[] at = burrow != null ? burrow.mouth() : new double[]{target.getX(), target.getY() + target.getBbHeight() * 0.5, target.getZ()};
+		SurfaceSites.Site site = new SurfaceSites(brain.grid()).near(at[0], at[1], at[2], WALL_RANGE[0], WALL_RANGE[1], WALL_RANGE[2],
+				WALL_HEIGHT, true, WALL_APPROACH, dragon.getX(), dragon.getY(), dragon.getZ());
+		if (site == null) return false;
+		double[] w = site.world();
+		if (!brain.ticking(Mth.floor(w[0]), Mth.floor(w[2]))) return false;
+		WallApproachPhase.start(dragon, site, target);
+		return true;
 	}
 
 	/** A landing site beside {@code target}, on its level; null when there is no room. */
@@ -83,25 +115,33 @@ public final class Tactics {
 		return brain.dragon().level().noCollision(target.getBoundingBox().expandTowards(0.0, -DragonConfig.AIRBORNE_GAP.get(), 0.0));
 	}
 
-	/** Remembers that {@code target} stands where the dragon cannot come down beside it. */
-	void walled(LivingEntity target) {
+	/**
+	 * Remembers that {@code target} stands where the dragon cannot come down beside it, or where it landed
+	 * and could not reach it: for {@code walled_ticks} it is fought from the air.
+	 */
+	public void walled(LivingEntity target) {
 		walled = target;
 		walledAt = brain.dragon().tickCount;
 	}
 
+	/** Whether {@code target} was lately found out of reach on the ground ({@link #walled}). */
+	public boolean isWalled(LivingEntity target) {
+		return walled == target && brain.dragon().tickCount - walledAt < DragonConfig.WALLED_TICKS.get();
+	}
+
 	/** Where {@code target} is for an attack from the air: in it, on ground it cannot land by (lately found so), or on open ground. */
 	AirTactics.Reach reach(LivingEntity target) {
-		boolean walledNow = walled == target && brain.dragon().tickCount - walledAt < DragonConfig.WALLED_TICKS.get();
-		return AirTactics.reach(airborne(target), !walledNow);
+		return AirTactics.reach(airborne(target), !isWalled(target));
 	}
 
 	/**
 	 * One attack on a target from the air (the landing to fight on foot is {@link #tryGroundAssault}): the
-	 * first of {@link AirTactics#choices} that can start. In the End fight ({@code roam} null) vanilla's
-	 * strafe makes the fireball attacks.
+	 * first of {@link AirTactics#choices} that can start, area attacks likelier on players bunched together
+	 * ({@link Crowd#areaBias}). In the End fight ({@code roam} null) vanilla's strafe makes the fireball attacks.
 	 */
 	void attack(RoamPhase roam, LivingEntity target, AirTactics.Reach reach) {
-		for (AirTactics.Attack attack : AirTactics.choices(reach, ThreadLocalRandom.current().nextDouble())) {
+		double bias = brain.crowd.areaBias(target.getX(), target.getY(), target.getZ());
+		for (AirTactics.Attack attack : AirTactics.choices(reach, ThreadLocalRandom.current().nextDouble(), bias)) {
 			if (start(attack, roam, target)) return;
 		}
 	}

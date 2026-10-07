@@ -9,13 +9,25 @@ public enum DragonAnim {
 	IDLE(true),
 	/** The wing-walk: hind feet and the wrists of the folded wings. */
 	WALK(true),
-	/** Continuous wingbeats in level or climbing flight: every downstroke drives the dragon forward. */
+	/** Continuous wingbeats in level flight (slow, or turning hard): every downstroke drives the dragon forward. */
 	FLY(true),
 	/** One push from a glide: up, down until the wings point down, then into the glide. */
 	FLAP(false),
 	GLIDE(true),
 	/** Standing up in the air: chest up, tail hanging, head level; the beats hold it at a height. */
 	HOVER(true),
+	/**
+	 * Beating upward ({@code FlightModel.Slope#CLIMB}), on {@link #FLY}'s beat: wider strokes driven forward
+	 * and down under a raised chest, a flexed upstroke with the fan nearly shut, the head up.
+	 */
+	CLIMB(true),
+	/**
+	 * Gliding down ({@code FlightModel.Slope#DESCEND}): wings flexed into a gull's M (arms raised, hands
+	 * swept back and dropped), fan half closed, quick small trims, head looking down, legs half lowered.
+	 */
+	DESCEND(true),
+	/** The stoop ({@code FlightModel.Slope#DIVE}): wings drawn in and swept back along the flanks, tips shivering. */
+	DIVE(true),
 	/** Crouch on all fours, all four push off together, then the wings beat it up (ends in the hover). */
 	TAKEOFF(false),
 	/**
@@ -63,7 +75,26 @@ public enum DragonAnim {
 	/** The bite standing in the air, the hover's beat going on: one whole beat. As {@link #ATTACK}'s timing. */
 	HOVER_BITE(false),
 	/** The stream breath in the hover: the breath pass's timing ({@code attack/BreathPass}), three beats long. */
-	HOVER_BREATH(false);
+	HOVER_BREATH(false),
+	/**
+	 * The wing buffet, for what is too close to bite or lash: it rears, both hands leave the ground and the
+	 * wings rise, then one hard stroke forward and down at {@link #BUFFET_SECONDS} throws everything round
+	 * the body away; the wings fold back onto their marks. The hind feet stay planted.
+	 */
+	WING_BUFFET(false),
+	/**
+	 * Hanging on a wall ({@code nav/Surface}): the body close along the face, the wrists gripping high up and
+	 * out, the hind feet braced below; the neck curved out so the head is level in the world. Breathing.
+	 */
+	WALL(true),
+	/** Climbing straight up a wall: the wing-walk's gait on the wall's marks, its stride and timing ({@link #WALK_BLOCKS_PER_SECOND}). */
+	WALL_CLIMB(true),
+	/** The bite off a wall, out from the face. As {@link #ATTACK}'s timing. */
+	WALL_BITE(false),
+	/** The roar on a wall: the head thrown back to point straight up (in the world). As {@link #ROAR}'s timing. */
+	WALL_ROAR(false),
+	/** The stream breath on a wall, the neck straight out from the face. As {@link #BREATH}'s timing. */
+	WALL_BREATH(false);
 
 	/**
 	 * Ground speed the walk cycle is keyed to, in blocks per second: stride 36 px over 75% of a 2.4 s
@@ -89,6 +120,8 @@ public enum DragonAnim {
 	public static final double UPRIGHT_SECONDS = 6.0, BALANCE_SECONDS = 3.4, BALANCE_LENGTH = 1.2;
 	/** {@link #TAIL_SWEEP}: the tail's tip lands on its aim. */
 	public static final double TAIL_HIT_SECONDS = 0.8;
+	/** {@link #WING_BUFFET}: the stroke's blast (anims.py BUFFET_AT). */
+	public static final double BUFFET_SECONDS = 0.7;
 	/** {@link #ROAR}: the roar itself starts (after rearing up): the jaw snaps open and the growl plays. */
 	public static final double ROAR_SECONDS = 0.6;
 	/**
@@ -117,9 +150,19 @@ public enum DragonAnim {
 		return id;
 	}
 
-	/** A bite: {@link #ATTACK}, one of the narrow footholds', or one in the air. */
+	/** A bite: {@link #ATTACK}, one of the narrow footholds' or the wall's, or one in the air. */
 	public boolean bites() {
-		return this == ATTACK || this == UPRIGHT_BITE || this == CLING_BITE || this == GLIDE_BITE || this == HOVER_BITE;
+		return this == ATTACK || this == UPRIGHT_BITE || this == CLING_BITE || this == GLIDE_BITE || this == HOVER_BITE || this == WALL_BITE;
+	}
+
+	/** A roar standing: on the ground (or a perch), or on a wall. */
+	public boolean roars() {
+		return this == ROAR || this == WALL_ROAR;
+	}
+
+	/** The stream breath standing: on the ground (perched), or on a wall. */
+	public boolean breathesStanding() {
+		return this == BREATH || this == WALL_BREATH;
 	}
 
 	/** A stream breath in flight ({@code attack/BreathPass}'s timing): the pass's on the glide, or the hover's. */
@@ -135,6 +178,7 @@ public enum DragonAnim {
 			case HOVER_BITE, HOVER_BREATH -> HOVER;
 			case UPRIGHT_BITE -> UPRIGHT;
 			case CLING_BITE -> CLING;
+			case WALL_BITE, WALL_ROAR, WALL_BREATH -> WALL;
 			default -> IDLE;
 		};
 	}

@@ -1,5 +1,6 @@
 package crazylimits.dragonsworn.mc.breath;
 
+import crazylimits.dragonsworn.ai.Foothold;
 import crazylimits.dragonsworn.attack.BreathAttack;
 import crazylimits.dragonsworn.body.Parts;
 import crazylimits.dragonsworn.body.Strike;
@@ -9,6 +10,8 @@ import crazylimits.dragonsworn.mc.DragonData;
 import crazylimits.dragonsworn.mc.DragonPhases;
 import crazylimits.dragonsworn.mc.DragonSounds;
 import crazylimits.dragonsworn.mc.DragonswornDragon;
+import crazylimits.dragonsworn.mc.phase.GroundFightPhase;
+import crazylimits.dragonsworn.mc.phase.LiftoffPhase;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.targeting.TargetingConditions;
@@ -18,6 +21,7 @@ import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3fc;
 
 /**
@@ -50,6 +54,10 @@ public class BreathStreamPhase extends AbstractDragonSittingPhase {
 	private LivingEntity target;
 	/** The body is turning after a target that left the neck's reach. */
 	private boolean turning;
+	/** Poured down a tunnel ({@link #pourDown}): at a fixed point, back to the fight after (server). */
+	@Nullable
+	private Vec3 fixedAim;
+	private boolean resume;
 
 	public BreathStreamPhase(EnderDragon dragon) {
 		super(dragon);
@@ -61,6 +69,8 @@ public class BreathStreamPhase extends AbstractDragonSittingPhase {
 		aim = null;
 		target = null;
 		turning = false;
+		fixedAim = null;
+		resume = false;
 		if (dragon.tickCount - lastStreamTick > NEW_LANDING_TICKS) streams = 0;
 		streams++;
 	}
@@ -80,6 +90,19 @@ public class BreathStreamPhase extends AbstractDragonSittingPhase {
 		return dragon.tickCount - lastStreamTick > NEW_LANDING_TICKS ? 0 : streams;
 	}
 
+	/**
+	 * From a fight on the ground or a wall: pours the stream at {@code at} (deep in the tunnel {@code target}
+	 * hides in), then fights {@code target} on ({@link GroundFightPhase}).
+	 */
+	public static void pourDown(EnderDragon dragon, LivingEntity target, Vec3 at) {
+		dragon.getPhaseManager().setPhase(DragonPhases.BREATH_STREAM);
+		BreathStreamPhase phase = dragon.getPhaseManager().getPhase(DragonPhases.BREATH_STREAM);
+		phase.target = target;
+		phase.fixedAim = at;
+		phase.resume = true;
+		phase.streams--;
+	}
+
 	/** Pours the stream at {@code target} (any living thing) instead of the nearest player. */
 	public void setTarget(LivingEntity target) {
 		this.target = target;
@@ -93,22 +116,34 @@ public class BreathStreamPhase extends AbstractDragonSittingPhase {
 	@Override
 	public void doServerTick(ServerLevel serverLevel) {
 		ticks++;
+		// on a wall its foothold gone under it: it falls off and flies
+		if (brain().face().wall() && !brain().standsOn()) {
+			LiftoffPhase.fall(dragon);
+			return;
+		}
 		LivingEntity target = this.target != null && this.target.isAlive() ? this.target
 				: serverLevel.getNearestPlayer(TARGETING, dragon, dragon.getX(), dragon.getY(), dragon.getZ());
 		if (target != null && ticks < BreathAttack.WINDUP_TICKS + BreathAttack.STREAM_TICKS) {
 			// the neck follows the target; the body only turns once the target leaves the neck's reach
-			double dx = target.getX() - dragon.getX(), dz = target.getZ() - dragon.getZ();
+			// across the face it stands on (on a wall, the wall's frame: its yaw is the heading on it)
+			Vec3 toward = brain().local(fixedAim != null ? fixedAim : target.position()), here = brain().local();
+			double dx = toward.x - here.x, dz = toward.z - here.z;
 			turning = BreathAttack.bodyTurns(BreathAttack.offFacing(dragon.getYRot(), dx, dz), turning);
 			float step = ticks < BreathAttack.WINDUP_TICKS ? BreathAttack.WINDUP_TURN : BreathAttack.STREAM_TURN;
-			if (turning) dragon.setYRot(BreathAttack.turnToward(dragon.getYRot(), dx, dz, step));
+			// upright on a wall: only the neck follows
+			if (turning && !brain().face().wall()) dragon.setYRot(BreathAttack.turnToward(dragon.getYRot(), dx, dz, step));
 			// the aim follows the target's body, a little above its feet; quick while inhaling, slow while pouring
-			Vec3 at = target.position().add(0.0, target.getBbHeight() * 0.3, 0.0);
+			Vec3 at = fixedAim != null ? fixedAim : target.position().add(0.0, target.getBbHeight() * 0.3, 0.0);
 			double speed = ticks < BreathAttack.WINDUP_TICKS ? BreathAttack.AIM_SPEED * 3.0 : BreathAttack.AIM_SPEED;
 			Vec3 to = aim == null ? Vec3.ZERO : at.subtract(aim);
 			aim = aim == null ? at : to.length() <= speed ? at : aim.add(to.normalize().scale(speed));
 		}
 		if (ticks < BreathAttack.WINDUP_TICKS + BreathAttack.STREAM_TICKS) brain().aimStrike(aim);
 		if (BreathAttack.streaming(ticks) && (ticks - BreathAttack.WINDUP_TICKS) % BreathAttack.DAMAGE_INTERVAL == 0) burn();
+		if (ticks >= BreathAttack.TOTAL_TICKS && resume) {
+			GroundFightPhase.start(dragon, this.target, false, Foothold.STAND);
+			return;
+		}
 		if (ticks >= BreathAttack.TOTAL_TICKS) {
 			dragon.getPhaseManager().setPhase(streams >= DragonConfig.MAX_STREAMS.get() ? EnderDragonPhase.TAKEOFF : EnderDragonPhase.SITTING_SCANNING);
 		}

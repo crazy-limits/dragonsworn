@@ -11,6 +11,18 @@ public final class Mat3 {
 		return new double[]{cy, sy * sx, sy * cx, 0, cx, -sx, -sy, cy * sx, cy * cx};
 	}
 
+	/** Rz(z) Ry(y) Rx(x) (radians), as {@code tools/rig.py}'s euler_zyx. */
+	public static double[] zyx(double z, double y, double x) {
+		double cz = Math.cos(z), sz = Math.sin(z);
+		return mul(new double[]{cz, -sz, 0, sz, cz, 0, 0, 0, 1}, yx(y, x));
+	}
+
+	/** Rz(z) (radians). */
+	public static double[] z(double z) {
+		double c = Math.cos(z), s = Math.sin(z);
+		return new double[]{c, -s, 0, s, c, 0, 0, 0, 1};
+	}
+
 	/** {@code a b}. */
 	public static double[] mul(double[] a, double[] b) {
 		double[] m = new double[9];

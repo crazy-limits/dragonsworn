@@ -112,14 +112,21 @@ public final class TailMotion {
 				bone(out, 1, 2 * Math.cos(2 * w), -9 * Math.sin(w - 1.0));
 				bone(out, 2, 3 * Math.cos(2 * w - 0.5), -12 * Math.sin(w - 1.6));
 			}
-			case FLY, FLAP, GLIDE, HOVER, TAKEOFF, LAND, CLING, CLING_BITE, GLIDE_BREATH, GLIDE_BITE, HOVER_BITE, HOVER_BREATH -> throw new IllegalStateException("No tail track for " + anim);
-			case ROAR -> {
+			case FLY, FLAP, GLIDE, HOVER, CLIMB, DESCEND, DIVE, TAKEOFF, LAND, CLING, CLING_BITE, GLIDE_BREATH, GLIDE_BITE, HOVER_BITE, HOVER_BREATH -> throw new IllegalStateException("No tail track for " + anim);
+			case ROAR, WALL_ROAR -> {
 				double snap = Maths.smoothstep((t - 0.6 + 0.08) / 0.15), fade = 1 - Maths.smoothstep((t - 1.6) / 0.5);
 				double shake = 2 * Math.sin(t * 40) * snap * fade;
 				standing(out, 0.0);
 				bone(out, 2, 0.0, shake * 2);
 			}
-			case ATTACK, BREATH, UPRIGHT_BITE -> standing(out, 0.0);
+			case ATTACK, BREATH, UPRIGHT_BITE, WALL_BITE, WALL_BREATH -> standing(out, 0.0);
+			case WALL, WALL_CLIMB -> {
+				// hanging down the face (laid on it, as on the ground), swaying a little
+				double w = 2 * Math.PI * t / length;
+				standing(out, 0.0);
+				bone(out, 1, 0.0, 4 * Math.sin(w - 0.6));
+				bone(out, 2, 0.0, 6 * Math.sin(w - 1.2));
+			}
 			case UPRIGHT -> {
 				// laid behind as a prop, swaying against the wings' teeter
 				double w = 2 * Math.PI * t / length;

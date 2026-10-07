@@ -9,6 +9,7 @@ import crazylimits.dragonsworn.mc.DragonswornDragon;
 import crazylimits.dragonsworn.mc.PreyHold;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.protocol.game.ClientboundAddEntityPacket;
+import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.damagesource.DamageSource;
@@ -74,6 +75,20 @@ public abstract class EnderDragonMixin extends Mob implements DragonswornDragon 
 		return dragonsworn$brain;
 	}
 
+	/** The dragon's synced data ({@link DragonData}), defined by the dragon's own class right after vanilla's. */
+	@Inject(method = "<clinit>", at = @At("TAIL"))
+	private static void dragonsworn$defineData(CallbackInfo ci) {
+		DragonData.FLIGHT = SynchedEntityData.defineId(EnderDragon.class, EntityDataSerializers.INT);
+		DragonData.ACTION = SynchedEntityData.defineId(EnderDragon.class, EntityDataSerializers.INT);
+		DragonData.LOOK = SynchedEntityData.defineId(EnderDragon.class, EntityDataSerializers.INT);
+		DragonData.VOICE = SynchedEntityData.defineId(EnderDragon.class, EntityDataSerializers.INT);
+		DragonData.STRIKE = SynchedEntityData.defineId(EnderDragon.class, EntityDataSerializers.VECTOR3);
+		DragonData.GRIP = SynchedEntityData.defineId(EnderDragon.class, EntityDataSerializers.INT);
+		DragonData.FIREBALL = SynchedEntityData.defineId(EnderDragon.class, EntityDataSerializers.INT);
+		DragonData.FOOTHOLD = SynchedEntityData.defineId(EnderDragon.class, EntityDataSerializers.INT);
+		DragonData.SURFACE = SynchedEntityData.defineId(EnderDragon.class, EntityDataSerializers.INT);
+	}
+
 	@Inject(method = "<init>", at = @At("RETURN"))
 	private void dragonsworn$moreParts(EntityType<? extends EnderDragon> type, Level level, CallbackInfo ci) {
 		EnderDragon self = (EnderDragon) (Object) this;
@@ -108,6 +123,7 @@ public abstract class EnderDragonMixin extends Mob implements DragonswornDragon 
 		builder.define(DragonData.GRIP, 0);
 		builder.define(DragonData.FIREBALL, 0);
 		builder.define(DragonData.FOOTHOLD, 0);
+		builder.define(DragonData.SURFACE, 0);
 	}
 
 	/** Vanilla flies straight at the target through anything; the brain flies there its own way. */
