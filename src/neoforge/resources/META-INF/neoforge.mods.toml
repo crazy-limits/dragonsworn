@@ -23,6 +23,10 @@ config = "dragonsworn.arena.mixins.json"
 [[mixins]]
 config = "dragonsworn.irons.mixins.json"
 
+# Epic Fight: the dragon gets no Epic Fight patch, so ours draws and flies it (inert without it)
+[[mixins]]
+config = "dragonsworn.epicfight.mixins.json"
+
 [[dependencies.${id}]]
 modId = "neoforge"
 type = "required"

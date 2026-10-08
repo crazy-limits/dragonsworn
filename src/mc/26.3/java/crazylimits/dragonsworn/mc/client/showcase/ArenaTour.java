@@ -2,6 +2,9 @@ package crazylimits.dragonsworn.mc.client.showcase;
 
 import crazylimits.dragonsworn.arena.Monolith;
 import crazylimits.dragonsworn.mc.arena.Monoliths;
+import crazylimits.dragonsworn.mc.arena.SpikeLayout;
+import crazylimits.dragonsworn.mc.arena.Stellarity;
+import crazylimits.dragonsworn.mc.arena.Wards;
 import crazylimits.dragonsworn.mc.breath.DragonFire;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -47,6 +50,14 @@ public final class ArenaTour {
 
 	private static void buildScript(Minecraft mc) {
 		command("execute in minecraft:the_end run tp @s 0 110 0", 100);
+		// whose dragon the End fight has (Stellarity's own while its fight is on, else vanilla's) and whose spike layout
+		STEPS.add(new Step(1, m -> onServer(m, server -> {
+			ServerLevel end = end(server);
+			long stellarity = end.getDragons().stream().filter(d -> d.entityTags().contains(Stellarity.BOSS)).count();
+			REPORT.add(String.format(Locale.ROOT, "  End: %d dragon(s), %d of them Stellarity's; %d spikes, %s layout",
+					end.getDragons().size(), stellarity, EndSpikeFeature.getSpikesForLevel(end).size(), SpikeLayout.island(end) != null ? "the island's own" : "vanilla's"));
+			return null;
+		})));
 		command("kill @e[type=minecraft:ender_dragon]", 20);
 		STEPS.add(new Step(1, m -> Script.hideGui(m, true)));
 		List<EndSpikeFeature.EndSpike> spikes = onServer(mc, server -> EndSpikeFeature.getSpikesForLevel(end(server)));
@@ -61,6 +72,13 @@ public final class ArenaTour {
 			shoot(view(x + ix * 40 + iz * 22, h - 12, z + iz * 40 - ix * 22, x, h - 22, z), "arena-" + name + "-spire", 20);
 		}
 		STEPS.add(new Step(1, m -> verify(m, spikes, "generated")));
+		// every crystal on the island, and how many the fight has warded (on anyone's spires)
+		STEPS.add(new Step(1, m -> onServer(m, server -> {
+			ServerLevel end = end(server);
+			List<EndCrystal> all = end.getEntitiesOfClass(EndCrystal.class, new AABB(-120, end.getMinY(), -120, 120, end.getMaxY(), 120));
+			REPORT.add(String.format(Locale.ROOT, "  island crystals: %d, warded %d", all.size(), all.stream().filter(Wards::warded).count()));
+			return null;
+		})));
 		// what the respawn ritual's pillar stage does to each spike, then the feature over what is left
 		STEPS.add(new Step(40, m -> onServer(m, server -> {
 			ServerLevel end = end(server);
@@ -111,13 +129,22 @@ public final class ArenaTour {
 				}
 				AABB at = new AABB(m.centerX, m.crystalY(), m.centerZ, m.centerX + 1, m.crystalY() + 1, m.centerZ + 1).inflate(0.5);
 				int crystals = end.getEntitiesOfClass(EndCrystal.class, at).size();
-				String what = String.format(Locale.ROOT, "%s %s spike at %d, %d (h %d, r %d)", when, m.kind, m.centerX, m.centerZ, m.height, m.radius);
+				boolean warded = end.getEntitiesOfClass(EndCrystal.class, at).stream().anyMatch(Wards::warded);
+				String what = String.format(Locale.ROOT, "%s %s spike at %d, %d (h %d, r %d, %s)", when, m.kind, m.centerX, m.centerZ, m.height, m.radius,
+						warded ? "warded" : "bare");
 				check(wrong[0] == 0, what + ": the world holds the monolith (" + wrong[0] + " of " + m.size() + " blocks differ)");
 				check(stray == 0, what + ": no stray blocks around it (" + stray + ")");
 				check(crystals == 1, what + ": one crystal at vanilla's spot (" + crystals + ")");
 				boolean fire = end.getBlockState(new BlockPos(m.centerX, m.crystalY(), m.centerZ)).is(DragonFire.BLOCK);
 				check(fire, what + ": dragon fire under the crystal");
 				if (!samples.isEmpty()) REPORT.add("     e.g. " + String.join("; ", samples));
+				if (crystals == 0) {
+					List<EndCrystal> near = end.getEntitiesOfClass(EndCrystal.class, new AABB(m.centerX - 12, end.getMinY(), m.centerZ - 12,
+							m.centerX + 12, end.getMaxY(), m.centerZ + 12));
+					REPORT.add(String.format(Locale.ROOT, "     no crystal: entities %s there; %d crystal(s) within 12 blocks%s",
+							end.isPositionEntityTicking(new BlockPos(m.centerX, m.crystalY(), m.centerZ)) ? "ticking" : "not ticking", near.size(),
+							near.isEmpty() ? "" : ", first at y " + (int) near.get(0).getY()));
+				}
 			}
 			return null;
 		});

@@ -6,10 +6,16 @@ import crazylimits.dragonsworn.mc.DragonswornDragon;
 import crazylimits.dragonsworn.mc.PreyHold;
 import crazylimits.dragonsworn.mc.phase.GroundFightPhase;
 import crazylimits.dragonsworn.mc.phase.SnatchPhase;
+import net.minecraft.client.Camera;
+import net.minecraft.client.CameraType;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.monster.zombie.Husk;
+import net.minecraft.world.phys.Vec3;
+import org.joml.Vector3f;
 
 import java.util.List;
 import java.util.Locale;
@@ -159,9 +165,120 @@ final class GrabsStage {
 			check(dragon != null && DragonswornDragon.brain(dragon).prey.hold() == Grip.Hold.NONE && !prey.isEmpty() && PreyHold.carrier(prey.get(0)) == null,
 					"left alone, the hold ends: the husk is flung off");
 		});
+		command("kill @e[tag=df_prey]", 2);
+		preyCamera(y);
 		command("kill @e[tag=df_ai]", 2);
 		command("kill @e[tag=df_prey]", 2);
 		command("kill @e[tag=df_helper]", 2);
+	}
+
+	/**
+	 * The held player's camera ({@code CameraMixin}, {@code PreyView}): the dragon seizes the player. In first person
+	 * it sees from its lying head; in third person behind, and in Shoulder Surfing Reloaded's over-the-shoulder view
+	 * when the dev client has it ({@code -Pdragonsworn.shoulderSurfing}), the camera keeps its place round the lying
+	 * head. Let go, the camera is the game's (or Shoulder Surfing's) again, nothing left over from the hold.
+	 */
+	static void preyCamera(int y) {
+		command("gamemode survival", 1);
+		command("effect give @s minecraft:resistance infinite 255 true", 1);
+		command("effect give @s minecraft:saturation infinite 255 true", 1);
+		// a seize can miss (the player stands still, but the dragon may still be turning): up to three tries
+		for (int attempt = 0; attempt < 3; attempt++) {
+			server(level -> {
+				EnderDragon dragon = aiDragon(level);
+				ServerPlayer player = level.players().get(0);
+				if (dragon == null || PreyHold.carrier(player) != null) return;
+				// the dragon's head points along (sin yaw, -cos yaw), against vanilla's look vector
+				double yaw = Math.toRadians(dragon.getYRot());
+				player.teleportTo(dragon.getX() + Math.sin(yaw) * 8.0, y, dragon.getZ() - Math.cos(yaw) * 8.0);
+				GroundFightPhase.start(dragon, player, false);
+				if (fight(level) != null) fight(level).seizeNext();
+			});
+			serverUntil(200, level -> PreyHold.carrier(level.players().get(0)) != null);
+		}
+		server(level -> check(PreyHold.carrier(level.players().get(0)) != null, "the dragon takes the player in its jaws"));
+		boolean shoulder = ShoulderSurfing.loaded();
+		if (!shoulder) REPORT.add("INFO Shoulder Surfing Reloaded is not loaded (-Pdragonsworn.shoulderSurfing): its view is not checked");
+		STEPS.add(new Step(3, mc -> perspective(mc, "FIRST_PERSON")));
+		STEPS.add(new Step(1, mc -> {
+			Vec3[] view = placeCamera(mc);
+			check(view[2] != null && view[0].distanceTo(view[2]) < 1.0E-3 && view[2].distanceTo(view[3]) > 0.3, String.format(Locale.ROOT,
+					"held, first person: the camera is at the lying head (%.4f off it; %.2f from the standing eyes)", distance(view[0], view[2]), distance(view[0], view[3])));
+		}));
+		STEPS.add(new Step(3, mc -> perspective(mc, "THIRD_PERSON_BACK")));
+		STEPS.add(new Step(1, mc -> {
+			Vec3[] view = placeCamera(mc);
+			if (shoulder && ShoulderSurfing.active()) {
+				REPORT.add("INFO Shoulder Surfing replaces third person: vanilla's is not checked");
+				return;
+			}
+			// vanilla's: straight back from the eyes along the look, up to 4 blocks
+			Vec3 off = view[2] == null ? Vec3.ZERO : view[0].subtract(view[2]);
+			double back = -off.dot(view[1]), aside = off.add(view[1].scale(back)).length();
+			check(view[2] != null && back > 0.5 && back < 4.001 && aside < 1.0E-3, String.format(Locale.ROOT,
+					"held, third person: the camera is %.2f behind the lying head along the look (%.4f aside)", back, aside));
+		}));
+		if (shoulder) {
+			STEPS.add(new Step(3, mc -> perspective(mc, "SHOULDER_SURFING")));
+			STEPS.add(new Step(1, mc -> {
+				Vec3[] view = placeCamera(mc);
+				Vec3 offset = ShoulderSurfing.offset(), placed = shoulderOffset(mc);
+				// its offset round the lying head, not round the standing eyes inside the dragon
+				check(ShoulderSurfing.active() && view[2] != null && view[0].distanceTo(view[2].add(placed)) < 0.01 && Math.hypot(offset.x, offset.y) > 0.1,
+						String.format(Locale.ROOT, "held, Shoulder Surfing: the camera is its offset (%.2f, %.2f, %.2f) from the lying head (%.4f off; %.2f off the standing eyes')",
+						offset.x, offset.y, offset.z, distance(view[0], view[2] == null ? null : view[2].add(placed)), view[0].distanceTo(view[3].add(placed))));
+			}));
+		}
+		// let go: flung off, then on the ground; the camera follows the eyes the game's way again
+		serverUntil(400, level -> PreyHold.carrier(level.players().get(0)) == null);
+		serverUntil(200, level -> level.players().get(0).onGround());
+		STEPS.add(new Step(10, mc -> perspective(mc, "FIRST_PERSON")));
+		STEPS.add(new Step(1, mc -> {
+			Vec3[] view = placeCamera(mc);
+			check(view[2] == null && view[0].distanceTo(view[3]) < 1.0E-3, String.format(Locale.ROOT,
+					"let go, first person: the camera is back at the eyes (%.4f off)", view[0].distanceTo(view[3])));
+		}));
+		if (shoulder) {
+			STEPS.add(new Step(3, mc -> perspective(mc, "SHOULDER_SURFING")));
+			STEPS.add(new Step(1, mc -> {
+				Vec3[] view = placeCamera(mc);
+				double off = view[0].distanceTo(view[3].add(shoulderOffset(mc)));
+				check(view[2] == null && ShoulderSurfing.active() && off < 0.01, String.format(Locale.ROOT,
+						"let go, Shoulder Surfing: the camera is its offset from the eyes again (%.4f off)", off));
+			}));
+		}
+		STEPS.add(new Step(1, mc -> perspective(mc, "FIRST_PERSON")));
+		command("effect clear @s", 1);
+		command("gamemode creative", 1);
+	}
+
+	/** The camera's view by name: through Shoulder Surfing when it is loaded (else it would keep its own). */
+	private static void perspective(Minecraft mc, String name) {
+		if (ShoulderSurfing.loaded()) ShoulderSurfing.perspective(name);
+		else mc.options.setCameraType(CameraType.valueOf(name));
+	}
+
+	/**
+	 * Places the game's camera for the player now, at the end of the tick (every camera mixin runs, as for a frame):
+	 * where it is, its look, the player's lying eyes (null when not held) and its standing ones.
+	 */
+	private static Vec3[] placeCamera(Minecraft mc) {
+		Camera camera = mc.gameRenderer.getMainCamera();
+		CameraType type = mc.options.getCameraType();
+		camera.setup(mc.level, mc.player, !type.isFirstPerson(), type.isMirrored(), 1.0F);
+		EnderDragon dragon = PreyHold.carrier(mc.player);
+		Vec3 lying = dragon == null ? null : DragonswornDragon.brain(dragon).prey.lyingEyes(mc.player, 1.0F);
+		return new Vec3[]{camera.position(), new Vec3(camera.forwardVector()), lying, mc.player.getEyePosition(1.0F)};
+	}
+
+	/** Shoulder Surfing's offset as its redirect of {@code Camera.move} places it: its camera axes turned by the camera's rotation. */
+	private static Vec3 shoulderOffset(Minecraft mc) {
+		Vec3 o = ShoulderSurfing.offset();
+		return new Vec3(new Vector3f((float) -o.x, (float) o.y, (float) o.z).rotate(mc.gameRenderer.getMainCamera().rotation()));
+	}
+
+	private static double distance(Vec3 a, Vec3 b) {
+		return a == null || b == null ? Double.NaN : a.distanceTo(b);
 	}
 
 	/**

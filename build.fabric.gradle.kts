@@ -86,17 +86,39 @@ dependencies {
 	val configLibs = providers.gradleProperty("dragonsworn.configLibs").isPresent
 	// `-Pdragonsworn.enderscape`: Enderscape (+ Lithostitched, Apollib, Mixson, YACL) in the dev client, for compatibility checks
 	val enderscape = providers.gradleProperty("dragonsworn.enderscape").isPresent
-	if (configLibs) optionalProp("deps.cloth-config")?.let { modLocalRuntime(it) { isTransitive = false } }
+	// `-Pdragonsworn.stellarity`, `-Pdragonsworn.yungsEnd`: Stellarity, YUNG's Better End Island (+ YUNG's API, Cloth Config)
+	// in the dev client: the arena tour then tours their island (compatibility checks)
+	val yungsEnd = providers.gradleProperty("dragonsworn.yungsEnd").isPresent
+	if (providers.gradleProperty("dragonsworn.stellarity").isPresent) optionalProp("deps.stellarity")?.let { modLocalRuntime(it) { isTransitive = false } }
+	if (yungsEnd) optionalProp("deps.yungs-end")?.split(',')?.forEach { modLocalRuntime(it.trim()) { isTransitive = false } }
+	if (yungsEnd) optionalProp("deps.yungs-end-libs")?.split(',')?.forEach { localRuntime(it.trim()) { isTransitive = false } }    // nested like YACL's
+	if (configLibs || yungsEnd) optionalProp("deps.cloth-config")?.let { modLocalRuntime(it) { isTransitive = false } }
 	if (configLibs || enderscape) optionalProp("deps.yacl")?.let {
 		modLocalRuntime(it) { isTransitive = false }
 		// YACL's own libraries (its released jar nests them; the Modrinth maven's dev classpath does not)
 		localRuntime("org.quiltmc.parsers:json:0.2.1")
 		localRuntime("org.quiltmc.parsers:gson:0.2.1")
 	}
-	if (configLibs) localRuntime("me.shedaniel.cloth:basic-math:0.6.1")     // Cloth Config's, likewise
+	if (configLibs || yungsEnd) localRuntime("me.shedaniel.cloth:basic-math:0.6.1")     // Cloth Config's, likewise
 	if (enderscape) {
 		optionalProp("deps.enderscape")?.split(',')?.forEach { modLocalRuntime(it.trim()) { isTransitive = false } }
 		localRuntime("de.marhali:json5-java:3.0.0")     // Apollib's, nested like YACL's
+	}
+	// `-Pdragonsworn.shoulderSurfing`: Shoulder Surfing Reloaded (+ Forge Config API Port) in the dev client; the showcase's
+	// `grabs` stage then checks a held player's camera in its over-the-shoulder view too (nothing compiled against it)
+	if (providers.gradleProperty("dragonsworn.shoulderSurfing").isPresent) {
+		optionalProp("deps.shouldersurfing")?.split(',')?.forEach {
+			if (isUnobfuscated) localRuntime(it.trim()) { isTransitive = false } else modLocalRuntime(it.trim()) { isTransitive = false }
+		}
+		optionalProp("deps.shouldersurfing-libs")?.split(',')?.forEach { localRuntime(it.trim()) }    // nested like YACL's
+	}
+	// `-Pdragonsworn.iris`: Sodium + Iris in the dev client (with Complementary Reimagined: installShaderPack, buildSrc/ShaderPack.kt)
+	if (providers.gradleProperty("dragonsworn.iris").isPresent) {
+		optionalProp("deps.iris")?.split(',')?.forEach {
+			if (isUnobfuscated) localRuntime(it.trim()) { isTransitive = false } else modLocalRuntime(it.trim()) { isTransitive = false }
+		}
+		// Iris's shader libraries (nested in its released jar, like YACL's)
+		optionalProp("deps.iris-libs")?.split(',')?.forEach { localRuntime(it.trim()) }
 	}
 }
 
@@ -148,6 +170,8 @@ loom {
 		configName = "Fabric $mcVersion Server"
 	}
 }
+
+installShaderPack(rootProject.file("run/$mcVersion-fabric"))
 
 tasks.withType<JavaCompile>().configureEach {
 	dependsOn(tasks.named("stonecutterGenerate"))

@@ -30,6 +30,13 @@ deps.geckolib = "com.geckolib:geckolib-fabric-26.3:5.5.7"
 deps.modmenu = "maven.modrinth:modmenu:21.0.0"
 deps.yacl = "maven.modrinth:yacl:3.9.7+26.3-fabric"
 deps.cloth-config = "maven.modrinth:cloth-config:26.3.159+fabric"
+# `-Pdragonsworn.iris`: Sodium + Iris (+ the libraries its released jar nests) in the dev client
+deps.iris = "maven.modrinth:sodium:mc26.3-0.9.2-fabric,maven.modrinth:iris:1.11.7+26.3-fabric"
+deps.iris-libs = "org.anarres:jcpp:1.4.14,io.github.douira:glsl-transformer:3.0.0-pre3,org.antlr:antlr4-runtime:4.13.1"
+# `-Pdragonsworn.shoulderSurfing`: Shoulder Surfing Reloaded (+ Forge Config API Port) in the dev client (compatibility checks)
+deps.shouldersurfing = "maven.modrinth:shoulder-surfing-reloaded:26.3-5.2.0+fabric,maven.modrinth:forge-config-api-port:JpKvrr9J"
+# Night Config, nested in Forge Config API Port's released jar, not on the Modrinth maven's dev classpath
+deps.shouldersurfing-libs = "com.electronwill.night-config:core:3.8.4,com.electronwill.night-config:toml:3.8.4"
 
 [fabric."1.21.11"]
 deps.minecraft = "1.21.11"
@@ -38,6 +45,13 @@ deps.geckolib = "software.bernie.geckolib:geckolib-fabric-1.21.11:5.4.5"
 deps.modmenu = "maven.modrinth:modmenu:17.0.1"
 deps.yacl = "maven.modrinth:yacl:3.8.2+1.21.11-fabric"
 deps.cloth-config = "maven.modrinth:cloth-config:21.11.153+fabric"
+# `-Pdragonsworn.iris`: Sodium + Iris (+ the libraries its released jar nests) in the dev client
+deps.iris = "maven.modrinth:sodium:mc1.21.11-0.8.14-fabric,maven.modrinth:iris:1.10.8+1.21.11-fabric"
+deps.iris-libs = "org.anarres:jcpp:1.4.14,io.github.douira:glsl-transformer:3.0.0-pre3,org.antlr:antlr4-runtime:4.13.1"
+# `-Pdragonsworn.shoulderSurfing`: Shoulder Surfing Reloaded (+ Forge Config API Port) in the dev client (compatibility checks)
+deps.shouldersurfing = "maven.modrinth:shoulder-surfing-reloaded:1.21.11-5.2.0+fabric,maven.modrinth:forge-config-api-port:uXrWPsCu"
+# Night Config, nested in Forge Config API Port's released jar, not on the Modrinth maven's dev classpath
+deps.shouldersurfing-libs = "com.electronwill.night-config:core:3.8.3,com.electronwill.night-config:toml:3.8.3"
 
 [fabric."1.21.1"]
 deps.minecraft = "1.21.1"
@@ -49,6 +63,19 @@ deps.yacl = "maven.modrinth:yacl:3.8.2+1.21.1-fabric"
 # `-Pdragonsworn.enderscape`: Enderscape and its requirements in the dev client (compatibility checks; YACL comes from deps.yacl; Apollib and Mixson ship nested in the released jars)
 deps.enderscape = "maven.modrinth:enderscape:2.1.0,maven.modrinth:lithostitched:1.8.0-fabric-21.1,maven.modrinth:apollib:1.2.0-fabric-21.1,maven.modrinth:mixson:1.4.0"
 deps.cloth-config = "maven.modrinth:cloth-config:15.0.140+fabric"
+# `-Pdragonsworn.iris`: Sodium + Iris (+ the libraries its released jar nests) in the dev client, Complementary Reimagined as its shader pack
+deps.iris = "maven.modrinth:sodium:mc1.21.1-0.6.13-fabric,maven.modrinth:iris:1.8.8+1.21.1-fabric"
+deps.iris-libs = "org.anarres:jcpp:1.4.14,io.github.douira:glsl-transformer:2.0.1,org.antlr:antlr4-runtime:4.13.1"
+# `-Pdragonsworn.shoulderSurfing`: Shoulder Surfing Reloaded (+ Forge Config API Port) in the dev client (compatibility checks)
+deps.shouldersurfing = "maven.modrinth:shoulder-surfing-reloaded:1.21.1-5.2.0+fabric,maven.modrinth:forge-config-api-port:v21.1.6-1.21.1-Fabric"
+# Night Config, nested in Forge Config API Port's released jar, not on the Modrinth maven's dev classpath
+deps.shouldersurfing-libs = "com.electronwill.night-config:core:3.8.0,com.electronwill.night-config:toml:3.8.0"
+# `-Pdragonsworn.stellarity`: Stellarity (its End island, pillars and dragon fight) in the dev client (compatibility checks)
+deps.stellarity = "maven.modrinth:stellarity:3.0.6.1+mod"
+# `-Pdragonsworn.yungsEnd`: YUNG's Better End Island (+ YUNG's API; Cloth Config from deps.cloth-config) in the dev client (compatibility checks)
+deps.yungs-end = "maven.modrinth:yungs-better-end-island:1.21.1-Fabric-3.1.2,maven.modrinth:yungs-api:1.21.1-Fabric-5.1.9"
+# Reflections and Javassist, nested in YUNG's API's released jar, not on the Modrinth maven's dev classpath
+deps.yungs-end-libs = "org.reflections:reflections:0.10.2,org.javassist:javassist:3.29.2-GA"
 
 [neoforge]
 
@@ -58,6 +85,8 @@ deps.neoforge = "26.3.0.43-beta"
 deps.geckolib = "com.geckolib:geckolib-neoforge-26.3:5.5.7"
 deps.yacl = "maven.modrinth:yacl:3.9.7+26.3-neoforge"
 deps.cloth-config = "maven.modrinth:cloth-config:26.3.159+neoforge"
+# `-Pdragonsworn.shoulderSurfing`: Shoulder Surfing Reloaded in the dev client (compatibility checks)
+deps.shouldersurfing = "maven.modrinth:shoulder-surfing-reloaded:26.3-5.2.0+neoforge"
 
 [neoforge."1.21.11"]
 deps.minecraft = "1.21.11"
@@ -65,6 +94,8 @@ deps.neoforge = "21.11.45"
 deps.geckolib = "software.bernie.geckolib:geckolib-neoforge-1.21.11:5.4.5"
 deps.yacl = "maven.modrinth:yacl:3.8.2+1.21.11-neoforge"
 deps.cloth-config = "maven.modrinth:cloth-config:21.11.153+neoforge"
+# `-Pdragonsworn.shoulderSurfing`: Shoulder Surfing Reloaded in the dev client (compatibility checks)
+deps.shouldersurfing = "maven.modrinth:shoulder-surfing-reloaded:1.21.11-5.2.0+neoforge"
 
 [neoforge."1.21.1"]
 deps.minecraft = "1.21.1"
@@ -75,3 +106,9 @@ deps.yacl = "maven.modrinth:yacl:3.8.2+1.21.1-neoforge"
 deps.cloth-config = "maven.modrinth:cloth-config:15.0.140+neoforge"
 # `-Pdragonsworn.irons`: Iron's Spells 'n Spellbooks and its requirements in the dev client (compatibility checks)
 deps.irons = "maven.modrinth:irons-spells-n-spellbooks:1.21.1-3.16.3,maven.modrinth:irons-lib:1.21.1-2.2.0,maven.modrinth:curios:9.5.1+1.21.1,maven.modrinth:playeranimator:2.0.4+1.21.1-forge"
+# `-Pdragonsworn.epicfight`: Epic Fight in the dev client (compatibility checks: its dragon patch stays off ours)
+deps.epicfight = "maven.modrinth:epic-fight:21.17.3.1-mc1.21.1-neoforge"
+# `-Pdragonsworn.iris`: Sodium + Iris in the dev client, Complementary Reimagined as its shader pack
+deps.iris = "maven.modrinth:sodium:mc1.21.1-0.6.13-neoforge,maven.modrinth:iris:1.8.12+1.21.1-neoforge"
+# `-Pdragonsworn.shoulderSurfing`: Shoulder Surfing Reloaded in the dev client (compatibility checks)
+deps.shouldersurfing = "maven.modrinth:shoulder-surfing-reloaded:1.21.1-5.2.0+neoforge"

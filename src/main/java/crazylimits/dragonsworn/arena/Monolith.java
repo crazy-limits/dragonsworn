@@ -84,6 +84,19 @@ public final class Monolith {
 		groundY = findGround(ground);
 	}
 
+	/** Blocks round the exit portal's column (at 0, 0) that no crystal spire stands in. */
+	public static final int PORTAL_CLEARANCE = 4;
+
+	/**
+	 * Whether a spike centred at {@code centerX, centerZ} is one of the island's crystal spires: not one over the
+	 * exit portal (Stellarity's datapack carves its portal's hollow with an End spike at 0, 0 and turns that
+	 * spike's crystal into the portal: left to vanilla's code).
+	 */
+	public static boolean spire(int centerX, int centerZ, int radius) {
+		double reach = radius + PORTAL_CLEARANCE;
+		return (double) centerX * centerX + (double) centerZ * centerZ > reach * reach;
+	}
+
 	/** Builds the tower of a vanilla End spike; {@code minY} is the world's bottom (the tower goes down to it). */
 	public static Monolith build(int centerX, int centerZ, int radius, int height, int minY, Ground ground) {
 		Monolith m = new Monolith(centerX, centerZ, radius, height, minY, ground);

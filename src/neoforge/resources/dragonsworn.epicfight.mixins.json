@@ -1,0 +1,12 @@
+{
+	"required": false,
+	"minVersion": "0.8",
+	"package": "crazylimits.dragonsworn.neoforge.epicfight.mixin",
+	"compatibilityLevel": "JAVA_${java}",
+	"mixins": [
+		"EntityPatchProviderMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
+}

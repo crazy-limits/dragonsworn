@@ -6,6 +6,7 @@ import com.mojang.renderpearl.api.pipeline.CompareOp;
 import com.mojang.renderpearl.api.pipeline.DepthStencilState;
 import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import crazylimits.dragonsworn.Dragonsworn;
+import crazylimits.dragonsworn.mc.client.Shaders;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleProvider;
@@ -40,6 +41,11 @@ public class VoidFlameParticle extends SingleQuadParticle {
 					.withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
 					.build(),
 			RenderPipelines.OIT_PARTICLE);
+
+	static {
+		// shader packs draw it as their translucent particles
+		Shaders.assign(SMOKE.pipeline(), "PARTICLES_TRANSLUCENT");
+	}
 
 	private final SpriteSet sprites;
 	private final float rise;

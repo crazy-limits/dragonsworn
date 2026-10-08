@@ -70,7 +70,17 @@ dependencies {
 		compileOnly(it.trim()) { isTransitive = false }
 		if (providers.gradleProperty("dragonsworn.irons").isPresent) runtimeOnly(it.trim()) { isTransitive = false }
 	}
+	// Epic Fight: only switched off for the dragon (neoforge/epicfight, by mixin), nothing compiled against it;
+	// `-Pdragonsworn.epicfight` puts it in the dev client
+	if (providers.gradleProperty("dragonsworn.epicfight").isPresent) optionalProp("deps.epicfight")?.let { runtimeOnly(it) { isTransitive = false } }
+	// `-Pdragonsworn.iris`: Sodium + Iris in the dev client (with Complementary Reimagined: installShaderPack, buildSrc/ShaderPack.kt)
+	if (providers.gradleProperty("dragonsworn.iris").isPresent) optionalProp("deps.iris")?.split(',')?.forEach { runtimeOnly(it.trim()) { isTransitive = false } }
+	// `-Pdragonsworn.shoulderSurfing`: Shoulder Surfing Reloaded in the dev client; the showcase's `grabs` stage then
+	// checks a held player's camera in its over-the-shoulder view too (nothing compiled against it)
+	if (providers.gradleProperty("dragonsworn.shoulderSurfing").isPresent) optionalProp("deps.shouldersurfing")?.let { runtimeOnly(it) { isTransitive = false } }
 }
+
+installShaderPack(rootProject.file("run/$mcVersion-neoforge"))
 
 neoForge {
 	version = prop("deps.neoforge")

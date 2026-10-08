@@ -34,6 +34,19 @@ class MonolithTest {
 	}
 
 	@Test
+	void spiresStandRoundTheIslandNeverOverThePortal() {
+		// vanilla's ring (42 blocks out, radius 2..5) and Stellarity's (about 60 out, up to radius 8)
+		for (int i = 0; i < 10; i++) {
+			double a = 2.0 * (-Math.PI + Math.PI / 10.0 * i);
+			assertTrue(Monolith.spire((int) Math.floor(42.0 * Math.cos(a)), (int) Math.floor(42.0 * Math.sin(a)), 5));
+		}
+		assertTrue(Monolith.spire(50, -39, 8));
+		// Stellarity's portal hollow: a radius 16 spike at 0, 0
+		assertFalse(Monolith.spire(0, 0, 16));
+		assertFalse(Monolith.spire(3, -2, 2));
+	}
+
+	@Test
 	void everyEndGetsTheSameMix() {
 		Map<Kind, Integer> count = new EnumMap<>(Kind.class);
 		for (Monolith m : vanilla()) count.merge(m.kind, 1, Integer::sum);

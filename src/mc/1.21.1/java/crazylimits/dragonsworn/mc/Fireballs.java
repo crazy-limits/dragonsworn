@@ -46,6 +46,11 @@ public final class Fireballs {
 		this.brain = brain;
 	}
 
+	/** Whether {@code entity} is a dragon fireball (for code built against every version: the class moved in 1.21.2). */
+	public static boolean isFireball(Entity entity) {
+		return entity instanceof DragonFireball;
+	}
+
 	/** Server: a fireball is charging (the head turning, or heating up): the attack holds its course until it flies. */
 	public boolean charging() {
 		return target != null;

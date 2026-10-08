@@ -10,7 +10,8 @@ import java.util.List;
  * a rune of the Standard Galactic Alphabet on each ({@code tools/crystal_ward.py}). A projectile flying into the
  * ward's sphere ({@link #RADIUS}) bounces off it, and the crystal takes no projectile damage: it is broken up close
  * (or by an explosion). Which crystals: those on the shortest spires (the easiest to shoot, the ones vanilla
- * cages), more the harder the difficulty ({@link #count}).
+ * cages), more the harder the difficulty ({@link #count}), ranked among the island's own spires (vanilla's, or a
+ * datapack's or another mod's layout: {@link #warded}).
  *
  * <p>A ring's frame: the ring lies in its x-z plane round its y axis. It is tilted {@link Ring#tilt} degrees
  * about x, the tilt's direction turning round the world's vertical ({@link #yaw}), and the ring spins about its
@@ -67,9 +68,6 @@ public final class CrystalWard {
 	public static final double BOUNCE = 0.8;
 	/** Blocks a bounced projectile is set outside the sphere (so the next step starts clear of it). */
 	private static final double CLEAR = 0.05;
-	/** Vanilla's spike heights: 76 + 3 x its size rank (0 the shortest). */
-	private static final int SPIKE_BASE = 76, SPIKE_STEP = 3;
-
 	private CrystalWard() {}
 
 	/** How many crystals are warded at {@code difficulty} (0 peaceful .. 3 hard, vanilla's ids). */
@@ -81,9 +79,16 @@ public final class CrystalWard {
 		};
 	}
 
-	/** Whether the crystal on a spike {@code spikeHeight} tall is warded when {@code count} are (the shortest first). */
-	public static boolean warded(int spikeHeight, int count) {
-		return Math.floorDiv(spikeHeight - SPIKE_BASE, SPIKE_STEP) < count;
+	/**
+	 * Whether the crystal on spike {@code index} of the island's spikes ({@code heights}) is warded when
+	 * {@code count} are: the shortest first, equal heights in the spikes' order. An index outside them is not.
+	 */
+	public static boolean warded(int[] heights, int index, int count) {
+		if (index < 0 || index >= heights.length) return false;
+		int rank = 0;
+		for (int i = 0; i < heights.length; i++)
+			if (heights[i] < heights[index] || heights[i] == heights[index] && i < index) rank++;
+		return rank < count;
 	}
 
 	/** Degrees: the direction ring {@code ring}'s tilt leans to at {@code time} ticks. */

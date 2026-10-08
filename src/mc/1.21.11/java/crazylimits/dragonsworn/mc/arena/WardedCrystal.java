@@ -4,5 +4,9 @@ package crazylimits.dragonsworn.mc.arena;
 public interface WardedCrystal {
 	boolean dragonsworn$warded();
 
+	/** Sets the ward (server), which also marks it {@link #dragonsworn$wardSet}. */
 	void dragonsworn$setWarded(boolean warded);
+
+	/** Whether its ward was ever set, warded or not (server; saved): a crystal not set yet is one another mod's spire put there. */
+	boolean dragonsworn$wardSet();
 }

@@ -6,9 +6,12 @@
 	"injectors": { "defaultRequire": 1 },
 	"mixins": [
 		"EndCrystalMixin",
+		"EndDragonFightMixin",
 		"EndPlatformFeatureMixin",
 		"FireworkRocketEntityAccessor",
+		"PlacedFeatureMixin",
 		"ProjectileWardMixin",
+		"ServerFunctionManagerMixin",
 		"SpikeFeatureMixin"
 	],
 	"client": [

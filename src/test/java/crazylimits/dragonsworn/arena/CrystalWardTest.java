@@ -14,18 +14,34 @@ class CrystalWardTest {
 
 	@Test
 	void theShortestSpiresAreWardedFirstMoreTheHarderTheDifficulty() {
-		// vanilla's spikes: 76 + 3 x rank tall, rank 0..9
+		// vanilla's spikes: 76 + 3 x rank tall, rank 0..9, in a shuffled order round the ring
+		int[] heights = {85, 76, 103, 91, 79, 97, 82, 100, 94, 88};
 		int[] warded = new int[4];
 		for (int difficulty = 0; difficulty < 4; difficulty++) {
-			for (int rank = 0; rank < 10; rank++) {
-				boolean w = CrystalWard.warded(76 + 3 * rank, CrystalWard.count(difficulty));
+			for (int i = 0; i < heights.length; i++) {
+				boolean w = CrystalWard.warded(heights, i, CrystalWard.count(difficulty));
 				if (w) warded[difficulty]++;
-				if (w && rank > 0) assertTrue(CrystalWard.warded(76 + 3 * (rank - 1), CrystalWard.count(difficulty)), "a shorter spire is unwarded");
+				for (int j = 0; j < heights.length; j++)
+					if (w && heights[j] < heights[i]) assertTrue(CrystalWard.warded(heights, j, CrystalWard.count(difficulty)), "a shorter spire is unwarded");
 			}
 		}
 		assertEquals(warded[0], warded[1], "peaceful wards as easy does");
 		assertTrue(warded[1] >= 2, "at least vanilla's two caged crystals on easy");
 		assertTrue(warded[1] < warded[2] && warded[2] < warded[3], "more the harder the difficulty");
+	}
+
+	@Test
+	void anyLayoutWardsExactlyTheCountShortestEqualHeightsInOrder() {
+		// Stellarity's ring: its own places and heights, two of them equally tall
+		int[] heights = {100, 105, 94, 106, 105, 93, 100, 96, 87, 95};
+		for (int count = 0; count <= 10; count++) {
+			int n = 0;
+			for (int i = 0; i < heights.length; i++) if (CrystalWard.warded(heights, i, count)) n++;
+			assertEquals(count, n, "warded crystals for count " + count);
+		}
+		assertTrue(CrystalWard.warded(heights, 8, 1), "the shortest goes first");
+		assertTrue(CrystalWard.warded(heights, 0, 6) && !CrystalWard.warded(heights, 6, 6), "of two equal heights, the first");
+		assertFalse(CrystalWard.warded(heights, 10, 10), "a spike not in the layout");
 	}
 
 	@Test

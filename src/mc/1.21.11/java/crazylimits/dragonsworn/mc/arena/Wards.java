@@ -1,6 +1,7 @@
 package crazylimits.dragonsworn.mc.arena;
 
 import crazylimits.dragonsworn.arena.CrystalWard;
+import crazylimits.dragonsworn.config.DragonConfig;
 import crazylimits.dragonsworn.mc.DragonSounds;
 import crazylimits.dragonsworn.mc.arena.mixin.FireworkRocketEntityAccessor;
 import net.minecraft.core.particles.ParticleTypes;
@@ -9,8 +10,13 @@ import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
 import net.minecraft.world.entity.projectile.arrow.AbstractArrow;
 import net.minecraft.world.entity.projectile.Projectile;
+import net.minecraft.world.level.ServerLevelAccessor;
+import net.minecraft.world.level.WorldGenLevel;
+import net.minecraft.world.level.levelgen.feature.SpikeFeature;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+
+import java.util.List;
 
 /**
  * The crystals' rune wards ({@link CrystalWard}) at work: a projectile about to fly into a warded crystal's sphere
@@ -18,6 +24,9 @@ import net.minecraft.world.phys.Vec3;
  * synced flag, so its arrows bounce where the server's do), before the projectile's next step: since 1.21.2
  * {@code Projectile.tick} runs after the step and the drag and gravity that change the next one (arrows) or
  * just before them (fireballs, thrown items): the step checked is the next one, all but exactly.
+ *
+ * <p>Which crystals: set where Dragonsworn builds a spire ({@code Monoliths}); on anyone else's spires (vanilla's,
+ * Stellarity's, YUNG's Better End Island's, BetterEnd's) as the End fight first finds the crystal ({@link #wardFound}).
  */
 public final class Wards {
 	/** Glyph particles (the enchanting table's) where it bounces. */
@@ -31,6 +40,34 @@ public final class Wards {
 
 	public static void ward(EndCrystal crystal, boolean warded) {
 		((WardedCrystal) crystal).dragonsworn$setWarded(warded);
+	}
+
+	/** Whether the crystal on {@code spike} is warded: by its height's rank among the island's spikes, at the level's difficulty. */
+	public static boolean onSpire(ServerLevelAccessor level, SpikeFeature.EndSpike spike) {
+		List<SpikeFeature.EndSpike> spikes = level instanceof WorldGenLevel world ? SpikeFeature.getSpikesForLevel(world) : List.of();
+		int index = -1;
+		for (int i = 0; i < spikes.size(); i++)
+			if (spikes.get(i).getCenterX() == spike.getCenterX() && spikes.get(i).getCenterZ() == spike.getCenterZ()) index = i;
+		return CrystalWard.warded(heights(spikes), index, CrystalWard.count(level.getLevel().getDifficulty().getId()));
+	}
+
+	/**
+	 * Server, as the End fight counts its crystals: each crystal on one of the island's spikes that has no ward
+	 * set yet (another builder's) is warded or not as on Dragonsworn's spires ({@code end_island.wards_on_other_spires}).
+	 */
+	public static void wardFound(ServerLevel level) {
+		if (!DragonConfig.WARD_OTHER_SPIRES.get()) return;
+		List<SpikeFeature.EndSpike> spikes = SpikeFeature.getSpikesForLevel(level);
+		int[] heights = heights(spikes);
+		int count = CrystalWard.count(level.getDifficulty().getId());
+		for (int i = 0; i < spikes.size(); i++)
+			for (EndCrystal crystal : level.getEntitiesOfClass(EndCrystal.class, spikes.get(i).getTopBoundingBox(),
+					c -> !((WardedCrystal) c).dragonsworn$wardSet()))
+				ward(crystal, CrystalWard.warded(heights, i, count));
+	}
+
+	private static int[] heights(List<SpikeFeature.EndSpike> spikes) {
+		return spikes.stream().mapToInt(SpikeFeature.EndSpike::getHeight).toArray();
 	}
 
 	/** Bounces {@code projectile} off the first warded crystal its next step would enter. */

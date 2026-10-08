@@ -1,5 +1,6 @@
 package crazylimits.dragonsworn.mc.arena.mixin;
 
+import com.mojang.serialization.Codec;
 import crazylimits.dragonsworn.mc.arena.WardedCrystal;
 import crazylimits.dragonsworn.mc.breath.DragonFire;
 import net.minecraft.core.BlockPos;
@@ -30,8 +31,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * An End crystal standing on bedrock (the spires' crystals, the ones set on the exit portal to respawn the
  * dragon) keeps dragon fire burning under it instead of common fire; anywhere else the fire is vanilla's.
  *
- * <p>And its rune ward ({@code CrystalWard}): a flag set where the spires are built ({@code Monoliths}), synced
- * (the client draws the rings, its projectiles bounce too) and saved (as {@code DragonswornWarded}, which {@code /summon} takes too). A warded crystal takes
+ * <p>And its rune ward ({@code CrystalWard}): a flag set where the spires are built ({@code Monoliths}) or the fight
+ * finds the crystal ({@code Wards.wardFound}), synced (the client draws the rings, its projectiles bounce too) and
+ * saved once set, warded or not (as {@code DragonswornWarded}, which {@code /summon} takes too). A warded crystal takes
  * no projectile damage (one shot from inside the ward, or pushed in, does not break it either).
  */
 @Mixin(EndCrystal.class)
@@ -40,6 +42,8 @@ public abstract class EndCrystalMixin extends Entity implements WardedCrystal {
 	private static final String WARDED = "DragonswornWarded";
 	@Unique
 	private static final EntityDataAccessor<Boolean> DRAGONSWORN$WARDED = SynchedEntityData.defineId(EndCrystal.class, EntityDataSerializers.BOOLEAN);
+	@Unique
+	private boolean dragonsworn$wardSet;
 
 	private EndCrystalMixin(EntityType<?> type, Level level) {
 		super(type, level);
@@ -58,12 +62,12 @@ public abstract class EndCrystalMixin extends Entity implements WardedCrystal {
 
 	@Inject(method = "addAdditionalSaveData", at = @At("TAIL"))
 	private void dragonsworn$saveWard(ValueOutput output, CallbackInfo ci) {
-		if (dragonsworn$warded()) output.putBoolean(WARDED, true);
+		if (dragonsworn$wardSet) output.putBoolean(WARDED, dragonsworn$warded());
 	}
 
 	@Inject(method = "readAdditionalSaveData", at = @At("TAIL"))
 	private void dragonsworn$readWard(ValueInput input, CallbackInfo ci) {
-		dragonsworn$setWarded(input.getBooleanOr(WARDED, false));
+		input.read(WARDED, Codec.BOOL).ifPresent(this::dragonsworn$setWarded);
 	}
 
 	@Inject(method = "hurtServer", at = @At("HEAD"), cancellable = true)
@@ -79,5 +83,11 @@ public abstract class EndCrystalMixin extends Entity implements WardedCrystal {
 	@Override
 	public void dragonsworn$setWarded(boolean warded) {
 		getEntityData().set(DRAGONSWORN$WARDED, warded);
+		dragonsworn$wardSet = true;
+	}
+
+	@Override
+	public boolean dragonsworn$wardSet() {
+		return dragonsworn$wardSet;
 	}
 }

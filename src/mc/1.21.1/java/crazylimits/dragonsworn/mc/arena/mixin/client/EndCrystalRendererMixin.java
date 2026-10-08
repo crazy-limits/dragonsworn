@@ -3,6 +3,7 @@ package crazylimits.dragonsworn.mc.arena.mixin.client;
 import com.mojang.blaze3d.vertex.PoseStack;
 import crazylimits.dragonsworn.mc.arena.Wards;
 import crazylimits.dragonsworn.mc.arena.client.WardRenderer;
+import crazylimits.dragonsworn.mc.client.Shaders;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.entity.EndCrystalRenderer;
 import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
@@ -23,6 +24,7 @@ public abstract class EndCrystalRendererMixin {
 			at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/vertex/PoseStack;popPose()V", ordinal = 1, shift = At.Shift.AFTER))
 	private void dragonsworn$ward(EndCrystal crystal, float yaw, float partialTick, PoseStack poseStack, MultiBufferSource buffers,
 								  int light, CallbackInfo ci) {
-		if (Wards.warded(crystal)) WardRenderer.draw(poseStack, buffers.getBuffer(WardRenderer.TYPE), crystal.time + partialTick);
+		// see-through and glowing: no shader pack shadow
+		if (Wards.warded(crystal) && !Shaders.shadowPass()) WardRenderer.draw(poseStack, buffers.getBuffer(WardRenderer.TYPE), crystal.time + partialTick);
 	}
 }

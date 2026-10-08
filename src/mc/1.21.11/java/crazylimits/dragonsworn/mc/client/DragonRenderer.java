@@ -93,7 +93,7 @@ public final class DragonRenderer extends GeoReplacedEntityRenderer<ReplacedEnde
 	private DragonRenderer(EntityRendererProvider.Context context, DragonModel model) {
 		super(context, model, new ReplacedEnderDragon());
 		this.dragonModel = model;
-		withRenderLayer(new AutoGlowingGeoLayer<>(this));
+		withRenderLayer(new GlowLayer(this));
 		withRenderLayer(new HeatGlowLayer(this));
 		this.shadowRadius = 0;
 	}
@@ -205,5 +205,19 @@ public final class DragonRenderer extends GeoReplacedEntityRenderer<ReplacedEnde
 				consumer.addVertex(pose, a).setColor(edge);
 			}
 		});
+	}
+
+	/**
+	 * GeckoLib's glowmask layer. Its render pipeline is GeckoLib's own (Windows, or always before GeckoLib 5.5): shader
+	 * packs are told to draw it as they draw glowing eyes (in their shadow pass as entities, where Iris can).
+	 */
+	private static final class GlowLayer extends AutoGlowingGeoLayer<ReplacedEnderDragon, EnderDragon, State> {
+		static {
+			Shaders.assign(RENDER_PIPELINE, "EMISSIVE_ENTITIES", "SHADOW_ENTITIES");
+		}
+
+		GlowLayer(DragonRenderer renderer) {
+			super(renderer);
+		}
 	}
 }

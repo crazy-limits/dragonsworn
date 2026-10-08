@@ -59,6 +59,9 @@ public final class DragonConfig {
 		section("breath", "The void-flame breath (perched stream, breath pass, hovering breath) and the fire it leaves.");
 		section("arena", "The End fight's dragon: vanilla's fight, plus landings beside players and air attacks.");
 		section("end_island", "The End island's shape and its crystals' wards (worldgen; the respawn ritual rebuilds the spires the same way).");
+		section("other_mods", """
+				Other mods that reshape the End or run their own End fight: Stellarity, YUNG's Better End Island, BetterEnd, Nullscape.
+				Each piece can come from either: the island and its pillars, the crystals (wards), the dragon.""");
 		section("spells", "With Iron's Spells 'n Spellbooks: the dragon now and then counters a player's spell (Counterspell).");
 	}
 
@@ -317,13 +320,22 @@ public final class DragonConfig {
 	// ---------------------------------------------------------------- end island
 
 	public static final Flag SPIRES = flag("end_island", "spires", true,
-			"Spiral obsidian spires in place of vanilla's obsidian pillars (crystals stay where vanilla puts them).");
+			"Spiral obsidian spires in place of the island's obsidian pillars (crystals stay where the pillars put them). Off: vanilla's pillars, or a datapack's (Stellarity's). YUNG's Better End Island and BetterEnd always build their own.");
 	public static final Flag ENTRANCE_PLATFORM = flag("end_island", "entrance_platform", true,
 			"The spherical obsidian arrival platform in place of vanilla's flat one.");
 	public static final Int WARDED_EASY = num("end_island", "warded_crystals_easy", 2, 0, 10,
-			"Crystals warded by three turning rings of runes (projectiles bounce off them; break them up close) on Easy and Peaceful: those on the shortest spires, the ones vanilla cages (needs the spires; 0 = none) ...");
+			"Crystals warded by three turning rings of runes (projectiles bounce off them; break them up close) on Easy and Peaceful: those on the shortest spires, the ones vanilla cages (0 = none) ...");
 	public static final Int WARDED_NORMAL = num("end_island", "warded_crystals_normal", 3, 0, 10, "... on Normal ...");
 	public static final Int WARDED_HARD = num("end_island", "warded_crystals_hard", 4, 0, 10, "... and on Hard.");
+	public static final Flag WARD_OTHER_SPIRES = flag("end_island", "wards_on_other_spires", true,
+			"Ward the crystals on pillars Dragonsworn did not build too (vanilla's with the spires off, Stellarity's, YUNG's Better End Island's, BetterEnd's), as the End fight finds them.");
+
+	// ---------------------------------------------------------------- other mods
+
+	public static final Flag SPIKE_LAYOUT = flag("other_mods", "island_spike_layout", true,
+			"Where a datapack moves the crystal pillars (Stellarity), the End fight finds them there: it counts and wards their crystals and rebuilds the pillars there on a respawn, not at vanilla's places.");
+	public static final Flag STELLARITY_FIGHT = flag("other_mods", "stellarity_dragon_fight", false,
+			"With Stellarity: its own End fight (its dragon's attacks, boss bars, respawn ritual and portal), Dragonsworn only drawing its dragon. Off: Stellarity's fight is switched off and vanilla's dragon fights on its island, with Dragonsworn's AI, crystals and respawn.");
 
 	// ---------------------------------------------------------------- spells
 

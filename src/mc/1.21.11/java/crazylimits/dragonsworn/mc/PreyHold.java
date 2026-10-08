@@ -2,6 +2,7 @@ package crazylimits.dragonsworn.mc;
 
 import crazylimits.dragonsworn.body.Grip;
 import crazylimits.dragonsworn.body.Parts;
+import crazylimits.dragonsworn.body.PreyView;
 import crazylimits.dragonsworn.limb.BodyFrame;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
@@ -132,17 +133,16 @@ public final class PreyHold {
 
 	/**
 	 * Where a held prey's eyes are as it lies (world), between ticks: from its middle toward its head along
-	 * {@link #lyingYaw}, its eye height less half its height. The first-person camera goes there
-	 * ({@code CameraMixin}), not inside the dragon where its standing eyes would be. Null when not held.
+	 * {@link #lyingYaw} ({@code PreyView.lyingEyes}). The camera sees from there ({@code CameraMixin}), not from
+	 * inside the dragon where its standing eyes would be. Null when not held.
 	 */
 	@Nullable
 	public Vec3 lyingEyes(Entity prey, float partialTick) {
 		double yaw = lyingYaw(prey, partialTick);
 		if (Double.isNaN(yaw)) return null;
-		double out = prey.getEyeHeight() - prey.getBbHeight() / 2.0, r = Math.toRadians(yaw);
-		return new Vec3(Mth.lerp(partialTick, prey.xo, prey.getX()) - Math.sin(r) * out,
-				Mth.lerp(partialTick, prey.yo, prey.getY()) + prey.getBbHeight() / 2.0,
-				Mth.lerp(partialTick, prey.zo, prey.getZ()) + Math.cos(r) * out);
+		double[] eyes = PreyView.lyingEyes(Mth.lerp(partialTick, prey.xo, prey.getX()), Mth.lerp(partialTick, prey.yo, prey.getY()),
+				Mth.lerp(partialTick, prey.zo, prey.getZ()), prey.getEyeHeight(), prey.getBbHeight(), yaw);
+		return new Vec3(eyes[0], eyes[1], eyes[2]);
 	}
 
 	/** The model as placed this tick (as the server's hitboxes and the client's model are). */

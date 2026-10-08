@@ -3,6 +3,7 @@ package crazylimits.dragonsworn.mc.breath.client;
 import com.mojang.blaze3d.pipeline.BlendFunction;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import crazylimits.dragonsworn.Dragonsworn;
+import crazylimits.dragonsworn.mc.client.Shaders;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleProvider;
@@ -36,6 +37,11 @@ public class VoidFlameParticle extends SingleQuadParticle {
 					.withBlend(BlendFunction.TRANSLUCENT)
 					.withDepthWrite(false)
 					.build());
+
+	static {
+		// shader packs draw it as their translucent particles
+		Shaders.assign(SMOKE.pipeline(), "PARTICLES_TRANSLUCENT");
+	}
 
 	private final SpriteSet sprites;
 	private final float rise;

@@ -24,6 +24,7 @@ import crazylimits.dragonsworn.config.DragonConfig;
 import crazylimits.dragonsworn.flight.FlightModel;
 import crazylimits.dragonsworn.limb.GroundFit;
 import crazylimits.dragonsworn.limb.HeadLook;
+import crazylimits.dragonsworn.mc.arena.Stellarity;
 import crazylimits.dragonsworn.mc.breath.BreathFlames;
 import crazylimits.dragonsworn.mc.breath.BreathStreamPhase;
 import crazylimits.dragonsworn.mc.phase.AttackTargeting;
@@ -79,7 +80,12 @@ import java.util.List;
  * goes at a target) and one director per context ({@link WildDirector}, {@link ArenaDirector}).
  */
 public final class DragonBrain {
-	public enum Context { UNKNOWN, ARENA, WILD }
+	/**
+	 * Where the dragon lives: the End fight's ({@code ARENA}; Stellarity's own dragon too while Dragonsworn
+	 * runs the fight), on its own ({@code WILD}), or in another mod's fight that drives it ({@code FOREIGN}:
+	 * Stellarity's, {@link Stellarity#owns}): vanilla's phases then play as that mod sets them, Dragonsworn only draws it.
+	 */
+	public enum Context { UNKNOWN, ARENA, WILD, FOREIGN }
 
 	private final EnderDragon dragon;
 	public final DragonBody body = new DragonBody();
@@ -152,6 +158,11 @@ public final class DragonBrain {
 
 	public Context context() {
 		return context;
+	}
+
+	/** Another mod's fight drives it ({@link Context#FOREIGN}): its phases are left as they are set, its dying is vanilla's. */
+	public boolean foreign() {
+		return context == Context.FOREIGN;
 	}
 
 	public BlockGrid grid() {
@@ -589,7 +600,9 @@ public final class DragonBrain {
 
 	private void updateContext() {
 		if (context != Context.UNKNOWN) return;
-		if (dragon.getDragonFight() != null) {
+		if (Stellarity.owns(dragon)) {
+			context = Context.FOREIGN;
+		} else if (dragon.getDragonFight() != null || dragon.getTags().contains(Stellarity.BOSS)) {
 			context = Context.ARENA;
 		} else if (dragon.tickCount > 2) {
 			context = Context.WILD;
@@ -603,6 +616,7 @@ public final class DragonBrain {
 	 * there is from the island's ground.
 	 */
 	public EnderDragonPhase<?> remap(EnderDragonPhase<?> phase) {
+		if (context == Context.FOREIGN) return phase;
 		DragonPhaseInstance current = dragon.getPhaseManager().getCurrentPhase();
 		EnderDragonPhase<?> from = current == null ? null : current.getPhase();
 		if (phase == EnderDragonPhase.TAKEOFF && (from == DragonPhases.GROUND_FIGHT || from == DragonPhases.GROUND_APPROACH)) {
@@ -685,7 +699,7 @@ public final class DragonBrain {
 		} catch (IllegalArgumentException e) {
 			context = Context.UNKNOWN;
 		}
-		if (context == Context.ARENA) context = Context.UNKNOWN;   // re-detected from the End fight
+		if (context == Context.ARENA || context == Context.FOREIGN) context = Context.UNKNOWN;   // re-detected from the End fight
 		loadFace(own.getStringOr("Surface", ""));
 	}
 

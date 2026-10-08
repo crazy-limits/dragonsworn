@@ -27,7 +27,8 @@ Targets: `1.21.1` (GeckoLib 4), `1.21.11` (GeckoLib 5.4), `26.3` (GeckoLib 5.5, 
 - Showcase: flat world, NoAI dragons play every animation, then live AI tests. `-Pdragonsworn.showcase=<stage>` runs one stage:
   `landing` (ground assault, takeoff, running landing), `stance` (ground/air/ground cycle), `pass` (breath pass), `death`, `config`,
   `narrow` (3x3 platform, lone pillar), `air` (fly-by bite, hover bite, hover breath, wild choice; ~6 min), `breath`, `walls`,
-  `hitboxes`, `collision`, `grabs`, `footing` (standing on curvy ground, a one-block step, a platform, a pillar, and walking over curvy
+  `hitboxes`, `collision`, `grabs` (snatch, seize, then the player seized: its camera at the lying head in first and third person and,
+  with `-Pdragonsworn.shoulderSurfing`, Shoulder Surfing Reloaded's view; back to normal once let go), `footing` (standing on curvy ground, a one-block step, a platform, a pillar, and walking over curvy
   ground: planted limbs hold still, against the same stance on flat ground; `showcase-footing-<site>.csv`), `aim` (fireball accuracy and head on target, giving up on an unreachable target, wing buffet, far roar),
   `climb` (husk in a cliff tunnel: sheer cliff refused, landing on a ledge, tunnel bite/breath, short stay; ledge removed: it
   falls and flies; husk on an obsidian pillar: it never climbs from the ground, it takes off; a tower: hanging on each face,
@@ -40,6 +41,12 @@ Targets: `1.21.1` (GeckoLib 4), `1.21.11` (GeckoLib 5.4), `26.3` (GeckoLib 5.5, 
   `-Pdragonsworn.film=walk,jaws` films only the named scenes (`flight walk stalk breath pass claws jaws`) and keeps other frames.
   `-Pdragonsworn.film=gallery` shoots store stills `still-<shot>-<n>.png` (`=ward` only the crystal ward's, 1.21.1 only); `python3 tools/gallery.py` grades `PICKS` into `gallery/*.jpg` (1920x1080).
 - Config screen: `-Pdragonsworn.configLibs` adds YACL + Cloth to the Fabric dev client; `-Pdragonsworn.configScreen=plain|cloth|yacl` picks one.
+- Shaders: `-Pdragonsworn.iris` adds Sodium + Iris to the dev client (Fabric all targets, NeoForge 1.21.1) and installs Complementary Reimagined
+  (`buildSrc/ShaderPack.kt`; the only pack we support, it runs on macOS; Oculus has no 1.21 release, NeoForge players use Iris). Combine with any
+  showcase stage. Iris API through `mc/client/Shaders` (reflection, Iris optional): the ward skips the shadow pass; from 1.21.2 every own
+  `RenderPipeline` must be `Shaders.assign`ed (Iris logs `Missing program <id>`): the void smoke, GeckoLib's glowmask (`DragonRenderer.GlowLayer`).
+- End overhauls in the Fabric 1.21.1 dev client: `-Pdragonsworn.stellarity`, `-Pdragonsworn.yungsEnd` (with `-Pdragonsworn.arena` the tour
+  reports whose dragon, whose spike layout and each crystal's ward).
 
 ## Release
 Push tag `release`, `release-beta` or `release-alpha` at the tip of `main` (`git tag -f release-alpha && git push -f origin release-alpha`).
@@ -67,6 +74,10 @@ Dry run: `./gradlew publishAll -PpublishDryRun -PcurseforgeToken=x`.
   spell pour `VOID_BREATH` (cone) and `VOID_FLAME` (pool); `src/neoforge/mc1.21.1/.../irons/Counterspell` (compiled against
   `deps.irons`, hooked by `IronsSpells.init` only when it is loaded; no-op `IronsSpells` on other versions): a dragon that
   sees a survival player start a spell now and then cancels it as Counterspell does (`SpellPreCastEvent`; config `[spells]`).
+  Epic Fight compat (NeoForge, 1.21.1 only; `-Pdragonsworn.epicfight` in the dev client): `neoforge/epicfight/mixin`
+  (`dragonsworn.epicfight.mixins.json`, `@Pseudo`) makes `CommonEntityPatchProvider.getCapability` give the dragon and dragon
+  fireballs no patch (its dragon AI/renderer would replace ours; it doubles fireball speed); `EpicFight` restores the dragon's
+  16x8 box (Epic Fight shrinks every dragon to 5x3 in `EntityEvent.Size`).
 - Assets: model + animations `src/gecko4/resources` (1.21.1), `src/gecko5/resources` (1.21.2+); textures, lang, sounds `src/mc/shared/resources`.
 
 ## GeckoLib 4 vs 5
@@ -187,7 +198,9 @@ Code that read GeckoLib 4 world matrices after drawing (`BreathRender`, `LimbCon
   on beat boundaries via `DragonBrain.beatPhase`). Stage `air`.
 - **Grabs**: `body/Grip` (holds, `fits`, jaw shake) -> `mc/PreyHold`: prey is carried, not mounted (level skips its tick, dragon ticks it;
   `ServerLevelMixin`, `ClientLevelMixin`, `ServerGamePacketListenerImplMixin`, `Carried`/`EntityMixin`); drawn lying (`LivingEntityRendererMixin`,
-  camera `CameraMixin`). Snatch `phase/SnatchPhase` (`TalonPose`), seize in `GroundFightPhase`. Toe bones are reset from rest every frame
+  camera `CameraMixin`: moved last by lying minus standing eyes, `body/PreyView`, so third-person and camera mods' offsets are kept
+  (Shoulder Surfing Reloaded redirects `Camera.move` in the same method); a first-person camera another mod moved is left alone; no
+  state between frames). Snatch `phase/SnatchPhase` (`TalonPose`), seize in `GroundFightPhase`. Toe bones are reset from rest every frame
   (GeckoLib keeps unkeyed bones: adding spins them). Stage `grabs`.
 - **Death**: `ai/DeathFlight` via `DragonDeathPhaseMixin` (fly to altar, rise; wild: rise only), then `DragonBrain.deathTick` and `DEATH`
   (cocoon). `anims.assert_wings_apart` fails the build if wings cross the body's middle. Dead `aiStep` returns early: `tickEnd` hooks every return. Stage `death`.
@@ -205,11 +218,22 @@ Code that read GeckoLib 4 world matrices after drawing (`BreathRender`, `LimbCon
 - **Crystal wards**: `arena/CrystalWard` (3 rings x 16 panes, 22.5 degrees apart, an SGA rune each, `tools/crystal_ward.py`;
   ring geometry, which crystals: the shortest spires', `warded_crystals_easy/normal/hard`, sphere bounce math) ->
   `mc/arena/Wards` (bounce at `Projectile.tick` TAIL via `ProjectileWardMixin`, both sides; sound `DragonSounds.WARD`),
-  flag synced/saved by `EndCrystalMixin` (`DragonswornWarded`; projectile damage refused), set in `Monoliths.place`;
+  flag synced/saved by `EndCrystalMixin` (`DragonswornWarded`, saved once set, warded or not; projectile damage refused), set in
+  `Monoliths.place` or, on spires another builder put up, as the fight counts crystals (`Wards.wardFound` via `EndDragonFightMixin`;
+  `wards_on_other_spires`); ranked by height among the fight's spikes (`CrystalWard.warded`, any layout);
   drawn by `client/WardRenderer` (`EndCrystalRendererMixin`; 1.21.2+ carries the flag on the render state). Stage `wards`.
 - **Arena**: `arena/Monolith` upright towers, subtly twisted (`CROWN`, `WINDOW`), pure function of the spike, within `REACH`, blast-proof; crystal stays at
   vanilla's spot. `arena/EntrancePlatform` (sphere radius 5). Mixins `SpikeFeatureMixin`, `EndPlatformFeatureMixin` step aside when
-  `end_island.spires` / `end_island.entrance_platform` is off or another mod's mixin targets the class (`mc/arena/OtherMods`).
+  `end_island.spires` / `end_island.entrance_platform` is off or another mod's mixin targets the class (`mc/arena/OtherMods`:
+  YUNG's Better End Island, BetterEnd); a spike over the exit portal is never a spire (`Monolith.spire`: Stellarity's portal
+  hollow is a radius-16 End spike at 0, 0). Island surface = first solid non-spire block (any terrain). Other End mods
+  (`[other_mods]`): `getSpikesForLevel` returns the End biome's own spike features' spikes when a datapack moves them
+  (`mc/arena/SpikeLayout`, Stellarity's ring; `island_spike_layout`), so counts, wards and respawns follow them. Stellarity's fight
+  (functions `stellarity:mobs/dragon/*`, its dragon tagged `fe.boss`) is switched off by `ServerFunctionManagerMixin` (function not
+  found), with `stellarity:post_gen/remove_crystals` (deletes the pillars' crystals on the first visit), unless
+  `stellarity_dragon_fight`; then its dragon is `Context.FOREIGN` (phases unremapped, vanilla dying, no director). Its crying
+  obsidian scatter (`stellarity:dragons_den/obsidian_spike_decor`) is skipped on Dragonsworn's spires (`PlacedFeatureMixin`, not 26.3).
+  Nullscape: vanilla spikes and End stone, nothing to adapt. BetterEnd's mushroom caps etc.: optional entries in `dragon_breakable`.
 - **Config**: `config/DragonConfig` + `config/Toml` -> `config/dragonsworn-server.toml` (loaded by `DragonswornCommon.loadConfig` at init,
   server start, `/reload`; clamped, missing keys written back; file stays English). Screens: YACL, else Cloth, else `PlainConfigScreen`;
   libraries compile-only. Text via `Text` (core) -> `mc/Lang.of`. Stage `config`.
