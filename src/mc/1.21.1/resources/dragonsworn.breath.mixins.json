@@ -11,6 +11,9 @@
 		"DragonVoiceMixin",
 		"ProjectileMixin"
 	],
+	"client": [
+		"client.ParticleEngineMixin"
+	],
 	"injectors": {
 		"defaultRequire": 1
 	}

@@ -5,6 +5,7 @@ import crazylimits.dragonsworn.mc.DragonSounds;
 import crazylimits.dragonsworn.mc.DragonswornCommon;
 import crazylimits.dragonsworn.mc.breath.BreathParticles;
 import crazylimits.dragonsworn.mc.breath.DragonFire;
+import crazylimits.dragonsworn.neoforge.irons.IronsSpells;
 import net.minecraft.core.registries.Registries;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
@@ -27,6 +28,8 @@ public final class DragonswornNeoForge {
 		NeoForge.EVENT_BUS.addListener(OnDatapackSyncEvent.class, event -> {
 			if (event.getPlayer() == null) DragonswornCommon.reloadConfig();
 		});
+		// Iron's Spells 'n Spellbooks: the dragon counters spells (1.21.1)
+		IronsSpells.init();
 		// the mods list's config button
 		if (dist.isClient()) DragonswornNeoForgeClient.registerConfigScreen(container);
 		// the server needs them too: a breath cloud syncs its particle by id

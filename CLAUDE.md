@@ -27,12 +27,14 @@ Targets: `1.21.1` (GeckoLib 4), `1.21.11` (GeckoLib 5.4), `26.3` (GeckoLib 5.5, 
 - Showcase: flat world, NoAI dragons play every animation, then live AI tests. `-Pdragonsworn.showcase=<stage>` runs one stage:
   `landing` (ground assault, takeoff, running landing), `stance` (ground/air/ground cycle), `pass` (breath pass), `death`, `config`,
   `narrow` (3x3 platform, lone pillar), `air` (fly-by bite, hover bite, hover breath, wild choice; ~6 min), `breath`, `walls`,
-  `hitboxes`, `collision`, `grabs`, `aim` (fireball accuracy and head on target, giving up on an unreachable target, wing buffet, far roar),
+  `hitboxes`, `collision`, `grabs`, `footing` (standing on curvy ground, a one-block step, a platform, a pillar, and walking over curvy
+  ground: planted limbs hold still, against the same stance on flat ground; `showcase-footing-<site>.csv`), `aim` (fireball accuracy and head on target, giving up on an unreachable target, wing buffet, far roar),
   `climb` (husk in a cliff tunnel: sheer cliff refused, landing on a ledge, tunnel bite/breath, short stay; ledge removed: it
   falls and flies; husk on an obsidian pillar: it never climbs from the ground, it takes off; a tower: hanging on each face,
   head shots, and the east face's landing and takeoff frame by frame `df-climb-land-*`, `df-climb-takeoff-*`; other wall
   shapes: diagonal, stepped back, a 45-degree stair, each gripped on its own frame `df-climb-shape-*`).
   `wards` (a warded crystal: arrows from round it bounce off, projectile damage refused; a bare one breaks; `df-ward-*`).
+  `spells` (1.21.1 NeoForge with `-Pdragonsworn.irons`: Iron's Dragon's Breath spell and its pool in void flame, the dragon's counterspell; `df-spell-*`).
   Stages: `mc/client/showcase/Stages`.
 - Film (`Film`, ~6 min): player is the prey (survival, resistance 255); third-person shots use `FilmCamera` (placed by `CameraMixin`).
   `-Pdragonsworn.film=walk,jaws` films only the named scenes (`flight walk stalk breath pass claws jaws`) and keeps other frames.
@@ -60,6 +62,11 @@ Dry run: `./gradlew publishAll -PpublishDryRun -PcurseforgeToken=x`.
   - `client/`: renderer, `DragonModel`, `LimbAnimator` (+ `TalonPose`, `ToePose`, `GroundClearance`); `GeoBones` is the only GeckoLib bone access.
     `client/showcase/`: `TestRun` runner, `Script` helpers, one class per stage, `ArenaTour`. `client/config/ConfigScreens`.
 - `src/fabric`, `src/neoforge` — entrypoints only; per-version moved APIs in `src/fabric/mc<version>`, `src/neoforge/mc<version>`.
+  Iron's Spells 'n Spellbooks compat (NeoForge only, so not in the bridges): `src/neoforge/java/.../neoforge/irons/mixin`
+  (`dragonsworn.irons.mixins.json`, `@Pseudo`, not required; a mixin package may hold nothing else) makes its Dragon's Breath
+  spell pour `VOID_BREATH` (cone) and `VOID_FLAME` (pool); `src/neoforge/mc1.21.1/.../irons/Counterspell` (compiled against
+  `deps.irons`, hooked by `IronsSpells.init` only when it is loaded; no-op `IronsSpells` on other versions): a dragon that
+  sees a survival player start a spell now and then cancels it as Counterspell does (`SpellPreCastEvent`; config `[spells]`).
 - Assets: model + animations `src/gecko4/resources` (1.21.1), `src/gecko5/resources` (1.21.2+); textures, lang, sounds `src/mc/shared/resources`.
 
 ## GeckoLib 4 vs 5
@@ -89,8 +96,8 @@ Code that read GeckoLib 4 world matrices after drawing (`BreathRender`, `LimbCon
   (`walk.solve_limbs(hand_laid=True)`); the hand plane holds the crease, 20° off the forearm, so it cannot lie flat.
 - Editor convention: +X pitches a bone's front up; files store X and Y negated.
 - Other generators: `flight.py` (wingbeat), `particles.py` (void flame sprites and `particles/*.json`: `void_breath_*` 48x48x18, smoke from frame 13;
-  `void_flame_*` 24x24x12, smoke from frame 8; must match `VoidFlameParticle.smokeFrom`; drawn opaque, never faded: the
-  smoke cracks into segments that drop out one by one (`segments`, `cut`), underlit violet by the fire (`UNDERLIT`)), `heat.py` (breath heat frames, baked on `build_wings.py`'s layout
+  `void_flame_*` 24x24x12, smoke from frame 9; must match `VoidFlameParticle.smokeFrom`; fire drawn opaque, the smoke fades out (alpha, drawn without depth write: `VoidFlameParticle.SMOKE`; 1.21.1 hands over to a copy, `ParticleEngineMixin`) while its
+  billows shrink, outer ones first (`shrink`, `SHRINK_END`), underlit violet by the fire (`UNDERLIT`)), `heat.py` (breath heat frames, baked on `build_wings.py`'s layout
   before `pack_uv.py`), `dragon_fire.py` (vanilla soul fire, red/green swapped, dimmed), `crystal_ward.py` (rune panes of the crystal wards, layout = `CrystalWard`), `end_crystal.py` (End crystal entity + item
   textures, glass faces = amethyst frames with a clear centre, matching the recipe override (amethyst shards for glass) `src/mc/<version>/resources/data/minecraft/recipe/end_crystal.json`), `crystal_beam.py` (32x512 beam with SGA rune helix;
   flows crystal -> dragon via `mc/arena/mixin/client/EnderDragonRendererMixin`), `egg.py` (dragon egg, 3 `hatch` stages via
@@ -106,8 +113,12 @@ Code that read GeckoLib 4 world matrices after drawing (`BreathRender`, `LimbCon
   (FK) used by hitboxes, renderer (solved last in `DragonModel`) and strike IK.
 - **Flight**: `tools/flight.py` wingbeat (one phase angle drives all joints as harmonics; body heave/pitch/surge answer
   `flight/Wingbeat.downstroke`, the same curve as server thrust/lift). Phase 0 = wings level rising; top `DOWNSTROKE_START` 0.225, bottom
-  `DOWNSTROKE_END` 0.775. `flap` = one beat out of the glide and back. Takeoff: all four limbs planted until the jump, ends on a hover beat
-  boundary; server starts hover at `DragonAnim.TAKEOFF_PHASE` (`FlightModel.startAtPhase`). Up and down (birds): synced
+  `DOWNSTROKE_END` 0.775. `flap` = one beat out of the glide and back. Takeoff (birds' countermovement launch): crouch, rear with the wings rising
+  to the top, then legs and the first downstroke push together (`TAKEOFF_PUSH`); all four limbs planted until the jump
+  (`TAKEOFF_JUMP`, server + `BLEND_TICKS`), ends on a hover beat boundary; server starts hover at `DragonAnim.TAKEOFF_PHASE`
+  (`FlightModel.startAtPhase`). Hover height: `flight/HoverLift` (each downstroke throws it up, the upstroke is a near
+  free fall; push planned per stroke to reach the aim by the next one), so the hover anim's own heave is small.
+  Beating flight climbs in surges on the downstrokes (`FlightModel.climbPulse`). Up and down (birds): synced
   `FlightModel.Slope` picks `CLIMB` (FLY's beat, `flight.CLIMB`: wider strokes, flexed upstroke), `DESCEND` (gull-M glide, legs half down)
   or `DIVE` (stoop, wings swept back); hysteresis `SLOPE_EXIT`, glide hold `SLOPE_HOLD`. Turning: `body/DragonBody` (bank, `HEAD_LEAD`,
   `RUDDER`, renderer-only `wingTurn`).
@@ -185,6 +196,10 @@ Code that read GeckoLib 4 world matrices after drawing (`BreathRender`, `LimbCon
   own entities); nothing is solid. Stages `walls`, `collision`.
 - **Turning on the spot**: `limb/TurnSteps` steps planted feet in diagonal pairs; `LimbIK.solveLegReach`/`solveArmReach`; front limb held by
   `*_wing_tip3`, only while the hand is down.
+- **Limb footing** (`client/LimbAnimator`): a planted limb keeps its height when the ground under it drops at once (`HOLD`, `JUMP`:
+  idle sway across a block edge); a moving one rises early to the ground `AHEAD` ticks on; keeping the mesh out of the ground lifts a
+  limb at most `CLEAR_OVER` over the ground under its foot (a fingertip on a hill must not swing the wing up); turn-step strain counts
+  only a miss across the ground that a step would shorten (`STEP_GAIN`), never a foot that cannot reach down. Stage `footing`.
 - **Sound**: `anim/DragonVoice` times wing/step/roar on the animation clock; flight roars synced `DragonData.VOICE`; `RoarSound` fades;
   vanilla flap/growl/ambient silenced (`DragonVoiceMixin`).
 - **Crystal wards**: `arena/CrystalWard` (3 rings x 16 panes, 22.5 degrees apart, an SGA rune each, `tools/crystal_ward.py`;

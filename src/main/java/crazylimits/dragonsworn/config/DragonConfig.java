@@ -59,6 +59,7 @@ public final class DragonConfig {
 		section("breath", "The void-flame breath (perched stream, breath pass, hovering breath) and the fire it leaves.");
 		section("arena", "The End fight's dragon: vanilla's fight, plus landings beside players and air attacks.");
 		section("end_island", "The End island's shape and its crystals' wards (worldgen; the respawn ritual rebuilds the spires the same way).");
+		section("spells", "With Iron's Spells 'n Spellbooks: the dragon now and then counters a player's spell (Counterspell).");
 	}
 
 	// ---------------------------------------------------------------- dragon
@@ -323,6 +324,17 @@ public final class DragonConfig {
 			"Crystals warded by three turning rings of runes (projectiles bounce off them; break them up close) on Easy and Peaceful: those on the shortest spires, the ones vanilla cages (needs the spires; 0 = none) ...");
 	public static final Int WARDED_NORMAL = num("end_island", "warded_crystals_normal", 3, 0, 10, "... on Normal ...");
 	public static final Int WARDED_HARD = num("end_island", "warded_crystals_hard", 4, 0, 10, "... and on Hard.");
+
+	// ---------------------------------------------------------------- spells
+
+	public static final Flag COUNTERSPELL = flag("spells", "counterspell", true,
+			"Counter a spell a survival player starts casting in its sight: the spell fizzles and goes on cooldown, and the player's magic effects end, as with Counterspell.");
+	public static final Num COUNTERSPELL_CHANCE = num("spells", "counterspell_chance", 0.15, 0.0, 1.0,
+			"Chance it counters a spell it could counter (0 = never, 1 = every one).");
+	public static final Int COUNTERSPELL_COOLDOWN = num("spells", "counterspell_cooldown", 600, 0, 72000,
+			"Ticks (20 = 1 s) after a counter before it can counter again.");
+	public static final Num COUNTERSPELL_RANGE = num("spells", "counterspell_range", 48.0, 4.0, 256.0,
+			"Blocks: it counters spells cast this close to it.");
 
 	private DragonConfig() {}
 

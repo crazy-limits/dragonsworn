@@ -76,8 +76,10 @@ class Style:
 
 # Continuous flapping (climbing, slow flight, charges): deep powerful strokes.
 FLY = Style()
-# Hovering: the body stands up, the stroke plane is near horizontal; wider fore-aft sweep.
-HOVER = Style(mid=10.0, amp=52.0, sweep=2.0, sweep_amp=18.0, sweep8=5.0, heave=7.0, pitch=6.0, surge=0.0,
+# Hovering: the body stands up, the stroke plane is near horizontal; wider fore-aft sweep. The game bobs the
+# whole dragon on the beat (flight/HoverLift: thrown up by every downstroke, nearly falling through every
+# upstroke), so the body's own heave is small.
+HOVER = Style(mid=10.0, amp=52.0, sweep=2.0, sweep_amp=18.0, sweep8=5.0, heave=3.0, pitch=6.0, surge=0.0,
 			  twist_amp=12.0)
 # One push out of a glide: a little shallower.
 PUSH = Style(amp=40.0, elbow_amp=20.0, heave=6.0, pitch=6.0, surge=3.5)

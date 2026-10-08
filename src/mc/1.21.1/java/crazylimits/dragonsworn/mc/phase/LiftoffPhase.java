@@ -19,9 +19,10 @@ import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Leaving the ground ({@link DragonAnim#TAKEOFF}): it crouches on all fours, then all four limbs throw it
- * up together and the wings take over; from there it climbs on the wings alone, standing up in the air
- * (the hover), until it is {@link #CLEAR} blocks up or blocked above. Then it carries on into normal flight, where
+ * Leaving the ground ({@link DragonAnim#TAKEOFF}): it crouches on all fours and rears, the wings rising to
+ * the top of a stroke, then the hind legs and the first downstroke throw it up together; from there it
+ * climbs on the wings alone, standing up in the air (the hover: up on every downstroke, nearly falling
+ * through every upstroke), until it is {@link #CLEAR} blocks up or blocked above. Then it carries on into normal flight, where
  * the body leans forward as it picks up speed.
  *
  * <p>From a narrow foothold ({@link Foothold#narrow}: sat up, or clinging with its wings already beating)
@@ -39,8 +40,11 @@ public class LiftoffPhase extends AbstractDragonPhaseInstance implements Dragons
 	static final double CLEAR = 12.0;
 	/** Off a wall: how far it gets from where it pushed off before it flies on (blocks). */
 	static final double WALL_CLEAR = 10.0;
-	private static final int JUMP_TICK = (int) Math.round(DragonAnim.TAKEOFF_JUMP_SECONDS * 20);
-	private static final int ANIM_TICKS = (int) Math.round(DragonAnim.TAKEOFF_SECONDS * 20);
+	/** The model's feet leave the ground, and its takeoff ends on the hover's beat (it plays BLEND_TICKS late). */
+	private static final int JUMP_TICK = (int) Math.round(DragonAnim.TAKEOFF_JUMP_SECONDS * 20) + DragonAnim.BLEND_TICKS;
+	private static final int ANIM_TICKS = (int) Math.round(DragonAnim.TAKEOFF_SECONDS * 20) + DragonAnim.BLEND_TICKS;
+	/** What the hind legs throw it up with (blocks/tick); the first downstroke, already going, adds to it. */
+	private static final double LEAP = 0.5, NARROW_LEAP = 0.4;
 	private static final int GIVE_UP = 200;
 	/** Off a wall: ticks after the push-off the flare starts to ease out (it then takes Surface.LEAN_TICKS). */
 	private static final int UNLEAN_TICK = 8;
@@ -113,8 +117,8 @@ public class LiftoffPhase extends AbstractDragonPhaseInstance implements Dragons
 	}
 
 	/**
-	 * All four limbs push off together: a strong throw up, and the hover's beat starts where the
-	 * animation's wings are ({@link DragonAnim#TAKEOFF_PHASE}), so beats and lift stay in step.
+	 * The feet leave the ground: the legs' throw up, and the hover's beat starts where the animation's
+	 * wings are ({@link DragonAnim#TAKEOFF_PHASE}, the first downstroke under way), so beats and lift stay in step.
 	 */
 	private void jump() {
 		// off a perch: the next downstroke at once (clinging, the wings were beating already)
@@ -130,7 +134,7 @@ public class LiftoffPhase extends AbstractDragonPhaseInstance implements Dragons
 			dragon.setDeltaMovement(from.nx * 0.5, 0.3, from.nz * 0.5);
 			return;
 		}
-		dragon.setDeltaMovement(0.0, narrow ? 0.4 : 0.55, 0.0);
+		dragon.setDeltaMovement(0.0, narrow ? NARROW_LEAP : LEAP, 0.0);
 		if (dragon.level() instanceof ServerLevel level) {
 			BlockPos below = BlockPos.containing(dragon.getX(), dragon.getY() - 0.5, dragon.getZ());
 			level.sendParticles(new BlockParticleOption(ParticleTypes.BLOCK, level.getBlockState(below)),

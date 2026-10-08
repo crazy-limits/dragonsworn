@@ -205,6 +205,14 @@ public final class FlightModel {
 		};
 	}
 
+	/**
+	 * Share of the climb the wings give this tick, 1 on average over a beat: beating, it gains height in
+	 * surges on the downstrokes and none between them (a goose climbing); gliding, evenly.
+	 */
+	public double climbPulse(long tick) {
+		return beatPhase(tick) < 0 ? 1.0 : stroke(tick) / MEAN_STROKE;
+	}
+
 	/** Multiplier on horizontal speed this tick for a turn of {@code yawRate} degrees/tick. */
 	public static double turnDrag(double yawRate) {
 		return 1.0 - TURN_BRAKE * Math.min(1.0, Math.abs(yawRate) / TURN_FULL);

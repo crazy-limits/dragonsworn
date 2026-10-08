@@ -61,6 +61,8 @@
 	"dragonsworn.config.section.arena.tooltip": "The End fight's dragon: vanilla's fight, plus landings beside players and air attacks.",
 	"dragonsworn.config.section.end_island": "End island",
 	"dragonsworn.config.section.end_island.tooltip": "The End island's shape and its crystals' wards (worldgen; the respawn ritual rebuilds the spires the same way).",
+	"dragonsworn.config.section.spells": "Spells",
+	"dragonsworn.config.section.spells.tooltip": "With Iron's Spells 'n Spellbooks: the dragon now and then counters a player's spell (Counterspell).",
 	"dragonsworn.config.option.dragon.max_health": "Max health",
 	"dragonsworn.config.option.dragon.max_health.tooltip": "Health points (2 = one heart), on every difficulty: 500 as the Warden (vanilla's dragon has 200).",
 	"dragonsworn.config.option.targeting.hunt_range": "Hunt range",
@@ -349,8 +351,17 @@
 	"dragonsworn.config.option.end_island.warded_crystals_normal.tooltip": "... on Normal ...",
 	"dragonsworn.config.option.end_island.warded_crystals_hard": "Warded crystals hard",
 	"dragonsworn.config.option.end_island.warded_crystals_hard.tooltip": "... and on Hard.",
+	"dragonsworn.config.option.spells.counterspell": "Counterspell",
+	"dragonsworn.config.option.spells.counterspell.tooltip": "Counter a spell a survival player starts casting in its sight: the spell fizzles and goes on cooldown, and the player's magic effects end, as with Counterspell.",
+	"dragonsworn.config.option.spells.counterspell_chance": "Counterspell chance",
+	"dragonsworn.config.option.spells.counterspell_chance.tooltip": "Chance it counters a spell it could counter (0 = never, 1 = every one).",
+	"dragonsworn.config.option.spells.counterspell_cooldown": "Counterspell cooldown",
+	"dragonsworn.config.option.spells.counterspell_cooldown.tooltip": "Ticks (20 = 1 s) after a counter before it can counter again.",
+	"dragonsworn.config.option.spells.counterspell_range": "Counterspell range",
+	"dragonsworn.config.option.spells.counterspell_range.tooltip": "Blocks: it counters spells cast this close to it.",
 	"dragonsworn.config.range.flag": "true or false, default: %s",
 	"dragonsworn.config.range.number": "range: %s .. %s, default: %s",
 	"subtitles.dragonsworn.entity.ender_dragon.buffet": "Ender Dragon buffets with its wings",
-	"subtitles.dragonsworn.entity.end_crystal.ward": "Crystal ward deflects"
+	"subtitles.dragonsworn.entity.end_crystal.ward": "Crystal ward deflects",
+	"subtitles.dragonsworn.entity.ender_dragon.counterspell": "Ender Dragon counters a spell"
 }

@@ -64,9 +64,11 @@ dependencies {
 	// config screens: built with YACL or Cloth Config when the player has one (else a plain screen);
 	// neither is needed at runtime
 	listOf("deps.yacl", "deps.cloth-config").mapNotNull { optionalProp(it) }.forEach { compileOnly(it) { isTransitive = false } }
-	// `-Pdragonsworn.irons`: Iron's Spells 'n Spellbooks (+ Iron's Lib, Curios, playerAnimator) in the dev client
-	if (providers.gradleProperty("dragonsworn.irons").isPresent) {
-		optionalProp("deps.irons")?.split(',')?.forEach { runtimeOnly(it.trim()) { isTransitive = false } }
+	// Iron's Spells 'n Spellbooks (+ Iron's Lib, Curios, playerAnimator): compiled against where it exists (the dragon's
+	// counterspell, neoforge/irons), never needed at runtime; `-Pdragonsworn.irons` puts it in the dev client
+	optionalProp("deps.irons")?.split(',')?.forEach {
+		compileOnly(it.trim()) { isTransitive = false }
+		if (providers.gradleProperty("dragonsworn.irons").isPresent) runtimeOnly(it.trim()) { isTransitive = false }
 	}
 }
 

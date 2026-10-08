@@ -28,7 +28,10 @@ public enum DragonAnim {
 	DESCEND(true),
 	/** The stoop ({@code FlightModel.Slope#DIVE}): wings drawn in and swept back along the flanks, tips shivering. */
 	DIVE(true),
-	/** Crouch on all fours, all four push off together, then the wings beat it up (ends in the hover). */
+	/**
+	 * Crouch on all fours, rear with the wings rising to the top of a stroke, then the legs and the first
+	 * downstroke throw it up together; the next stroke beats it up (ends in the hover).
+	 */
 	TAKEOFF(false),
 	/**
 	 * Landing at speed, an eagle's: legs swung forward, a flare and one braking stroke, then the wings
@@ -102,13 +105,13 @@ public enum DragonAnim {
 	 */
 	public static final double WALK_BLOCKS_PER_SECOND = 36.0 / (0.75 * 2.4) / 16.0;
 	/**
-	 * {@link #TAKEOFF}: when all four limbs push off the ground together (the jump), when the wings reach
-	 * the top and the first power stroke starts, and its length. It ends on a beat boundary of the hover
-	 * that follows; the hover's beat (on the server) starts at {@link #TAKEOFF_PHASE} at the jump so the
-	 * two stay in step.
+	 * {@link #TAKEOFF}: the wings are at the top of the stroke and the push starts (the hind legs straighten
+	 * and the first downstroke goes down together), the feet leave the ground (the jump), and its length. It
+	 * ends on a beat boundary of the hover that follows; the hover's beat (on the server) is at
+	 * {@link #TAKEOFF_PHASE} at the jump, the downstroke already under way, so the two stay in step.
 	 */
-	public static final double TAKEOFF_JUMP_SECONDS = 0.55, TAKEOFF_TOP_SECONDS = 0.8, TAKEOFF_SECONDS = 2.04;
-	public static final double TAKEOFF_PHASE = Wingbeat.DOWNSTROKE_START - (TAKEOFF_TOP_SECONDS - TAKEOFF_JUMP_SECONDS) / Wingbeat.FLAP_SECONDS;
+	public static final double TAKEOFF_PUSH_SECONDS = 0.95, TAKEOFF_JUMP_SECONDS = 1.15, TAKEOFF_SECONDS = 2.19;
+	public static final double TAKEOFF_PHASE = Wingbeat.DOWNSTROKE_START + (TAKEOFF_JUMP_SECONDS - TAKEOFF_PUSH_SECONDS) / Wingbeat.FLAP_SECONDS;
 	/**
 	 * {@link #LAND}: the flare starts, the braking stroke is done, all four feet strike the ground (the
 	 * wings swept down onto their claws), and its length (it ends standing).

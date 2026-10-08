@@ -1,11 +1,19 @@
 package crazylimits.dragonsworn.mc.breath.client;
 
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.DefaultVertexFormat;
+import com.mojang.blaze3d.vertex.Tesselator;
+import com.mojang.blaze3d.vertex.VertexFormat;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleProvider;
 import net.minecraft.client.particle.ParticleRenderType;
 import net.minecraft.client.particle.SpriteSet;
 import net.minecraft.client.particle.TextureSheetParticle;
+import net.minecraft.client.renderer.texture.TextureAtlas;
+import net.minecraft.client.renderer.texture.TextureManager;
 import net.minecraft.core.particles.SimpleParticleType;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
@@ -18,14 +26,36 @@ import net.minecraft.util.RandomSource;
  * smoke closes in on, then only smoke clouds. {@link Breath} is a puff of the stream out of the mouth;
  * {@link Cloud} a smaller, quicker one out of a breath cloud (the fireball's, the perched breath's) or an
  * ember in the mouth. The fire glows; the smoke, from {@link #smokeFrom} of its life, is lit by the world,
- * slows down and drifts up. Nothing is see-through: the sprites are opaque (every texel drawn or empty) and
- * drawn opaque; the smoke never fades, it breaks up in its sprites into smaller and smaller puffs that vanish.
+ * slows down, drifts up and fades out while its billows shrink in the sprites. The sprites are opaque (every
+ * texel drawn or empty); only the smoke's fading makes the particle see-through.
+ * The fire is drawn opaque; the smoke in {@link #SMOKE}, translucent without writing depth, so particles behind it
+ * still show (vanilla's translucent particles write depth and hide whatever is drawn after them). A particle's
+ * render type is fixed when it is added: a puff turning to smoke hands over to a copy in {@link #SMOKE}.
  */
 public class VoidFlameParticle extends TextureSheetParticle {
+	/** Translucent particles that write no depth, drawn after vanilla's translucent ones ({@code mixin.client.ParticleEngineMixin}). */
+	public static final ParticleRenderType SMOKE = new ParticleRenderType() {
+		@Override
+		public BufferBuilder begin(Tesselator tesselator, TextureManager textureManager) {
+			RenderSystem.depthMask(false);
+			RenderSystem.setShaderTexture(0, TextureAtlas.LOCATION_PARTICLES);
+			RenderSystem.enableBlend();
+			RenderSystem.defaultBlendFunc();
+			return tesselator.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.PARTICLE);
+		}
+
+		@Override
+		public String toString() {
+			return "DRAGONSWORN_VOID_SMOKE";
+		}
+	};
+
 	private final SpriteSet sprites;
 	private final float rise;
 	/** From this share of its life it is smoke (0 for none: a flame throughout). */
 	private float smokeFrom;
+	/** Drawn in {@link #SMOKE}: the copy a puff hands over to once it is smoke. */
+	private boolean smokeLayer;
 
 	protected VoidFlameParticle(ClientLevel level, double x, double y, double z, double vx, double vy, double vz, SpriteSet sprites,
 			int lifetime, float size, float friction, float rise) {
@@ -53,6 +83,7 @@ public class VoidFlameParticle extends TextureSheetParticle {
 		boolean smoke = smokeFrom > 0.0F && k >= smokeFrom;
 		yd += smoke ? rise * 3.0F : rise;
 		if (smoke) {
+			alpha = 1.0F - (k - smokeFrom) / (1.0F - smokeFrom);
 			xd *= 0.9;
 			zd *= 0.9;
 		}
@@ -61,11 +92,29 @@ public class VoidFlameParticle extends TextureSheetParticle {
 			xd *= 1.08;
 			zd *= 1.08;
 		}
+		if (smoke && !smokeLayer) toSmokeLayer();
+	}
+
+	private void toSmokeLayer() {
+		VoidFlameParticle copy = new VoidFlameParticle(level, x, y, z, xd, yd, zd, sprites, lifetime, quadSize, friction, rise);
+		copy.smokeFrom = smokeFrom;
+		copy.smokeLayer = true;
+		copy.xo = xo;
+		copy.yo = yo;
+		copy.zo = zo;
+		copy.age = age;
+		copy.roll = roll;
+		copy.oRoll = oRoll;
+		copy.alpha = alpha;
+		copy.onGround = onGround;
+		copy.setSpriteFromAge(sprites);
+		Minecraft.getInstance().particleEngine.add(copy);
+		remove();
 	}
 
 	@Override
 	public ParticleRenderType getRenderType() {
-		return ParticleRenderType.PARTICLE_SHEET_OPAQUE;
+		return smokeLayer ? SMOKE : ParticleRenderType.PARTICLE_SHEET_OPAQUE;
 	}
 
 	@Override
@@ -84,7 +133,7 @@ public class VoidFlameParticle extends TextureSheetParticle {
 		@Override
 		public Particle createParticle(SimpleParticleType type, ClientLevel level, double x, double y, double z, double vx, double vy, double vz) {
 			RandomSource r = level.random;
-			// fire for three quarters of its life (sprites 0-12 of 18), then smoke that quickly breaks up (13-17)
+			// fire for three quarters of its life (sprites 0-12 of 18), then smoke that shrinks and fades (13-17)
 			VoidFlameParticle puff = new VoidFlameParticle(level, x, y, z, vx, vy, vz, sprites, 24 + r.nextInt(11),
 					1.8F + r.nextFloat() * 0.8F, 0.95F, 0.003F);
 			puff.smokeFrom = 0.69F;
@@ -103,10 +152,10 @@ public class VoidFlameParticle extends TextureSheetParticle {
 		public Particle createParticle(SimpleParticleType type, ClientLevel level, double x, double y, double z, double vx, double vy, double vz) {
 			RandomSource r = level.random;
 			// the cloud hands out a little sideways drift; the flame mostly licks upward, then its smoke
-			// (sprites 8-11 of 12) rises and breaks up
+			// (sprites 9-11 of 12) rises, shrinks and fades
 			VoidFlameParticle flame = new VoidFlameParticle(level, x, y, z, vx * 0.4, vy + 0.03, vz * 0.4, sprites, 12 + r.nextInt(8),
 					0.5F + r.nextFloat() * 0.25F, 0.9F, 0.004F);
-			flame.smokeFrom = 0.65F;
+			flame.smokeFrom = 0.8F;
 			return flame;
 		}
 	}

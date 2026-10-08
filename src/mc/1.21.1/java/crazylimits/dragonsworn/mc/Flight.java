@@ -1,6 +1,7 @@
 package crazylimits.dragonsworn.mc;
 
 import crazylimits.dragonsworn.flight.FlightModel;
+import crazylimits.dragonsworn.flight.HoverLift;
 import crazylimits.dragonsworn.mc.phase.DragonswornPhase;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
@@ -16,8 +17,6 @@ import java.util.concurrent.ThreadLocalRandom;
  * round ({@link AirRoute}) and never through ({@link HullCollision#move}).
  */
 public final class Flight {
-	/** Hover: gravity, and the lift of a full downstroke that balances it on average over a beat. */
-	static final double HOVER_GRAVITY = 0.01, HOVER_LIFT = HOVER_GRAVITY / (0.4 * 2 / Math.PI);
 	/** Rise over run past which flight cannot climb to a waypoint: it hovers up instead. */
 	private static final double STEEP = 0.8;
 	/** A waypoint less than this far above (blocks) is never too steep. */
@@ -30,6 +29,8 @@ public final class Flight {
 	private final HullCollision hull;
 	/** When the wings beat, and how hard (the synced plan's source). */
 	final FlightModel model = new FlightModel();
+	/** Hovering: how hard each stroke throws it up. */
+	private final HoverLift hover = new HoverLift();
 
 	Flight(DragonBrain brain, AirRoute route, HullCollision hull) {
 		this.brain = brain;
@@ -53,7 +54,10 @@ public final class Flight {
 		}
 		FlightModel.Plan plan = model.update(tick, v.y, dragon.yRotA * 0.1, v.horizontalDistance(), force,
 				ThreadLocalRandom.current());
-		if (plan != before) dragon.getEntityData().set(DragonData.FLIGHT, plan.encode());
+		if (plan != before) {
+			dragon.getEntityData().set(DragonData.FLIGHT, plan.encode());
+			hover.restart();
+		}
 		if (plan.mode() == FlightModel.Mode.HOVER) hoverStep(phase, aim, tick, collide);
 		else flightStep(phase, aim, tick, collide);
 	}
@@ -71,6 +75,7 @@ public final class Flight {
 			model.startAtPhase(tick, u);
 			dragon.getEntityData().set(DragonData.FLIGHT, plan.encode());
 		}
+		hover.restart();
 	}
 
 	/** Vanilla's portal landing and takeoff fly through the podium as before; so does a perched dragon. */
@@ -119,7 +124,8 @@ public final class Flight {
 		float flySpeed = phase.getFlySpeed();
 		double horizontal = Math.sqrt(dx * dx + dz * dz);
 		double climb = horizontal > 0 ? Mth.clamp(dy / horizontal, -flySpeed, flySpeed) : dy;
-		dragon.setDeltaMovement(dragon.getDeltaMovement().add(0.0, climb * 0.01, 0.0));
+		// beating, it climbs in surges on the downstrokes
+		dragon.setDeltaMovement(dragon.getDeltaMovement().add(0.0, climb * 0.01 * model.climbPulse(tick), 0.0));
 		dragon.setYRot(Mth.wrapDegrees(dragon.getYRot()));
 		Vec3 toAim = aim.subtract(dragon.position()).normalize();
 		float yawRad = dragon.getYRot() * Mth.DEG_TO_RAD;
@@ -146,7 +152,8 @@ public final class Flight {
 
 	/**
 	 * Standing in the air: drifts slowly toward the aim, turns to face it (or the phase's look target),
-	 * and holds its height with the beats; every downstroke lifts it, gravity pulls it back between.
+	 * and bobs on its beats toward the aim's height: every downstroke throws it up, through every
+	 * upstroke it nearly falls ({@link HoverLift}).
 	 */
 	private void hoverStep(DragonPhaseInstance phase, Vec3 aim, long tick, boolean collide) {
 		EnderDragon dragon = brain.dragon();
@@ -168,11 +175,8 @@ public final class Flight {
 		double want = Math.min(0.3, horizontal * 0.05);
 		double tx = horizontal > 1e-3 ? dx / horizontal * want : 0.0, tz = horizontal > 1e-3 ? dz / horizontal * want : 0.0;
 		double vx = v.x + (tx - v.x) * 0.08, vz = v.z + (tz - v.z) * 0.08;
-		// holding its height: each stroke lifts more when below the aim or sinking, less when above or rising
-		double error = aim.y - dragon.getY();
-		double gain = Mth.clamp(1.0 + 0.2 * error - 4.0 * v.y, 0.2, 2.4);
-		double vy = v.y * 0.96 + model.stroke(tick) * HOVER_LIFT * gain - HOVER_GRAVITY;
-		dragon.setDeltaMovement(vx, vy, vz);
+		double beat = Math.max(0.0, model.beatPhase(tick));
+		dragon.setDeltaMovement(vx, hover.step(v.y, beat, aim.y - dragon.getY()), vz);
 		hull.move(dragon.getDeltaMovement(), collide);
 	}
 }

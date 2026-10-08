@@ -19,6 +19,10 @@ config = "dragonsworn.breath.mixins.json"
 [[mixins]]
 config = "dragonsworn.arena.mixins.json"
 
+# Iron's Spells 'n Spellbooks: its Dragon's Breath spell breathes void flame (inert without it)
+[[mixins]]
+config = "dragonsworn.irons.mixins.json"
+
 [[dependencies.${id}]]
 modId = "neoforge"
 type = "required"

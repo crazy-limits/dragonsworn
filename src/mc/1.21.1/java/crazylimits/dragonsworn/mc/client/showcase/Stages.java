@@ -39,6 +39,7 @@ final class Stages {
 			BreathStage.breath(x, y, z);
 			BreathStage.breathMoving(x, y, z + 60);
 		}));
+		SOLO.put("footing", new Solo(true, (x, y, z) -> FootingStage.footing(x, y, z + 150)));
 		SOLO.put("collision", new Solo(true, (x, y, z) -> CollisionStage.collision(x, y, z + 150)));
 		SOLO.put("hitboxes", new Solo(true, (x, y, z) -> HitboxesStage.hitboxes(x, y, z + 150)));
 		SOLO.put("narrow", new Solo(true, (x, y, z) -> {
@@ -50,6 +51,7 @@ final class Stages {
 		SOLO.put("stance", new Solo(true, (x, y, z) -> StanceStage.stance(x, y, z + 150)));
 		SOLO.put("death", new Solo(true, (x, y, z) -> DeathStage.death(x, y, z + 150)));
 		SOLO.put("wards", new Solo(true, (x, y, z) -> WardsStage.wards(x, y, z + 150)));
+		SOLO.put("spells", new Solo(true, (x, y, z) -> SpellsStage.spells(x, y, z + 150)));
 		// the AI's ground assault and takeoff, and the running landing
 		SOLO.put("landing", new Solo(true, (x, y, z) -> {
 			LandingStage.liveDragon(x, y, z + 150);
@@ -88,5 +90,6 @@ final class Stages {
 		NarrowStage.narrow(x + 450, y, z + 300, Foothold.CLING);
 		ClimbStage.climb(x + 600, y, z + 150);
 		WardsStage.wards(x + 600, y, z + 450);
+		FootingStage.footing(x + 750, y, z + 150);
 	}
 }

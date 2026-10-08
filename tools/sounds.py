@@ -154,6 +154,7 @@ ALIASES = {
 	'breath': ('entity.ender_dragon.shoot', 'Ender Dragon breathes fire'),
 	'flames': ('entity.blaze.shoot', 'Void flames roar'),
 	'buffet': ('entity.ender_dragon.flap', 'Ender Dragon buffets with its wings'),
+	'counterspell': ('entity.illusioner.cast_spell', 'Ender Dragon counters a spell'),
 }
 # events of the End crystals' (entity.end_crystal.<name>), each pointing at vanilla's: (vanilla event, subtitle)
 CRYSTAL_ALIASES = {

@@ -306,8 +306,10 @@ public final class DragonBrain {
 		if (kind == Kind.DYING) return false;
 		if (kind != Kind.AIR) return true;
 		DragonAnim action = action();
-		if (action == DragonAnim.TAKEOFF) return clock.anim() == DragonAnim.TAKEOFF && clock.seconds() < DragonAnim.TAKEOFF_JUMP_SECONDS;
-		// the model (and the runway's path) strike the ground after the blend into the landing
+		// the model leaves (and strikes) the ground after the blend into the takeoff (landing); so does the game
+		if (action == DragonAnim.TAKEOFF) {
+			return clock.anim() == DragonAnim.TAKEOFF && clock.seconds() < DragonAnim.TAKEOFF_JUMP_SECONDS + DragonAnim.BLEND_TICKS / 20.0;
+		}
 		return action == DragonAnim.LAND && clock.anim() == DragonAnim.LAND
 				&& clock.seconds() >= DragonAnim.LAND_TOUCH_SECONDS + DragonAnim.BLEND_TICKS / 20.0;
 	}

@@ -146,6 +146,15 @@
 			}
 		]
 	},
+	"entity.ender_dragon.counterspell": {
+		"subtitle": "subtitles.dragonsworn.entity.ender_dragon.counterspell",
+		"sounds": [
+			{
+				"name": "minecraft:entity.illusioner.cast_spell",
+				"type": "event"
+			}
+		]
+	},
 	"entity.end_crystal.ward": {
 		"subtitle": "subtitles.dragonsworn.entity.end_crystal.ward",
 		"sounds": [

@@ -36,7 +36,8 @@ must also pass the **showcase**, the in-game test. It runs on your machine and o
 ./gradlew :1.21.1-fabric:runClient -Pdragonsworn.showcase=<stage>
 ```
 
-Stages: `aim`, `air`, `breath`, `collision`, `config`, `death`, `grabs`, `hitboxes`, `landing`, `narrow`, `pass`,
+Stages: `aim`, `air`, `breath`, `collision`, `config`, `death`, `footing`, `grabs`, `hitboxes`, `landing`, `narrow`, `pass`,
+`spells` (Iron's Spells: `./gradlew :1.21.1-neoforge:runClient -Pdragonsworn.irons -Pdragonsworn.showcase=spells`),
 `stance`, `walls`, `wards`. Leave off `=<stage>` to run them all. Read `run/1.21.1-fabric/showcase-report.txt`: its last line must
 say `RESULT PASS`. Look at the screenshots in `run/1.21.1-fabric/screenshots/` too. For changes to the End spires, run
 `-Pdragonsworn.arena`.

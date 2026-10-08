@@ -73,10 +73,30 @@ public final class LimbAnimator {
 	private static final double RELEASE_FROM = 20.0, RELEASE_TOP = 36.0;
 	/** The furthest a foot is carried up or down, blocks. */
 	private static final double MAX_SHIFT = 1.6;
-	/** A planted foot its limb misses by more than this (pixels) is dragged: it must step. */
-	private static final double STRAIN = 0.1;
+	/**
+	 * A planted foot its limb misses by more than this (pixels) is dragged: it must step, when a step
+	 * would bring it at least {@code STEP_GAIN} (pixels) nearer the limb's reach.
+	 */
+	private static final double STRAIN = 0.1, STEP_GAIN = 2.0;
 	/** Per tick: how fast a foot's shift follows the ground, rising and dropping (rising is quicker). */
 	private static final double RISE = 0.7, DROP = 0.35;
+	/**
+	 * A planted limb keeps the height it stands at while it stays within {@code HOLD} (blocks) of where it
+	 * came down: the ground under it dropping by more than {@code JUMP} at once (a block's edge, crossed
+	 * back and forth by the idle's sway) is not followed. Sinking smoothly, and rising, always are.
+	 */
+	private static final double HOLD = 0.5, JUMP = 0.1;
+	/**
+	 * A moving limb rises to the highest ground it will be over within {@code AHEAD} ticks at its speed (eased
+	 * at {@code PACE} a tick), so it is up before it gets there instead of jumping up at the block's edge.
+	 */
+	private static final double AHEAD = 4.0, PACE = 0.5;
+	/**
+	 * The most (blocks) a limb is raised over the ground under its own foot to keep the rest of it out of
+	 * the ground: a heel, a toe, the far edge of a folded hand over higher ground. More would turn the
+	 * whole wing up at the shoulder for one fingertip on a hill.
+	 */
+	private static final double CLEAR_OVER = 0.5;
 
 	/** Per dragon, client side. */
 	static final class State {
@@ -90,6 +110,14 @@ public final class LimbAnimator {
 		double forcedSince;
 		/** How far each foot is carried up (blocks, negative: down), eased. */
 		final double[] shift = new double[4];
+		/** Where each limb stands (surface frame x, z, blocks) and the height it stands at there; NaN: nowhere yet. */
+		final double[][] stand = new double[4][3];
+		/** Where each limb's point on the ground was last frame (surface frame x, z; NaN: nowhere), and how fast it moves (blocks a tick). */
+		final double[][] seen = new double[4][2], pace = new double[4][2];
+		{
+			for (double[] s : stand) Arrays.fill(s, Double.NaN);
+			for (double[] s : seen) Arrays.fill(s, Double.NaN);
+		}
 		/** How much the feet follow the ground, 0..1. */
 		double footing, last = Double.NaN;
 		/**
@@ -149,6 +177,8 @@ public final class LimbAnimator {
 		TalonPose.apply(model, brain, state, frame, partialTick, dt);
 		if (state.footing <= 0.0) {
 			Arrays.fill(state.shift, 0.0);
+			for (double[] stand : state.stand) Arrays.fill(stand, Double.NaN);
+			for (double[] seen : state.seen) Arrays.fill(seen, Double.NaN);
 		} else {
 			boolean turning = standing && kind != Kind.AIR && planted(brain.clock.anim()) && brain.prey.hold() == Grip.Hold.NONE;
 			feet(model, dragon, state, local, footing, dt, turning);
@@ -241,20 +271,29 @@ public final class LimbAnimator {
 			double[] ankle = points[s];
 			double held = held(ankle[1] - 3.0);
 			double[] moved = stepped(frame, state, s, ankle, held);
-			double[] target = shifted(footing, frame, state, s, moved, ankle[1] - 3.0, ground.of(bones[2], shins[s]), dt);
+			double[] target = shifted(footing, frame, state, s, moved, ankle[1] - 3.0, ground.of(bones[2], shins[s]), dt, !state.steps.stepping(s));
 			target = lifted(state, s, moved, target, held);
 			if (target != null && moved != ankle) {
 				// carried round in a turn: where it goes may be higher ground than the animation's place,
 				// so the foot is raised again by whatever of it is still inside the ground there
 				Joint[] animatedLeg = {GeoBones.joint(bones[0]), GeoBones.joint(bones[1]), GeoBones.joint(bones[2])};
+				double raised = 0.0;
 				for (int pass = 0; pass < 3; pass++) {
 					for (int k = 0; k < 3; k++) leg[k] = GeoBones.joint(bones[k]);
 					for (int k = 0; k < 3; k++) System.arraycopy(animatedLeg[k].rot, 0, leg[k].rot, 0, 3);
-					double left = LimbIK.solveLegReach(bodyM, leg[0], leg[1], leg[2], target);
-					if (pass == 0 && left > STRAIN && !state.steps.stepping(s)) state.steps.strain(s);
+					LimbIK.solveLegReach(bodyM, leg[0], leg[1], leg[2], target);
+					// at the end of its reach across the ground: it must step, or the foot would be dragged (a
+					// foot that cannot reach down or up does not: a step would land it no better, and again)
+					double[] reached = Affine.apply(Affine.mul(Affine.mul(bodyM, leg[0].local()), leg[1].local()),
+							new double[]{leg[2].pivot[0] + leg[2].pos[0], leg[2].pivot[1] + leg[2].pos[1], leg[2].pivot[2] + leg[2].pos[2]}, new double[3]);
+					if (pass == 0 && across(frame, reached, target) > STRAIN && stepHelps(frame, root(bodyM, leg[0]), target, ankle) && !state.steps.stepping(s)) {
+						state.steps.strain(s);
+					}
 					for (int k = 0; k < 3; k++) GeoBones.setRotation(bones[k], leg[k]);
 					double inside = new GroundClearance(footing, frame).of(bones[2], Affine.mul(Affine.mul(bodyM, leg[0].local()), leg[1].local())) * held * state.footing;
-					if (!(inside >= 0.01)) break; // NaN too: -Infinity (no ground near) times a lifted foot's 0
+					if (!(inside >= 0.01) || raised >= CLEAR_OVER) break; // NaN too: -Infinity (no ground near) times a lifted foot's 0
+					inside = Math.min(inside, CLEAR_OVER - raised);
+					raised += inside;
 					target[1] += inside * 16.0;
 				}
 			} else if (target != null) {
@@ -276,7 +315,7 @@ public final class LimbAnimator {
 			double[] apexMoved = stepped(frame, state, 2 + s, apex, apexHeld);
 			boolean handMoved = apexMoved != apex;
 			double[] clawMoved = handMoved ? new double[]{clawPoint[0] + apexMoved[0] - apex[0], clawPoint[1] + apexMoved[1] - apex[1], clawPoint[2] + apexMoved[2] - apex[2]} : clawPoint;
-			target = shifted(footing, frame, state, 2 + s, clawMoved, clawPoint[1], handClear, dt);
+			target = shifted(footing, frame, state, 2 + s, clawMoved, clawPoint[1], handClear, dt, !state.steps.stepping(2 + s));
 			target = lifted(state, 2 + s, clawMoved, target, apexHeld);
 			GeoBone elbowBone = GeoBones.bone(model, ELBOWS[s]);
 			if (target != null) {
@@ -288,7 +327,7 @@ public final class LimbAnimator {
 				double[] atElbow = animatedElbow == null ? null
 						: Affine.apply(Affine.invertRigid(Affine.mul(Affine.mul(bodyM, animated.local()), animatedElbow.local())), apex, new double[3]);
 				// how far the ground (and the step's arc) raise the hand
-				double rise = target[1] - clawMoved[1];
+				double rise = target[1] - clawMoved[1], raised = 0.0;
 				// The wing turns about the shoulder, so the hand's inner parts rise less than the wrist:
 				// raise the wrist again by whatever of the hand is still inside the ground.
 				for (int pass = 0; pass < 3; pass++) {
@@ -297,9 +336,13 @@ public final class LimbAnimator {
 					if (handMoved && atElbow != null) {
 						// a planted hand held where it stands: shoulder and elbow together
 						Joint elbow = GeoBones.joint(elbowBone);
-						double left = LimbIK.solveArmReach(bodyM, shoulder, elbow, atElbow, new double[]{apexMoved[0], apexMoved[1] + rise, apexMoved[2]});
-						// at the end of its reach: the hand must step, or it would be dragged
-						if (left > STRAIN && !state.steps.stepping(2 + s)) state.steps.strain(2 + s);
+						double[] reach = {apexMoved[0], apexMoved[1] + rise, apexMoved[2]};
+						LimbIK.solveArmReach(bodyM, shoulder, elbow, atElbow, reach);
+						// at the end of its reach across the ground: the hand must step, or it would be dragged
+						double[] reached = Affine.apply(Affine.mul(Affine.mul(bodyM, shoulder.local()), elbow.local()), atElbow, new double[3]);
+						if (pass == 0 && across(frame, reached, reach) > STRAIN && stepHelps(frame, root(bodyM, shoulder), reach, apex) && !state.steps.stepping(2 + s)) {
+							state.steps.strain(2 + s);
+						}
 						GeoBones.setRotation(elbowBone, elbow);
 					} else {
 						LimbIK.solveWing(bodyM, shoulder, carried, clawPoint[1] + rise);
@@ -307,7 +350,9 @@ public final class LimbAnimator {
 					GeoBones.setRotation(shoulderBone, shoulder);
 					if (hand == null || hand.getParent() == null) break;
 					double inside = new GroundClearance(footing, frame).of(hand, GeoBones.matrix(hand.getParent())) * held(clawPoint[1]) * state.footing;
-					if (!(inside >= 0.01)) break; // NaN too: -Infinity (no ground near) times a lifted foot's 0
+					if (!(inside >= 0.01) || raised >= CLEAR_OVER) break; // NaN too: -Infinity (no ground near) times a lifted foot's 0
+					inside = Math.min(inside, CLEAR_OVER - raised);
+					raised += inside;
 					rise += inside * 16.0;
 				}
 			}
@@ -352,6 +397,34 @@ public final class LimbAnimator {
 		return frame.toModel(world, world);
 	}
 
+	/** How far (pixels) the model point {@code reached} misses {@code target} across the ground, its height aside. */
+	private static double across(BodyFrame frame, double[] reached, double[] target) {
+		double[] a = frame.toWorld(reached, new double[3]), b = frame.toWorld(target, new double[3]);
+		return Math.hypot(a[0] - b[0], a[2] - b[2]) * 16.0;
+	}
+
+	/** Where a limb's root joint (hip, shoulder) is in the model, its parent's matrix {@code parent}. */
+	private static double[] root(double[] parent, Joint joint) {
+		return Affine.apply(parent, new double[]{joint.pivot[0] + joint.pos[0], joint.pivot[1] + joint.pos[1], joint.pivot[2] + joint.pos[2]}, new double[3]);
+	}
+
+	/**
+	 * Whether stepping would let a limb reach: {@code target} (model) is further from its {@code root} than
+	 * the limb's own place ({@code place}, the animation's) at the target's height, by {@link #STEP_GAIN}. A limb that cannot
+	 * reach down or up to the ground there either (a foot over a drop) does not step: it would land no
+	 * better, and step again, and again.
+	 */
+	private static boolean stepHelps(BodyFrame frame, double[] root, double[] target, double[] place) {
+		double[] r = frame.toWorld(root, new double[3]), t = frame.toWorld(target, new double[3]), p = frame.toWorld(place, new double[3]);
+		double toTarget = Math.sqrt(sq(t[0] - r[0]) + sq(t[1] - r[1]) + sq(t[2] - r[2]));
+		double toPlace = Math.sqrt(sq(p[0] - r[0]) + sq(t[1] - r[1]) + sq(p[2] - r[2]));
+		return toTarget > toPlace + STEP_GAIN / 16.0;
+	}
+
+	private static double sq(double v) {
+		return v * v;
+	}
+
 	/** {@code target} with foot {@code i} raised by its step's arc (null: nothing to do, as {@link #shifted}). */
 	private static double[] lifted(State state, int i, double[] moved, double[] target, double held) {
 		double lift = state.steps.lift(i) * held * 16.0;
@@ -366,13 +439,18 @@ public final class LimbAnimator {
 	 * down by the difference between that ground and the flat ground the animation was made for (model
 	 * y = 0 under the foot), eased per foot; and at least {@code clear} (blocks) up, so no part of the
 	 * limb is inside the ground under it (a heel or toe, the edge of a folded hand over a step).
-	 * {@code sole}: the model height of the foot's bottom. Null when there is nothing to do.
+	 * {@code sole}: the model height of the foot's bottom; {@code planted}: not in a turn's step. Null when
+	 * there is nothing to do.
 	 */
-	private static double[] shifted(Footing footing, BodyFrame frame, State state, int i, double[] point, double sole, double clear, double dt) {
+	private static double[] shifted(Footing footing, BodyFrame frame, State state, int i, double[] point, double sole, double clear, double dt, boolean planted) {
 		double[] flat = frame.toWorld(new double[]{point[0], 0.0, point[2]}, new double[3]);
 		double ground = footing.groundTop(flat[0], flat[1] + 2.0, flat[2]);
 		double want = Double.isNaN(ground) ? 0.0 : ground - flat[1];
-		want = Math.max(-MAX_SHIFT, Math.min(MAX_SHIFT, Math.max(want, clear)));
+		clear = Math.min(clear, want + CLEAR_OVER);
+		double ahead = ahead(footing, state, i, flat, dt);
+		if (!Double.isNaN(ahead)) want = Math.max(want, ahead - flat[1]);
+		want = stand(state.stand[i], flat, Math.max(want, clear), planted && held(sole) > 0.99);
+		want = Math.max(-MAX_SHIFT, Math.min(MAX_SHIFT, want));
 		// a foot lifted high on purpose is the animation's
 		double held = held(sole);
 		want *= held * state.footing;
@@ -385,6 +463,48 @@ public final class LimbAnimator {
 		double[] world = frame.toWorld(point, new double[3]);
 		world[1] += state.shift[i];
 		return frame.toModel(world, world);
+	}
+
+	/**
+	 * The highest ground limb {@code i} at {@code flat} (its point on the model's ground, surface frame) will be
+	 * over along its way in the next {@link #AHEAD} ticks; NaN when it stands still or there is none.
+	 */
+	private static double ahead(Footing footing, State state, int i, double[] flat, double dt) {
+		double[] seen = state.seen[i], pace = state.pace[i];
+		if (Double.isNaN(seen[0])) {
+			pace[0] = pace[1] = 0.0;
+		} else if (dt > 1e-6) {
+			double k = Math.min(1.0, PACE * dt);
+			pace[0] += ((flat[0] - seen[0]) / dt - pace[0]) * k;
+			pace[1] += ((flat[2] - seen[1]) / dt - pace[1]) * k;
+		}
+		seen[0] = flat[0];
+		seen[1] = flat[2];
+		if (Math.hypot(pace[0], pace[1]) < 0.02) return Double.NaN;
+		double best = Double.NaN;
+		for (double t = 1.0; t <= AHEAD; t += 1.0) {
+			double g = footing.groundTop(flat[0] + pace[0] * t, flat[1] + 2.0, flat[2] + pace[1] * t);
+			if (!Double.isNaN(g) && (Double.isNaN(best) || g > best)) best = g;
+		}
+		return best;
+	}
+
+	/**
+	 * How far up a limb at {@code flat} (its point on the model's ground, surface frame) stands, from
+	 * {@code want} (the ground under it now): a planted limb that has not moved from where it came down
+	 * ({@link #HOLD}) keeps standing where it stood when that ground drops away at once ({@link #JUMP}).
+	 */
+	private static double stand(double[] stand, double[] flat, double want, boolean planted) {
+		double height = flat[1] + want;
+		boolean near = !Double.isNaN(stand[2]) && Math.hypot(flat[0] - stand[0], flat[2] - stand[1]) < HOLD;
+		if (planted && near) {
+			if (height < stand[2] - JUMP) return stand[2] - flat[1];
+		} else {
+			stand[0] = flat[0];
+			stand[1] = flat[2];
+		}
+		stand[2] = height;
+		return want;
 	}
 
 	/** How much a foot whose bottom the animation holds {@code sole} pixels up is the ground's, 0..1. */

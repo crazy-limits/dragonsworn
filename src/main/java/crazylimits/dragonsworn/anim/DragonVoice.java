@@ -28,8 +28,8 @@ public final class DragonVoice {
 	public static final double WING_PHASE = 0.3;
 	/** {@link DragonAnim#UPRIGHT}: the righting stroke's push (its downstroke, past the middle of it). */
 	static final double UPRIGHT_WING = DragonAnim.BALANCE_SECONDS + 0.6 * DragonAnim.BALANCE_LENGTH;
-	/** {@link DragonAnim#TAKEOFF}: all four push off (the step), the first power stroke goes down (the swing). */
-	static final double TAKEOFF_STEP = 0.5, TAKEOFF_WING = DragonAnim.TAKEOFF_TOP_SECONDS + 0.12;
+	/** {@link DragonAnim#TAKEOFF}: the first power stroke goes down (the swing) as the legs push off (the step). */
+	static final double TAKEOFF_WING = DragonAnim.TAKEOFF_PUSH_SECONDS + 0.12, TAKEOFF_STEP = DragonAnim.TAKEOFF_JUMP_SECONDS;
 	/**
 	 * {@link DragonAnim#LAND}: the braking stroke (the swing), the hind feet striking the ground and the
 	 * claws a moment after (they strike together; one tick apart, two sounds).

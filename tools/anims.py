@@ -335,28 +335,51 @@ def _standing_tail(lift=0.0):
 	return {'push': 0.0, 'droop': 0.0, 'sway': 0.0, 'stand': 1.0, 'lift': lift}
 
 
-# The takeoff, a four-legged launch (pterosaurs and bats vault off their arms as well as their legs).
-# 0-0.35 crouch: the body sinks, all four feet on the ground, the folded wings braced on their claws.
-# 0.35-0.55 the push: hind legs and arms straighten together and throw the body up (the game throws the
-# dragon at TAKEOFF_JUMP); the head is thrown up and forward. Nothing leaves the ground before the jump.
-# 0.55-0.8 the wings sweep up off the ground to the top of the stroke while it rises on the leap; from
-# 0.8 the first power stroke at the beat's own pace, the tail swinging against it, and the body stands
-# up into the hover. It ends on the hover's beat boundary (u = 1), so the hover carries on in step (the
-# game starts its beat at TAKEOFF_PHASE at the jump).
-TAKEOFF_JUMP = 0.55
-TAKEOFF_TOP = 0.8       # the wings at the top: the power stroke starts
-TAKEOFF_LENGTH = round(TAKEOFF_TOP + (1 - flight.U_TOP) * FLAP, 2)
+# The takeoff, the way a big bird (an eagle, a vulture) or a heavy dragon leaves the ground: the legs do the
+# leap and the first downstroke goes with them, so the wings must already be up when the legs fire.
+# 0-0.55 the crouch (the countermovement): the hips sink, the chest and head go down, all four on the ground.
+# 0.35-0.95 it rears on its loaded hind legs: the chest comes up, the hands leave the ground and the wings
+# unfold and rise to the top of a stroke, the neck draws up.
+# 0.95 (TAKEOFF_PUSH) the push: the hind legs straighten and the first, deepest downstroke starts together;
+# the head is thrown up and forward. 1.15 (TAKEOFF_JUMP) the feet leave the ground (the game throws the
+# dragon up then, DragonAnim.TAKEOFF_JUMP_SECONDS, the stroke under way adding to the leap). Nothing leaves
+# the ground before. The stroke carries on to its bottom, the wings rise again (in the air the body nearly
+# falls through it: the game's hover, flight/HoverLift) and the body stands up into the hover; it ends on
+# the hover's beat boundary (u = 1), so the hover carries on in step (the game's beat is at TAKEOFF_PHASE
+# at the jump).
+TAKEOFF_CROUCH = 0.55   # crouched
+TAKEOFF_REAR = (0.35, 0.95)   # rearing, the wings rising
+TAKEOFF_PUSH = 0.95     # the wings at the top: legs and the power stroke push together
+TAKEOFF_JUMP = 1.15     # the feet leave the ground
+TAKEOFF_LENGTH = round(TAKEOFF_PUSH + (1 - flight.U_TOP) * FLAP, 2)
 # where the game's hover beat is at the jump (DragonAnim.TAKEOFF_PHASE)
-TAKEOFF_PHASE = flight.U_TOP - (TAKEOFF_TOP - TAKEOFF_JUMP) / FLAP
-POWER = flight.Style(mid=10.0, amp=58.0, elbow_amp=28.0, sweep=2.0, sweep_amp=20.0, sweep8=4.0, heave=0.0,
-					 pitch=0.0, surge=0.0, twist_amp=14.0, pleat_shut=36.0)
+TAKEOFF_PHASE = flight.U_TOP + (TAKEOFF_JUMP - TAKEOFF_PUSH) / FLAP
+POWER = flight.Style(mid=10.0, amp=60.0, elbow_amp=30.0, sweep=2.0, sweep_amp=20.0, sweep8=4.0, heave=0.0,
+					 pitch=0.0, surge=0.0, twist_amp=15.0, pleat_shut=36.0)
+TAKEOFF_TOP = _wings(flight_pose(dict(flight.wings(POWER, flight.U_TOP), heave=0.0, pitch=0.0)))
 
 
 def _takeoff_u(t):
-	"""Beat phase of the wings: from the ground up to the top by TAKEOFF_TOP, then the beat's own pace."""
-	if t < TAKEOFF_TOP:
-		return flight.U_TOP * ease((t - TAKEOFF_JUMP) / (TAKEOFF_TOP - TAKEOFF_JUMP))
-	return flight.U_TOP + (t - TAKEOFF_TOP) / FLAP
+	"""Beat phase of the wings from the push on: the power stroke at the beat's own pace."""
+	return flight.U_TOP + (t - TAKEOFF_PUSH) / FLAP
+
+
+def _takeoff_ground(t):
+	"""On the ground: the standing solve's settings and how far the wings have risen off it (0..1)."""
+	crouch = ease(t / TAKEOFF_CROUCH)
+	rear = ease((t - TAKEOFF_REAR[0]) / (TAKEOFF_REAR[1] - TAKEOFF_REAR[0]))
+	push = ease((t - TAKEOFF_PUSH) / (TAKEOFF_JUMP - TAKEOFF_PUSH))
+	low = crouch * (1 - push)
+	sw = stand.SWAN
+	kw = dict(
+		# the hips stay down while the chest rears; the push straightens the legs to their full reach
+		body_lift=-12 * low + 4 * rear * (1 - push) + 9 * push,
+		body_pitch=-7 * crouch * (1 - rear) + 14 * rear + 6 * push,
+		# the neck goes down and back in the crouch, up as it rears, thrown up and forward by the push
+		swan=[sw[0] - 10 * crouch * (1 - rear) + 6 * rear, sw[1] - 3 * crouch + 2 * rear,
+			  sw[2] + 6 * rear + 10 * push, sw[3] + 4 * rear + 8 * push],
+		head=stand.HEAD - 6 * crouch * (1 - rear) + 6 * rear + 8 * push, jaw=-1.5 - 6 * push)
+	return kw, ease((t - 0.4) / 0.5), 6 * crouch + 8 * push
 
 
 _takeoff = {}
@@ -364,27 +387,29 @@ _takeoff = {}
 
 def takeoff(t, L):
 	if t <= TAKEOFF_JUMP:
-		crouch = ease(t / 0.35) * (1 - ease((t - 0.35) / 0.2))
-		push = ease((t - 0.35) / 0.2)
-		sw = stand.SWAN
-		pose = standing('takeoff').pose(
-			body_pitch=-7 * crouch + 9 * push, body_lift=-10 * crouch + 8 * push,
-			swan=[sw[0] - 8 * crouch + 4 * push, sw[1] - 2 * crouch, sw[2] + 12 * push, sw[3] + 8 * push],
-			head=stand.HEAD - 4 * crouch + 10 * push, jaw=-1.5)
-		pose['_tail'] = _standing_tail(14 * push)
+		kw, rise, lift = _takeoff_ground(t)
+		if rise <= 0.0:
+			pose = standing('takeoff').pose(**kw)
+		else:
+			# the arms as they stand (hands on their marks) at this frame's body, rising to the stroke's top;
+			# from the push the stroke itself
+			planted = _wings(standing('takeoff_planted').pose(**kw))
+			wings = blend(planted, TAKEOFF_TOP, rise)
+			if t > TAKEOFF_PUSH:
+				wings = _wings(flight_pose(dict(flight.wings(POWER, _takeoff_u(t)), heave=0.0, pitch=0.0)))
+			pose = standing('takeoff').pose(wings=wings, **kw)
+		pose['_tail'] = _standing_tail(lift)
 		return pose
 	if 'lift' not in _takeoff:
 		_takeoff['lift'] = takeoff(TAKEOFF_JUMP, L)
 	lift = _takeoff['lift']
 	u = _takeoff_u(t)
-	# airborne: the power stroke, then the hover's beat; the body stands up into the hover
+	# airborne: the power stroke to its bottom, then the hover's beat; the body stands up into the hover
 	q = hover_q(u % 1.0)
-	q.update(qblend(flight.wings(POWER, u), flight.wings(flight.HOVER, u), ease((t - TAKEOFF_TOP - 0.5) / 0.4)))
+	q.update(qblend(flight.wings(POWER, u), flight.wings(flight.HOVER, u), ease((t - TAKEOFF_PUSH - 0.7) / 0.5)))
 	air = flight_pose(q)
-	body = blend(lift, air, ease((t - TAKEOFF_JUMP) / (L - TAKEOFF_JUMP) * 1.6))
-	# the wings come off the ground on their own, quicker than the body
-	wings = blend(_wings(lift), _wings(air), ease((t - TAKEOFF_JUMP) / (TAKEOFF_TOP - TAKEOFF_JUMP)))
-	body.update(wings)
+	body = blend(lift, air, ease((t - TAKEOFF_JUMP) / 0.7))
+	body.update(_wings(air))
 	return body
 
 

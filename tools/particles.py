@@ -7,7 +7,7 @@ particle's age (VoidFlameParticle), whose quad keeps one size: the puff grows in
 small ball in the middle to the whole sprite.
   void_breath_0..17  48 x 48, the stream breath's puffs: a ball of purple fire, white-hot inside, that a
                      ring of smoke closes in on; from about 75 % of its life it is only smoke, billowing
-                     clouds that quickly crack into pieces that drop out one by one.
+                     clouds that shrink away, the outer ones first.
   void_flame_0..11   24 x 24, the same, smaller and quicker to smoke: the flames of the breath clouds (the
                      dragon fireball's, the perched breath's) and the embers in the mouth.
 
@@ -17,12 +17,10 @@ the fire is the part near the heart (its share shrinks between the set's smoke s
 bands from a white heart to a violet rim, cooling with age; the smoke is shaded per billow, lit from the
 upper left (as vanilla's big smoke), lit violet from below on each billow's underside as if by the fire under
 it, and texels of it touching the fire glow violet.
-Once the fire is gone the smoke falls apart instead of fading: cracks cut the cloud into segments (Voronoi
-cells round seeds spread over it), and the segments, outer ones first, wear away from their cracks and drop
-out one by one until nothing is left (segments).
+Once the fire is gone every billow of smoke shrinks round its own middle, the outer ones first (shrink), down
+to SHRINK_END of its size by the last frame.
 Each 4x4 block then becomes one texel of the nearest palette color: clean pixel art, no noise speckle.
-Every texel is opaque or empty and the particle is drawn opaque (VoidFlameParticle): nothing fades, the
-smoke only falls apart.
+Every texel is opaque or empty; the particle fades the smoke out as it shrinks (VoidFlameParticle).
 """
 import math
 import os
@@ -52,15 +50,12 @@ UNDERGLOW_FADE = 0.5
 # its age, from its size at birth), so its texels stay the same size all its life.
 SETS = {
 	'void_breath': (48, 18, 7, 0.38, 0.75, 0.17),
-	'void_flame': (24, 12, 23, 0.19, 0.71, 0.30),
+	'void_flame': (24, 12, 23, 0.45, 0.8, 0.30),
 }
-# the smoke's breakup (short: it is gone soon after the fire): segments per texel of sprite width, the cracks'
-# half width (texels) once open, how far a segment wears away from its cracks before it drops out (texels), and
-# over which share of the breakup it wears away before its turn
-SEGMENTS = 1 / 3
-CRACK = 0.45
-WEAR = 1.6
-WEAR_SPAN = 0.3
+# the smoke shrinking away once the fire is gone: each billow's size left at the last frame, and how late in
+# that the heart starts (outer billows start at once, the rest in between by their distance from the middle)
+SHRINK_END = 0.5
+SHRINK_LAG = 0.3
 
 
 def value_noise(rng, cells, size):
@@ -97,28 +92,10 @@ def smooth(a, b, t):
 	return t * t * (3 - 2 * t)
 
 
-def segments(rng, N):
-	"""Seeds of the smoke's segments (x, y in shares of the puff's size) and when each drops out (share of the
-	breakup): the outer ones first."""
-	seeds, ends = [], []
-	for _ in range(max(4, round(N * SEGMENTS))):
-		a, d = rng.uniform(0, 2 * math.pi), 0.55 * math.sqrt(rng.random())
-		seeds.append((math.cos(a) * d, math.sin(a) * d))
-		ends.append(float(np.clip(1.05 - 0.9 * d + rng.uniform(-0.25, 0.15), 0.3, 1.0)))
-	return np.array(seeds), np.array(ends)
-
-
-def cut(X, Y, cx, cy, size, seeds, ends, t):
-	"""Where the smoke still stands at t (0..1 through its breakup): off the cracks between segments, off the
-	worn edge of each, and off the segments already gone."""
-	d = np.stack([np.hypot(X - (cx + sx * size), Y - (cy + sy * size)) for sx, sy in seeds])
-	order = np.argsort(d, 0)
-	near = order[0]
-	d1 = np.take_along_axis(d, order[:1], 0)[0]
-	d2 = np.take_along_axis(d, order[1:2], 0)[0]
-	wear = np.array([smooth(e - WEAR_SPAN, e, t) for e in ends])[near]
-	edge = (d2 - d1) / 2                                             # distance to the crack
-	return (edge > SS * (CRACK * smooth(0.0, 0.25, t) + WEAR * wear)) & (t < ends[near])
+def shrink(blobs, t):
+	"""Each billow's size share at t (0..1 through the smoke's shrinking): the outer ones shrink first."""
+	far = max(math.hypot(bx, by) for bx, by, _ in blobs)
+	return [1 - (1 - SHRINK_END) * smooth(SHRINK_LAG * (1 - math.hypot(bx, by) / far), 1.0, t) for bx, by, _ in blobs]
 
 
 def nearest(palette, color):
@@ -131,7 +108,6 @@ def frames(N, count, seed, smoke_start, fire_end, birth):
 	c = (M - 1) / 2
 	yy, xx = np.mgrid[0:M, 0:M].astype(float)
 	blobs = billows(rng)
-	seeds, ends = segments(np.random.default_rng(seed + 1), N)
 	soft = ((3, 0.7), (6, 0.3))
 	n1, n2, n3 = fbm(rng, soft, M), fbm(rng, soft, M), fbm(rng, ((4, 0.6), (8, 0.4)), M)
 	grain = fbm(rng, ((N // 4, 0.6), (N // 2, 0.4)), M)          # the smoke's mottling, a few texels across
@@ -143,21 +119,19 @@ def frames(N, count, seed, smoke_start, fire_end, birth):
 		X = xx + (np.roll(n1, drift, 0) - 0.5) * 0.05 * s
 		Y = yy + (np.roll(n2, -drift, 1) - 0.5) * 0.05 * s
 		# the billow each point is deepest in, and how lit that billow is there
-		thin = max(0.0, (k - fire_end) / (1 - fire_end))         # the smoke breaking up
+		thin = max(0.0, (k - fire_end) / (1 - fire_end))         # the smoke shrinking away
 		lobe = np.full((M, M), -9.0)
 		lit = np.zeros((M, M))
 		under = np.zeros((M, M))
 		spread = 1 + 0.25 * k
-		for bx, by, br in blobs:
-			cx, cy, r = c + bx * s * spread, c + by * s * spread, br * s * (1 + 0.15 * k)
+		for (bx, by, br), left in zip(blobs, shrink(blobs, thin)):
+			cx, cy, r = c + bx * s * spread, c + by * s * spread, br * s * (1 + 0.15 * k) * left
 			score = 1 - np.hypot(X - cx, Y - cy) / r
 			better = score > lobe
 			lobe = np.where(better, score, lobe)
 			lit = np.where(better, 1 - np.hypot(X - (cx - 0.35 * r), Y - (cy - 0.4 * r)) / (1.2 * r), lit)
 			under = np.where(better, 1 - np.hypot(X - cx, Y - (cy + 1.0 * r)) / (0.95 * r), under)
 		inside = lobe + 0.08 * (np.roll(n3, drift, 1) - 0.5) > 0
-		if thin > 0:
-			inside &= cut(X, Y, c, c, s * spread, seeds, ends, thin)
 		heart = 1 - np.hypot(xx - c, yy - c) / (s * 0.45)
 		share = 1.0 if k <= smoke_start else max(0.0, 1 - (k - smoke_start) / (fire_end - smoke_start))
 		fire = inside & (heart + 0.45 * (np.roll(n3, drift, 0) - 0.5) > 1 - share * 1.25) & (share > 0)
