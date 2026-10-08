@@ -8,7 +8,7 @@ loomx.loom_version = "1.17-SNAPSHOT"
 mod.id = "dragonsworn"
 mod.name = "Dragonsworn"
 mod.group = "crazylimits"
-mod.version = "0.1.0-alpha.1"
+mod.version = "0.1.0-alpha.2"
 # Upload targets (an empty id skips that platform), see buildSrc/DragonswornPublishing.kt
 mod.modrinth = "oVc9rh5X"
 mod.curseforge = "1721624"
